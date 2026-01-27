@@ -1,0 +1,213 @@
+# CodeMap (codemapcc.md)
+
+## 0) Repo Index
+- Root: docker-compose.yml, .env, plan.md, features.md, audit.md, cookies.txt
+- Root: .claude/, node_modules/, apps/
+- apps/web (Next.js App Router, frontend)
+  - app/{page.tsx,layout.tsx,globals.css,types.ts,activity/,admin/,calendar/,components/,context/,customizations/,hooks/,lib/,profile/,settings/,task/[id]}
+  - public/, next.config.ts, web.Dockerfile, package.json, tsconfig.json, next-env.d.ts
+- apps/api (NestJS + Drizzle ORM)
+  - src/{main.ts,app.module.ts,app.controller.ts,app.service.ts}
+  - src/auth, todos, categories, settings, audit, admin, attachments, bootstrap, db, common, users
+  - drizzle/ (SQL migrations), drizzle.config.ts, api.Dockerfile
+- apps/ocr-worker (PaddleOCR CPU worker)
+  - main.py (FastAPI routes for /health and POST /ocr, PaddleOCR ingestion)
+  - requirements.txt (fastapi, uvicorn, paddleocr, paddlepaddle, Pillow, numpy)
+  - Dockerfile (python slim build + uvicorn entrypoint)
+- Shared/utils: apps/web/app/lib/{api.ts,categories.ts,constants.ts,dateTime.ts,durationSettings.ts}; hooks as client data layer
+- db/schema: apps/api/src/db/schema.ts (Drizzle models)
+
+## 1) Run/Dev Commands
+- Docker compose: `docker compose up --build` (db: postgres16 backend net; api: API_PORT=3000 on backend+frontend nets; web: 3001->3000 frontend net)
+- Web dev: `cd apps/web && npm run dev` (Next.js dev on 3000; docker maps 3001)
+- API dev: `cd apps/api && npm run start:dev` (NestJS watch, CORS origin http://localhost:3001)
+- API prod start: `cd apps/api && npm run build && npm run start`
+- DB generate: `cd apps/api && npm run drizzle:generate` (uses drizzle.config.ts)
+- DB migrate: `cd apps/api && npm run drizzle:migrate` (DATABASE_URL from .env)
+- DB studio: UNKNOWN (no studio command declared)
+
+## 2) Frontend Map (Next.js App Router)
+- ROUTE: /
+  - Path: apps/web/app/page.tsx
+  - Purpose: Tasks dashboard, bulk ops, auth gate
+  - Uses: Layout, LoginForm, ForcePasswordChange, AddTaskForm, TaskFilters, TasksTable, ScheduleModal, NotificationToast, ConfirmModal, BulkActionsBar
+  - Uses: hooks useAuth, useTodos, useModal, useScheduledEvents, useSettings
+  - Mutations at: page.tsx handleAddTask, handleUpdateTask, handleSchedule, handleConfirmUnschedule, handleConfirmDelete, handleBulkMarkDone, handleBulkMarkNotDone, handleBulkChangeCategory, handleBulkDelete, handleToggleTask
+  - Toast calls at: page.tsx addNotification (create/update/schedule/unschedule/delete/bulk)
+- ROUTE: /calendar
+  - Path: apps/web/app/calendar/page.tsx
+  - Purpose: Drag-and-drop calendar scheduling
+  - Uses: Layout, ForcePasswordChange, DragProvider, DraggableTask, DroppableZone, ScheduleModal, CreateTaskModal, NotificationToast, DropTimeIndicator, UnscheduleZone
+  - Uses: hooks useDurationSettings, useCategories, useSettings; lib apiFetchJson; DragContext.useDragContext
+  - Mutations at: calendar/page.tsx handleSchedule, handleUnschedule, handleReschedule, handleModalSchedule, handleCreateTask, handleSelectSlot, handleResizeStart, handleResizeTopStart, handlePointerMove/up effects
+  - Toast calls at: calendar/page.tsx addNotification (schedule/unschedule/reschedule/create/resize errors)
+- ROUTE: /activity
+  - Path: apps/web/app/activity/page.tsx
+  - Purpose: Audit log viewer
+  - Uses: Layout, ForcePasswordChange, useAuth, useAuditLogs
+  - Mutations at: NONE (read-only fetch/refresh)
+  - Toast calls at: NONE
+- ROUTE: /admin
+  - Path: apps/web/app/admin/page.tsx
+  - Purpose: Admin user search + reset passwords
+  - Uses: Layout, ForcePasswordChange, useToast (ToastProvider), apiFetchJson
+  - Mutations at: admin/page.tsx loadUsers(), handleResetPassword(), logout(), forceChangePassword()
+  - Toast calls at: admin/page.tsx showToast (load/reset errors)
+- ROUTE: /customizations
+  - Path: apps/web/app/customizations/page.tsx
+  - Purpose: Working hours, duration settings, categories CRUD
+  - Uses: Layout, ForcePasswordChange, NotificationToast, apiFetchJson, getDurationSettings/updateDurationSettings
+  - Mutations at: loadSettings(), handleSaveSettings(), loadDurationSettings(), handleSaveDuration(), handleSeedDefaults(), handleSaveCategory(), handleDeleteCategory(), toggleWorkingDay()
+  - Toast calls at: page.tsx addNotification (settings/duration/category success/error)
+- ROUTE: /profile
+  - Path: apps/web/app/profile/page.tsx
+  - Purpose: Account info + change password
+  - Uses: Layout, ForcePasswordChange, apiFetchJson helpers
+  - Mutations at: handleChangePassword(), logout()
+  - Toast calls at: NONE (inline banners only)
+- ROUTE: /task/[id]
+  - Path: apps/web/app/task/[id]/page.tsx
+  - Purpose: Task detail edit, schedule, attachments, remarks, history
+  - Uses: Layout, ScheduleModal, NotificationToast; hooks useDurationSettings, useCategories, useScheduledEvents, useSettings; lib dateTime
+  - Mutations at: handleSave(), handleSchedule(), handleUnschedule(), handleToggleDone(), handleDelete(), handleUpload(), handleDeleteAttachment(), handleAddRemark(), handleDeleteRemark(), fetchRemarks(), fetchHistory(), fetchTask()
+  - Toast calls at: page.tsx addNotification (save/schedule/unschedule/update/delete/upload/delete attachment/add remark/delete remark)
+- ROUTE: /settings
+  - Path: apps/web/app/settings (folder empty)
+  - Purpose: UNKNOWN (no page implemented)
+  - Uses: UNKNOWN
+  - Mutations at: UNKNOWN
+  - Toast calls at: UNKNOWN
+- Global
+  - Toast system: apps/web/app/components/ToastProvider.tsx (ToastProvider + useToast(showToast(message,type)))
+  - Notification queue: apps/web/app/components/NotificationToast.tsx (expects Notification{id,type,title,message?,taskTitle?,taskId?})
+  - Auth/session entry points: apps/web/app/hooks/useAuth.ts (login/register/logout/changePassword/refreshMe hitting /auth endpoints), apps/web/app/components/ForcePasswordChange.tsx
+  - Calendar v2 anchors: renderer DraggableEvent inside apps/web/app/calendar/page.tsx; DndContext provider + onDragEnd in apps/web/app/components/DragContext.tsx (DragProvider.handleDragEnd); drop-time calc in apps/web/app/calendar/page.tsx getDropTime(); DnD overlay via DragOverlay in DragContext
+  - Calendar availability helpers: useScheduledEvents (apps/web/app/hooks/useScheduledEvents.ts), useDurationSettings (apps/web/app/hooks/useDurationSettings.ts), useCategories color map (apps/web/app/hooks/useCategories.ts)
+
+## 3) Backend Map (NestJS)
+- Controller: AppController
+  - Path: apps/api/src/app.controller.ts
+  - Base route: /
+  - Endpoints:
+    - GET / ? getHello() ? AppService.getHello()
+  - DTOs: none
+  - Guards/errors: none
+- Controller: AuthController
+  - Path: apps/api/src/auth/auth.controller.ts
+  - Base route: /auth
+  - Endpoints:
+    - POST /auth/register ? register() ? AuthService.register()
+    - POST /auth/login ? login() ? AuthService.login()
+    - POST /auth/logout ? logout() ? AuditService.log()
+    - POST /auth/change-password ? changePassword() ? AuthService.changePassword()
+    - GET /auth/me ? me() (returns req.user)
+  - DTOs: apps/api/src/auth/dto/{register.dto.ts,login.dto.ts,change-password.dto.ts}
+  - Guards/errors: JwtAuthGuard on logout/change-password/me; UnauthorizedException and BadRequestException in AuthService.changePassword; UnauthorizedException in login; ConflictException on register email duplicate; cookies set/cleared in controller
+- Controller: TodosController
+  - Path: apps/api/src/todos/todos.controller.ts
+  - Base route: /todos
+  - Endpoints:
+    - GET /todos ? list() ? TodosService.list()
+    - POST /todos ? create() ? TodosService.create()
+    - GET /todos/search ? search() ? TodosService.search()
+    - GET /todos/recently-unscheduled ? recentlyUnscheduled() ? TodosService.recentlyUnscheduled()
+    - GET /todos/:id ? getById() ? TodosService.getById()
+    - PATCH /todos/:id ? update() ? TodosService.update()
+    - PATCH /todos/:id/schedule ? schedule() ? TodosService.schedule()
+    - DELETE /todos/:id ? remove() ? TodosService.remove()
+    - POST /todos/bulk/done ? bulkMarkDone() ? TodosService.bulkUpdateDone()
+    - POST /todos/bulk/category ? bulkChangeCategory() ? TodosService.bulkUpdateCategory()
+    - POST /todos/bulk/delete ? bulkDelete() ? TodosService.bulkDelete()
+  - DTOs: apps/api/src/todos/dto/{create-todo.dto.ts,update-todo.dto.ts,schedule-todo.dto.ts,list-todos.query.dto.ts}
+  - Guards/errors: JwtAuthGuard class-wide; BadRequestException for schedule without duration; NotFoundException in schedule for missing todo; ConflictException on overlap checks; update/remove require user ownership; validation pipe strips unknown
+- Controller: CategoriesController
+  - Path: apps/api/src/categories/categories.controller.ts
+  - Base route: /categories
+  - Endpoints:
+    - GET /categories ? findAll() ? CategoriesService.findAll()
+    - POST /categories ? create() ? CategoriesService.create()
+    - PUT /categories/:id ? update() ? CategoriesService.update()
+    - DELETE /categories/:id ? delete() ? CategoriesService.delete()
+    - POST /categories/seed-defaults ? seedDefaults() ? CategoriesService.seedDefaults()
+  - DTOs: apps/api/src/categories/dto/{create-category.dto.ts,update-category.dto.ts}
+  - Guards/errors: JwtAuthGuard class-wide; ConflictException on duplicate names; NotFoundException on missing category; BadRequestException when deleting in-use category
+- Controller: SettingsController
+  - Path: apps/api/src/settings/settings.controller.ts
+  - Base route: /settings
+  - Endpoints:
+    - GET /settings ? getSettings() ? SettingsService.getSettings()
+    - PUT /settings ? updateSettings() ? SettingsService.updateSettings()
+    - GET /settings/duration ? getDurationSettings() ? SettingsService.getDurationSettings()
+    - PUT /settings/duration ? updateDurationSettings() ? SettingsService.updateDurationSettings()
+  - DTOs: apps/api/src/settings/dto/{update-settings.dto.ts,update-duration-settings.dto.ts}
+  - Guards/errors: JwtAuthGuard class-wide; BadRequestException if defaultDurationMin outside min/max; settings fallback defaults when missing row
+- Controller: AuditController
+  - Path: apps/api/src/audit/audit.controller.ts
+  - Base route: /audit
+  - Endpoints:
+    - GET /audit/resource/:resourceId ? getResourceHistory() ? AuditService.getResourceHistory()
+    - GET /audit ? list() ? AuditService.list()
+    - GET /audit/all ? listAll() ? AuditService.listAll()
+  - DTOs: none (query params parsed manually)
+  - Guards/errors: JwtAuthGuard class-wide; AdminGuard on /all; list filters action/startDate/endDate/userId
+- Controller: AdminController
+  - Path: apps/api/src/admin/admin.controller.ts
+  - Base route: /admin
+  - Endpoints:
+    - GET /admin/users ? searchUsers() ? AdminService.searchUsers()
+    - POST /admin/users/:id/reset-password ? resetPassword() ? AdminService.resetUserPassword()
+  - DTOs: none
+  - Guards/errors: JwtAuthGuard + AdminGuard class-wide; NotFoundException on unknown user; AuditService.log called after reset
+- Controller: AttachmentsController
+  - Path: apps/api/src/attachments/attachments.controller.ts
+  - Base route: /attachments
+  - Endpoints:
+    - GET /attachments/todo/:todoId ? listByTodo() ? AttachmentsService.listByTodo()
+    - POST /attachments/todo/:todoId ? upload() ? AttachmentsService.upload()
+    - GET /attachments/:id/download ? download() ? AttachmentsService.getById()
+    - DELETE /attachments/:id ? delete() ? AttachmentsService.delete()
+  - DTOs: none (uses multer FileInterceptor)
+  - Guards/errors: JwtAuthGuard class-wide; NotFoundException for missing todo/attachment; ForbiddenException when todo not owned; download 404 if file missing
+- Controller: RemarksController
+  - Path: apps/api/src/remarks/remarks.controller.ts
+  - Base route: /remarks
+  - Endpoints:
+    - GET /remarks/todo/:todoId ? listByTodo() ? RemarksService.listByTodo()
+    - POST /remarks/todo/:todoId ? create() ? RemarksService.create()
+    - DELETE /remarks/:id ? delete() ? RemarksService.delete()
+  - DTOs: apps/api/src/remarks/dto/create-remark.dto.ts
+  - Guards/errors: JwtAuthGuard class-wide; NotFoundException for missing todo; ForbiddenException when deleting others' remarks; max 150 chars enforced
+- Controller: App bootstrap modules
+  - Path: apps/api/src/bootstrap/bootstrap.service.ts (OnModuleInit)
+  - Purpose: ensure systemSettings row exists, ensure admin user exists/promoted
+  - Errors: throws if system settings invalid (default < min or > max)
+
+Overlap logic:
+- 409 Conflict thrown at: apps/api/src/auth/auth.service.ts register() (email in use); apps/api/src/categories/categories.service.ts create()/update() duplicates; apps/api/src/todos/todos.service.ts createScheduled() overlap check; apps/api/src/todos/todos.service.ts schedule() overlap check
+
+## 4) Data Model Map (Drizzle)
+- Schema files: apps/api/src/db/schema.ts; migrations apps/api/drizzle/*.sql
+- Tables:
+  - users ? id (uuid pk), email unique, passwordHash, mustChangePassword (bool), role (text), createdAt
+  - todos ? id (uuid pk), userId fk users.id, title, description, done, createdAt, updatedAt, startAt (nullable), durationMin (int), category (text nullable), unscheduledAt
+  - user_settings ? id (uuid pk), userId unique fk users.id, workingHours (json string), workingDays (json array), createdAt, updatedAt
+  - categories ? id (uuid pk), userId fk users.id, name, color, sortOrder, createdAt
+  - attachments ? id (uuid pk), todoId fk todos.id, userId fk users.id, filename, storedFilename, mimeType, size, createdAt
+  - remarks ? id (uuid pk), todoId fk todos.id, userId fk users.id, content (text max 150 chars), createdAt
+  - audit_logs ? id (uuid pk), userId fk users.id nullable, action, resourceType, resourceId, details json string, ipAddress, userAgent, createdAt
+  - system_settings ? id int pk default 1, minDurationMin, maxDurationMin, defaultDurationMin, createdAt, updatedAt
+- Relations:
+  - todos.userId ? users.id (cascade)
+  - categories.userId ? users.id
+  - attachments.todoId ? todos.id; attachments.userId ? users.id
+  - remarks.todoId ? todos.id (cascade); remarks.userId ? users.id (cascade)
+  - user_settings.userId ? users.id unique
+  - audit_logs.userId ? users.id (set null on delete)
+- Duration constraints enforcement: apps/api/src/common/constants.ts (MIN/MAX/DEFAULT guards); apps/api/src/bootstrap/bootstrap.service.ts (validates system settings row on startup); apps/api/src/settings/settings.service.ts updateDurationSettings() guard default between min/max; frontend mirrors in apps/web/app/lib/constants.ts and apps/web/app/hooks/useDurationSettings.ts
+- Validation schemas: class-validator DTOs at apps/api/src/auth/dto/*.ts, apps/api/src/todos/dto/*.ts, apps/api/src/categories/dto/*.ts, apps/api/src/settings/dto/*.ts; global ValidationPipe in apps/api/src/main.ts (whitelist, transform, forbidNonWhitelisted)
+
+## 5) Cross-cutting Anchors
+- Auth controllers/services/guards: apps/api/src/auth/{auth.controller.ts,auth.service.ts,auth.guard.ts}, apps/api/src/users/users.service.ts
+- Validation pipes: apps/api/src/main.ts global ValidationPipe
+- Error handling filters/interceptors: UNKNOWN (no custom filters/interceptors defined)
+- Toast contract: NotificationToast props in apps/web/app/components/NotificationToast.tsx; showToast API in apps/web/app/components/ToastProvider.tsx

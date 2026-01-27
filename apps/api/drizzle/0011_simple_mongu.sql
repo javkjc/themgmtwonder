@@ -1,0 +1,1 @@
+ALTER TABLE "todos" ADD COLUMN "is_pinned" boolean DEFAULT false NOT NULL;

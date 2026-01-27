@@ -1,0 +1,161 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f6f8fb;
+  --foreground: #0f172a;
+  --page-background: #f6f8fb;
+  --content-background: #ffffff;
+  --surface-background: #ffffff;
+  --border-color: rgba(15, 23, 42, 0.08);
+  --card-border: rgba(15, 23, 42, 0.12);
+  --card-shadow: 0 18px 35px rgba(15, 23, 42, 0.08);
+  --sidebar-background: #111827;
+  --sidebar-text: #f8fafc;
+  --sidebar-text-muted: rgba(248, 250, 252, 0.75);
+  --sidebar-link-active: rgba(59, 130, 246, 0.25);
+  --sidebar-link-border: #3b82f6;
+  --sidebar-border: rgba(255, 255, 255, 0.12);
+  --sidebar-toggle-bg: rgba(255, 255, 255, 0.08);
+  --text-primary: #0f172a;
+  --text-muted: #475569;
+  --text-muted-strong: #64748b;
+  --accent: #2563eb;
+  --accent-strong: #1d4ed8;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #dc2626;
+  --radius-lg: 18px;
+  --radius-md: 12px;
+  --radius-sm: 8px;
+  --font-body: var(--font-geist-sans);
+  --font-heading: var(--font-geist-sans);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+
+
+body {
+  background: var(--page-background);
+  color: var(--text-primary);
+  font-family: var(--font-body), "Inter", "Segoe UI", system-ui, sans-serif;
+  line-height: 1.6;
+  margin: 0;
+  min-height: 100vh;
+}
+
+html, body {
+  background: var(--page-background) !important;
+  color: var(--text-primary) !important;
+}
+
+body * {
+  color: inherit;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-heading);
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+p {
+  color: var(--text-muted);
+  margin: 0;
+}
+
+::selection {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+/* ===============================
+   RBC Event Layout Fix (Week/Day)
+   Make event-content always fill the whole event height,
+   because short events collapse when label takes the space.
+   =============================== */
+
+/* Only for time grid views (Week/Day time columns) */
+.rbc-time-view .rbc-event {
+  position: relative; /* anchor absolute children if needed */
+}
+
+/* Hide RBC label completely so it can't visually cover our custom title */
+.rbc-time-view .rbc-event-label {
+  display: none !important;
+}
+
+
+/* Force event-content to occupy the full event box */
+.rbc-time-view .rbc-event-content {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 1;
+  pointer-events: none !important;
+}
+
+/* Ensure our draggable wrapper is above label/content */
+.rbc-time-view .rbc-event [aria-roledescription="draggable"] {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 5;
+}
+
+/* Overlay zones must receive pointer events */
+.rbc-time-view .rbc-event [aria-roledescription="draggable"] > div[title] {
+  pointer-events: auto !important;
+}
+
+/* ===============================
+   RBC Month View — Restore Event Text
+   =============================== */
+
+/* Ensure month events show text instead of a thin bar */
+.rbc-month-view .rbc-event {
+  display: block !important;
+  height: auto !important;
+  min-height: 18px;
+  padding: 2px 4px;
+  overflow: hidden;
+}
+
+/* Restore content visibility in month cells */
+.rbc-month-view .rbc-event-content {
+  display: block !important;
+  position: relative !important;
+  inset: auto !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+/* Restore time label visibility in month view */
+.rbc-month-view .rbc-event-label {
+  display: inline !important;
+  position: relative !important;
+  pointer-events: none;
+}
+
