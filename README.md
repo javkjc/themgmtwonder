@@ -51,3 +51,8 @@ Create a `.env` in repo root (do **not** commit it). It should include your DB +
 ### 2) Build & run
 ```bash
 docker compose up --build
+```
+
+### Troubleshooting
+
+If your local database is missing tables or columns (e.g. after volume resets or skipped migrations), refer to the manual recovery commands in [help_fixes.md](./help_fixes.md).
