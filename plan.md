@@ -148,33 +148,11 @@ Do not proceed to later subtasks until the current one is complete.
 
 **Status:** ✅ DONE
 
-**Objective**
-Introduce OCR as derived, inert data tied to attachments.
-
-**In Scope**
-- OCR storage linked to attachment
-- Extracted text, metadata, status
-- Immutable once written
-
-**Out of Scope**
-- UI
-- Auto-processing
-- Task mutation
-
 ---
 
 #### **7.4b Manual OCR Trigger**
-  
-  **Status:** ✅ DONE
 
-**Objective**
-Allow explicit user-triggered OCR.
-
-**In Scope**
-- “Retrieve text” action
-- Backend trigger endpoint
-- Local OCR worker invocation
-- Audit events for request / success / failure
+**Status:** ✅ DONE
 
 ---
 
@@ -182,17 +160,11 @@ Allow explicit user-triggered OCR.
 
 **Status:** ✅ DONE
 
-**Objective**
-Present OCR output without mutating state.
-
-**In Scope**
-- Inline expandable viewer under attachment
-- Read-only text
-- Copy-to-clipboard
-
 ---
 
 #### **7.4d OCR → Task / Remark Apply (Explicit & Audited)**
+
+**Status:** ⬜ NOT STARTED
 
 **Objective**
 Allow OCR output to assist users **without automation**.
@@ -205,6 +177,8 @@ Allow OCR output to assist users **without automation**.
 ---
 
 #### **7.4e OCR Search Index (Optional, Derived)**
+
+**Status:** ⬜ NOT STARTED
 
 **Objective**
 Allow OCR text to participate in search.
@@ -221,6 +195,8 @@ Deferral must be documented explicitly.
 
 ### **7.5 Collaboration Readiness Audit (No Enablement)**
 
+**Status:** ⬜ NOT STARTED
+
 **Objective**
 Verify v3 changes do not block future collaboration.
 
@@ -232,6 +208,8 @@ Verify v3 changes do not block future collaboration.
 ---
 
 ### **7.6 Workflow Readiness Audit (No Enablement)**
+
+**Status:** ⬜ NOT STARTED
 
 **Objective**
 Verify v3 changes do not block future workflows.
@@ -288,5 +266,5 @@ without a **new plan.md for the next phase**.
 
 ---
 
-Last Updated: 2026-01-27  
-Status: v3 Foundations — In Progress (OCR pending)
+Last Updated: 2026-01-28  
+Status: v3 Foundations — In Progress (7.4d pending)
