@@ -5,5 +5,6 @@ import { RemarksService } from './remarks.service';
 @Module({
   controllers: [RemarksController],
   providers: [RemarksService],
+  exports: [RemarksService],
 })
 export class RemarksModule {}

@@ -1,4 +1,4 @@
-# Execution Notes
+﻿# Execution Notes
 
 ## 2026-01-25 - Task Detail Page Status Badge UI Adjustment
 
@@ -322,7 +322,7 @@
 
 **Status:** Complete ?
 
-## 2026-01-25 - Task 5.6: Task Remarks � Author Display
+## 2026-01-25 - Task 5.6: Task Remarks – Author Display
 
 **Objective:** Show who wrote each remark in the task detail page.
 
@@ -550,7 +550,7 @@
 
 ## 2026-01-25 - Capability Audit (Core/Calendar/Duration/etc)
 
-- Conducted full capability audit per plan.md sections 1�5 list (core model, calendar v2, duration system, persistent settings, task editing, toast architecture, customizations, auth, description, remarks, attachments).
+- Conducted full capability audit per plan.md sections 1–5 list (core model, calendar v2, duration system, persistent settings, task editing, toast architecture, customizations, auth, description, remarks, attachments).
 - Updated `audit-plan.md` with PASS/FAIL/NEEDS REVIEW checklist and summary.
 - No code changes performed during audit; verification based on current repo state.
 
@@ -613,7 +613,7 @@
 
 ---
 
-## Task 5.9: Activity Log v2 � Who + Module + Target
+## Task 5.9: Activity Log v2 — Who + Module + Target
 
 **Date:** 2026-01-25
 **Objective:** Make activity log actionable by showing who performed the action and where it happened.
@@ -659,7 +659,7 @@
    - Actor: userEmail || userId || 'System'
    - Module: displayed directly
    - Target: resourceType + truncated resourceId
-   - Layout: compact inline display with "�" separators
+   - Layout: compact inline display with "·" separators
 
 **Implementation Details:**
 - Module field is nullable (backward compatible with old logs)
@@ -1084,7 +1084,7 @@
 ## 2026-01-27 - v3 OCR Blob typing fix
 
 **Changes Made:**
-- Created a trimmed `ArrayBuffer` (sliced only when offsets differ) before constructing the `Blob` so the fetch body satisfies TypeScript�s `BlobPart` requirement while keeping the same headers and timeout.
+- Created a trimmed `ArrayBuffer` (sliced only when offsets differ) before constructing the `Blob` so the fetch body satisfies TypeScript’s `BlobPart` requirement while keeping the same headers and timeout.
 
 **Verification:** Not performed (manual)
 
@@ -1344,3 +1344,149 @@ Verification: Not performed (manual)
 
 
 
+## 2026-01-28 - Task 7.4d OCR -> Task / Remark Apply (Explicit & Audited)
+
+**Intent:** Keep OCR-derived text actionable but explicit, requiring confirmation and full auditing before mutating tasks.
+
+**Changes Made:**
+- Added ApplyOcrDto and new `POST /attachments/:id/ocr/apply`, using `OcrService.getOutputForUser` plus `TodosService`/`RemarksService` to guard ownership, trim empty outputs, enforce the 150-character remark limit, and emit remark creation plus `ocr.apply.remark`/`ocr.apply.description` audit entries.
+- Exported the todo and remark services from their modules so attachments can reuse them, registered the new DTO, and taught `audit.service.ts` about the new apply actions.
+- Updated the task detail page so each OCR output shows per-target buttons with confirmation, inline loading states, success/failure toasts, and post-apply refreshes of remarks, the task row, and the history timeline.
+
+**Fixes:** None.
+
+**Verification:** Not performed (manual)
+
+
+## 2026-01-28 - Task detail crash fix
+
+- Cause: the OCR apply `useCallback` depended on `fetchRemarks` before the `const` function had been initialized, so the dependency array evaluation threw `ReferenceError: Cannot access 'fetchRemarks' before initialization` after a compose restart.
+- Fix: moved the `fetchRemarks` declaration up next to the other fetching helpers so the hook’s dependency array now sees an initialized function while leaving the remark handlers in place.
+
+**Verification:** Not performed (manual)
+
+## 2026-01-28 - Task 7.4b Manual OCR Trigger UI
+
+**Objective:** Surface an explicit per-attachment action so users can manually trigger OCR retrieval without automation.
+
+**Changes:**
+- Added `attachmentOcrTriggering` state plus a `triggerAttachmentOcr` helper that calls `POST /attachments/:id/ocr`, refreshes the audit history, and re-fetches the attachment’s derived outputs while delivering success/error toasts (apps/web/app/task/[id]/page.tsx:641).
+- Rendered a new **Retrieve OCR text** button next to the download/delete controls for each attachment, disabling it while the POST is in flight and reusing the existing viewer/audit UX to keep the action explicit and auditable (apps/web/app/task/[id]/page.tsx:1485).
+
+**Verification:** Not performed (manual)
+
+## 2026-01-28 - v3 OCR PDF Support + Attachment Status UX
+
+**Task 1 — PDF OCR Support (Worker)**
+
+**Objective:** Enable OCR worker to accept application/pdf MIME type and process PDF pages deterministically.
+
+**Changes:**
+- [apps/ocr-worker/requirements.txt](apps/ocr-worker/requirements.txt): Added pdf2image==1.17.0 dependency for PDF to image conversion.
+- [apps/ocr-worker/ocrw.Dockerfile](apps/ocr-worker/ocrw.Dockerfile#L5-L9): Added poppler-utils package installation for PDF rendering support.
+- [apps/ocr-worker/main.py](apps/ocr-worker/main.py#L9,L53-L107):
+  - Added pdf2image import.
+  - Added PDF branch in POST /ocr handler that detects application/pdf MIME type via x-mime-type header.
+  - PDF handling: convert_from_bytes() produces list of PIL Images, each page OCR'd separately, text merged with "\n\n--- PAGE N ---\n\n" separators.
+  - Metadata includes pages count.
+  - Image OCR path unchanged.
+- No background jobs, no intelligence; worker runs only when API calls it.
+- Contract stable: POST /ocr accepts raw bytes body with x-mime-type header.
+
+**Implementation Details:**
+- PDF pages converted to images deterministically using pdf2image + poppler.
+- Each page OCR'd individually; results concatenated with page separators.
+- Empty pages contribute empty text (no page separator if text is empty).
+- Page separator format: "\n\n--- PAGE 2 ---\n\n" (1-indexed).
+- Returns combined text, metadata with pages count, standard OCR metadata (engine, version, durationMs).
+- Image handling unchanged: single-page flow remains as-is.
+
+**Task 2 — Attachment Status UX (Web)**
+
+**Objective:** Replace stuck/confusing attachment status with correct derived + local state labels.
+
+**Changes:**
+- [apps/web/app/task/[id]/page.tsx](apps/web/app/task/[id]/page.tsx#L1409-L1428,L1443-L1462):
+  - Added OCR status derivation logic per attachment in render loop.
+  - Status derived from: ocrTriggering state (local in-flight) + viewerState.outputs (existing OCR results).
+  - Status labels:
+    - "Ready" (default): no OCR requested, no outputs exist, gray color.
+    - "In Progress": ocrTriggering=true (during POST /attachments/:id/ocr call), orange color.
+    - "Completed": latest output.status='complete', green color.
+    - "Failed": latest output.status='failed', red color.
+  - Status badge rendered inline next to filename with color-coded border and background.
+  - Existing triggerAttachmentOcr logic unchanged: sets ocrTriggering=true, calls API, fetches outputs on success, resets ocrTriggering=false.
+
+**Implementation Details:**
+- No automatic OCR on upload: newly uploaded attachments show "Ready".
+- "In Progress" shown immediately on "Retrieve text" click (ocrTriggering state).
+- After API response, fetchAttachmentOcr() updates viewerState.outputs, status updates to Completed/Failed.
+- No polling introduced.
+- Status never stuck "In Progress" after upload (only active during user-triggered OCR request).
+- Minimal, localized changes to task detail page only.
+
+**Verification:** Not performed (manual)
+- [apps/web/app/task/[id]/page.tsx](apps/web/app/task/[id]/page.tsx): history entries now draw labels via a stable audit-action mapper, show the status pill only for non- In Progress values (still showing Failed when present).
+- [apps/web/app/lib/audit.ts](apps/web/app/lib/audit.ts): shared audit action metadata now feeds the history renderer with humanized labels and ascii icons.
+- [apps/ocr-worker/main.py](apps/ocr-worker/main.py): PDF bytes are saved to a temp file, rendered via poppler/pdf2image, and OCR is applied per page before concatenating text and returning page metadata; invalid/encrypted PDFs now yield 400 responses.
+- Verification: Not performed (manual)
+\n- [apps/web/app/lib/audit.ts](apps/web/app/lib/audit.ts): humanize split regex now avoids invalid range by escaping slash/hyphen so the helper compiles without syntax errors.\n- Verification: Not performed (manual)
+**UI Fixes - Attachments & History**
+
+**Changes:**
+- [apps/web/app/task/[id]/page.tsx](apps/web/app/task/[id]/page.tsx#L1375-L1540): Removed the inline "In Progress" badge so attachment rows now show only Ready/Completed/Failed statuses while OCR progress is indicated via the disabled button/toast.
+- [apps/web/app/task/[id]/page.tsx](apps/web/app/task/[id]/page.tsx#L1950-L2014): History rows no longer render the placeholder icon on the left side.
+- [apps/web/app/task/[id]/page.tsx](apps/web/app/task/[id]/page.tsx#L1980-L2050): Audit entries now iterate `changes` to render "field: before → after" lines (stageKey/description diffs included via the new formatter).
+- Verification: Not performed (manual)
+## 2026-01-28 - Task 7.4d Annotation UI adjust
+
+**Changes:**
+- [apps/web/app/task/[id]/page.tsx](apps/web/app/task/[id]/page.tsx#L1375-L1540): Status badge now ranges across Ready, In Progress, Completed, and Failed so the OCR progress pill reflects the current workflow state directly instead of needing a separate inline label.
+- [apps/web/app/task/[id]/page.tsx](apps/web/app/task/[id]/page.tsx#L1950-L2050): History rows keep the icon slot and render the action-specific glyph from `getAuditActionInfo`, and they now display before/after `changes` lines (stageKey/description diffs) via the shared formatter.
+- Verification: Not performed (manual)
+
+## 2026-01-29 - OCR Reliability Fixes
+
+**Objective:** Fix OCR timeout for PDFs and remove stale "IN PROGRESS" badge from attachment rows.
+
+**Issue 1: OCR Timeout (PDF)**
+- Root cause: 30s timeout too short for PDF OCR; worker processed all pages without limit
+- Changes made:
+  - [apps/ocr-worker/main.py:20](apps/ocr-worker/main.py#L20) - Added MAX_PDF_PAGES = 10 constant
+  - [apps/ocr-worker/main.py:99-145](apps/ocr-worker/main.py#L99-L145) - Limited PDF processing to first 10 pages
+  - [apps/ocr-worker/main.py:99-145](apps/ocr-worker/main.py#L99-L145) - Added per-page and total duration logging
+  - [apps/ocr-worker/main.py:130-134](apps/ocr-worker/main.py#L130-L134) - Return totalPages in meta
+  - [apps/api/src/ocr/ocr.service.ts:72](apps/api/src/ocr/ocr.service.ts#L72) - Increased timeout from 30s to 90s (OCR_TIMEOUT_MS constant)
+  - [apps/api/src/ocr/ocr.service.ts:139](apps/api/src/ocr/ocr.service.ts#L139) - Dynamic timeout error message
+
+**Issue 2: Stale "IN PROGRESS" Badge**
+- Root cause: Stage badge (task stage like "Backlog") was displayed below filename, confusing with OCR status
+- Changes made:
+  - [apps/web/app/task/[id]/page.tsx:1451-1456](apps/web/app/task/[id]/page.tsx#L1451-L1456) - Removed stageBadge variable
+  - [apps/web/app/task/[id]/page.tsx:1516-1523](apps/web/app/task/[id]/page.tsx#L1516-L1523) - Removed stage badge display from attachment row
+  - Kept OCR status badge (Ready/In Progress/Completed/Failed) beside filename
+  - attachmentOcrTriggering state clears in finally() block (line 709-713), ensuring truthful state
+
+**Build Verification:**
+- API build: Success
+- Web build: Success
+- OCR worker rebuild: Success (with --no-cache)
+- All services restarted and running
+
+**Expected Behavior:**
+- PDF OCR processes first 10 pages only (prevents timeout for large PDFs)
+- Timeout increased to 90s for OCR worker requests
+- Worker logs show page-by-page progress and total duration
+- Attachment rows show only OCR status badge (no duplicate stage badge)
+- OCR status badge reflects truthful state (clears after request ends)
+
+**Status:** Complete
+
+## 2026-01-29 - codemapcc.md accuracy review
+
+- Reviewed and corrected codemapcc.md for accuracy
+- Major corrections:
+  - apps/api entry now lists attachments and ocr submodules (controllers, services, ApplyOcrDto, derived output storage, worker interface)
+  - apps/ocr-worker entry now details FastAPI routes, PDF/image handling, metadata, requirements, and the ocrw.Dockerfile command
+  - Shared utils/frontend overview and infrastructure references were aligned with the current repo layout
+- Verification: Not performed (manual)

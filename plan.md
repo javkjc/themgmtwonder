@@ -154,6 +154,34 @@ Do not proceed to later subtasks until the current one is complete.
 
 **Status:** ✅ DONE
 
+**Objective**  
+Allow explicit user-triggered OCR.
+
+**Current State (Factual)**
+- Backend trigger endpoint (`POST /attachments/:id/ocr`) exists and is functional
+- OCR worker invocation, derived storage, and audit events are implemented
+- OCR retrieval currently requires developer tools (no user-facing UI trigger)
+
+**Remaining Work**
+- Expose an explicit user-facing action in the task detail UI to trigger OCR retrieval
+- Ensure the action is explicit, auditable, and reusable for future derived retrieval actions
+
+**In Scope**
+- Explicit “Retrieve text” / “Run OCR” UI action per attachment
+- Use existing backend trigger endpoint
+- Ownership, CSRF, and audit behavior unchanged
+- No automation, no background processing
+
+**Out of Scope**
+- Automatic OCR on upload
+- Background jobs
+- Re-interpretation or parsing of OCR output
+- Retry semantics beyond explicit user action
+
+- Added a per-attachment “Retrieve OCR text” action that hits `POST /attachments/:id/ocr`, refreshes history, and mirrors the existing viewer/audit flows.
+
+
+
 ---
 
 #### **7.4c OCR Viewer (Read-Only, Inline)**
@@ -164,7 +192,7 @@ Do not proceed to later subtasks until the current one is complete.
 
 #### **7.4d OCR → Task / Remark Apply (Explicit & Audited)**
 
-**Status:** ⬜ NOT STARTED
+**Status:** ✅ DONE
 
 **Objective**
 Allow OCR output to assist users **without automation**.

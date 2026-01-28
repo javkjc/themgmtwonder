@@ -8,12 +8,14 @@
   - public/, next.config.ts, web.Dockerfile, package.json, tsconfig.json, next-env.d.ts
 - apps/api (NestJS + Drizzle ORM)
   - src/{main.ts,app.module.ts,app.controller.ts,app.service.ts}
-  - src/auth, todos, categories, settings, audit, admin, attachments, bootstrap, db, common, users
+  - src/auth, todos, categories, settings, audit, admin, bootstrap, db, common, users
+  - src/attachments (upload/download/delete plus OCR trigger/list/apply via ApplyOcrDto)
+  - src/ocr (OcrModule + OcrService that wraps worker calls, derived output storage, ownership checks)
   - drizzle/ (SQL migrations), drizzle.config.ts, api.Dockerfile
-- apps/ocr-worker (PaddleOCR CPU worker)
-  - main.py (FastAPI routes for /health and POST /ocr, PaddleOCR ingestion)
-  - requirements.txt (fastapi, uvicorn, paddleocr, paddlepaddle, Pillow, numpy)
-  - Dockerfile (python slim build + uvicorn entrypoint)
+- apps/ocr-worker (PaddleOCR FastAPI worker)
+  - main.py (GET /health + POST /ocr; accepts raw bytes, handles image/PDF conversion via pdf2image, limits PDF output to 10 pages, returns {text,meta} with engine/filename/mime info)
+  - requirements.txt (fastapi, uvicorn, paddleocr, paddlepaddle, Pillow, numpy, pdf2image, pdf2image deps)
+  - ocrw.Dockerfile (python:3.10-slim build, apt deps, uvicorn main:app --host 0.0.0.0 --port 4000)
 - Shared/utils: apps/web/app/lib/{api.ts,categories.ts,constants.ts,dateTime.ts,durationSettings.ts}; hooks as client data layer
 - db/schema: apps/api/src/db/schema.ts (Drizzle models)
 

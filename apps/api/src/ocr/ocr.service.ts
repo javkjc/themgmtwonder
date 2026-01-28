@@ -69,7 +69,8 @@ export class OcrService {
   async extractFromWorker(payload: OcrWorkerPayload): Promise<OcrWorkerResult> {
     const workerHost = this.resolveWorkerHost();
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30_000);
+    const OCR_TIMEOUT_MS = 90_000;
+    const timeoutId = setTimeout(() => controller.abort(), OCR_TIMEOUT_MS);
     try {
       let fileBuffer: Buffer;
       try {
@@ -136,7 +137,7 @@ export class OcrService {
       };
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
-        throw new Error('OCR worker request timed out after 30 seconds');
+        throw new Error(`OCR worker request timed out after ${OCR_TIMEOUT_MS / 1000} seconds`);
       }
       throw err;
     } finally {
@@ -152,6 +153,25 @@ export class OcrService {
       .from(attachmentOcrOutputs)
       .where(eq(attachmentOcrOutputs.attachmentId, attachmentId))
       .orderBy(desc(attachmentOcrOutputs.createdAt));
+  }
+
+  async getOutputForUser(userId: string, outputId: string) {
+    const [output] = await this.dbs.db
+      .select()
+      .from(attachmentOcrOutputs)
+      .where(eq(attachmentOcrOutputs.id, outputId))
+      .limit(1);
+
+    if (!output) {
+      throw new NotFoundException('OCR output not found');
+    }
+
+    const attachment = await this.ensureUserOwnsAttachment(userId, output.attachmentId);
+
+    return {
+      output,
+      attachment,
+    };
   }
 
   private async ensureUserOwnsAttachment(

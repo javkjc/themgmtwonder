@@ -18,6 +18,7 @@ import NotificationToast, { type Notification } from '../../components/Notificat
 import type { Todo } from '../../hooks/useTodos';
 import type { Me } from '../../types';
 import { TASK_STAGE_KEYS, DEFAULT_TASK_STAGE_KEY } from '../../lib/constants';
+import { getAuditActionInfo } from '../../lib/audit';
 import type { TaskStageKey } from '../../lib/constants';
 import Layout from '../../components/Layout';
 
@@ -105,6 +106,47 @@ const renderStageBadge = (stageKey?: TaskStageKey | null) => {
   );
 };
 
+const formatAuditChangeValue = (field: string, value: unknown): string => {
+  if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) {
+    return 'None';
+  }
+
+  if (field === 'stageKey') {
+    const stageKey = String(value) as TaskStageKey;
+    return STAGE_LABELS[stageKey] ?? stageKey ?? 'None';
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'Yes' : 'No';
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed.length > 120) {
+      return `${trimmed.slice(0, 117)}...`;
+    }
+    return trimmed;
+  }
+
+  if (typeof value === 'number') {
+    return value.toString();
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => formatAuditChangeValue(field, item)).join(', ');
+  }
+
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+
+  return String(value);
+};
+
 export default function TaskDetailsPage() {
   const params = useParams();
   const router = useRouter();
@@ -143,6 +185,12 @@ export default function TaskDetailsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachmentOcrViewerState, setAttachmentOcrViewerState] = useState<
     Record<string, AttachmentOcrViewerState>
+  >({});
+  const [ocrApplyLoading, setOcrApplyLoading] = useState<
+    Record<string, { remark?: boolean; description?: boolean }>
+  >({});
+  const [attachmentOcrTriggering, setAttachmentOcrTriggering] = useState<
+    Record<string, boolean>
   >({});
 
   // History
@@ -263,6 +311,24 @@ export default function TaskDetailsPage() {
       // ignore
     }
   }, [me, taskId]);
+
+  // Fetch remarks
+  const fetchRemarks = async (limit: number, offset: number, append = false) => {
+    if (!taskId) return;
+
+    try {
+      const data = await apiFetchJson(`/remarks/todo/${taskId}?limit=${limit}&offset=${offset}`);
+      if (append) {
+        setRemarks(prev => [...prev, ...data.items]);
+      } else {
+        setRemarks(data.items);
+      }
+      setRemarksHasMore(data.hasMore);
+      setRemarksOffset(offset);
+    } catch (e: any) {
+      // Silent fail for remarks
+    }
+  };
 
   useEffect(() => {
     if (me && taskId) {
@@ -614,6 +680,40 @@ export default function TaskDetailsPage() {
     }
   };
 
+  const triggerAttachmentOcr = async (attachmentId: string) => {
+    if (attachmentOcrTriggering[attachmentId]) return;
+    setAttachmentOcrTriggering((prev) => ({
+      ...prev,
+      [attachmentId]: true,
+    }));
+
+    try {
+      await apiFetchJson(`/attachments/${attachmentId}/ocr`, { method: 'POST' });
+      addNotification(
+        'success',
+        'OCR requested',
+        'The OCR worker has been asked to extract text. Open the viewer once it finishes.',
+        task?.title,
+        task?.id,
+      );
+      fetchHistory(historyLimit, 0, false);
+      fetchAttachmentOcr(attachmentId);
+    } catch (err: any) {
+      addNotification(
+        'error',
+        'OCR request failed',
+        err?.message || 'Failed to request OCR extraction.',
+        task?.title,
+        task?.id,
+      );
+    } finally {
+      setAttachmentOcrTriggering((prev) => ({
+        ...prev,
+        [attachmentId]: false,
+      }));
+    }
+  };
+
   const handleToggleOcrViewer = (attachmentId: string) => {
     const current = attachmentOcrViewerState[attachmentId];
     const willOpen = !current?.open;
@@ -676,6 +776,79 @@ export default function TaskDetailsPage() {
     }
   };
 
+  const handleApplyOcr = useCallback(
+    async (attachmentId: string, outputId: string, target: 'remark' | 'description') => {
+      if (!task) return;
+
+      const taskTitle = task.title;
+      const taskId = task.id;
+      const confirmation =
+        target === 'remark'
+          ? 'Add this OCR text as a remark?'
+          : 'Append this OCR text to the task description?';
+
+      if (!confirm(confirmation)) {
+        return;
+      }
+
+      setOcrApplyLoading((prev) => ({
+        ...prev,
+        [outputId]: { ...(prev[outputId] || {}), [target]: true },
+      }));
+
+      try {
+        await apiFetchJson(`/attachments/${attachmentId}/ocr/apply`, {
+          method: 'POST',
+          body: JSON.stringify({ outputId, target }),
+        });
+
+        await fetchHistory(historyLimit, 0, false);
+
+        if (target === 'remark') {
+          await fetchRemarks(remarksLimit, 0, false);
+          addNotification(
+            'success',
+            'OCR remark added',
+            'The OCR text was added as a remark.',
+            taskTitle,
+            taskId,
+          );
+        } else {
+          await fetchTask();
+          addNotification(
+            'success',
+            'Description updated',
+            'The OCR text was appended to the description.',
+            taskTitle,
+            taskId,
+          );
+        }
+      } catch (err: any) {
+        addNotification(
+          'error',
+          'OCR apply failed',
+          err?.message || 'Could not apply the OCR text.',
+          taskTitle,
+          taskId,
+        );
+      } finally {
+        setOcrApplyLoading((prev) => ({
+          ...prev,
+          [outputId]: { ...(prev[outputId] || {}), [target]: false },
+        }));
+      }
+    },
+    [
+      task,
+      fetchHistory,
+      historyLimit,
+      fetchRemarks,
+      remarksLimit,
+      fetchTask,
+      addNotification,
+    ],
+  );
+
   // Delete attachment
   const handleDeleteAttachment = async (attachmentId: string) => {
     if (!confirm('Delete this attachment?')) return;
@@ -700,24 +873,6 @@ export default function TaskDetailsPage() {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  // Fetch remarks
-  const fetchRemarks = async (limit: number, offset: number, append = false) => {
-    if (!taskId) return;
-
-    try {
-      const data = await apiFetchJson(`/remarks/todo/${taskId}?limit=${limit}&offset=${offset}`);
-      if (append) {
-        setRemarks(prev => [...prev, ...data.items]);
-      } else {
-        setRemarks(data.items);
-      }
-      setRemarksHasMore(data.hasMore);
-      setRemarksOffset(offset);
-    } catch (e: any) {
-      // Silent fail for remarks
-    }
   };
 
   // Add remark
@@ -1294,10 +1449,27 @@ export default function TaskDetailsPage() {
                   <>
                     <div style={{ display: 'grid', gap: 8 }}>
                       {attachments.slice(0, attachmentsLimit).map((attachment) => {
-                        const stageBadge = renderStageBadge(attachment.stageKeyAtCreation);
                         const viewerState = attachmentOcrViewerState[attachment.id];
                         const viewerOpen = viewerState?.open ?? false;
                         const viewerCount = viewerState?.outputs?.length ?? 0;
+                        const ocrTriggering = attachmentOcrTriggering[attachment.id] ?? false;
+
+                        // Derive OCR status
+                        let ocrStatus = 'Ready';
+                        let ocrStatusColor = '#64748b';
+                        if (ocrTriggering) {
+                          ocrStatus = 'In Progress';
+                          ocrStatusColor = '#f59e0b';
+                        } else if (viewerState?.outputs && viewerState.outputs.length > 0) {
+                          const latestOutput = viewerState.outputs[0];
+                          if (latestOutput.status === 'complete') {
+                            ocrStatus = 'Completed';
+                            ocrStatusColor = '#22c55e';
+                          } else if (latestOutput.status === 'failed') {
+                            ocrStatus = 'Failed';
+                            ocrStatusColor = '#ef4444';
+                          }
+                        }
                         return (
                           <div
                             key={attachment.id}
@@ -1327,15 +1499,23 @@ export default function TaskDetailsPage() {
                                attachment.mimeType.includes('zip') ? '📦' : '📎'}
                             </div>
                             <div>
-                              <div style={{ fontSize: 14, fontWeight: 500 }}>{attachment.filename}</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div style={{ fontSize: 14, fontWeight: 500 }}>{attachment.filename}</div>
+                                <span style={{
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                  color: ocrStatusColor,
+                                  padding: '2px 8px',
+                                  borderRadius: 4,
+                                  border: `1px solid ${ocrStatusColor}`,
+                                  background: `${ocrStatusColor}15`,
+                                }}>
+                                  {ocrStatus}
+                                </span>
+                              </div>
                               <div style={{ fontSize: 12, color: '#64748b' }}>
                                 {attachment.mimeType} - {formatFileSize(attachment.size)} - {formatDateTime(attachment.createdAt)}
                               </div>
-                              {stageBadge && (
-                                <div style={{ marginTop: 6 }}>
-                                  {stageBadge}
-                                </div>
-                              )}
                             </div>
                             </div>
                             <div style={{ display: 'flex', gap: 8 }}>
@@ -1365,6 +1545,22 @@ export default function TaskDetailsPage() {
                               }}
                             >
                               Delete
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => triggerAttachmentOcr(attachment.id)}
+                              disabled={ocrTriggering}
+                              style={{
+                                padding: '6px 10px',
+                                borderRadius: 4,
+                                border: '1px solid #e2e8f0',
+                                background: ocrTriggering ? '#e2e8f0' : 'white',
+                                color: '#0f172a',
+                                cursor: ocrTriggering ? 'not-allowed' : 'pointer',
+                                fontSize: 12,
+                              }}
+                            >
+                              {ocrTriggering ? 'Requesting OCR...' : 'Retrieve OCR text'}
                             </button>
                             </div>
                           </div>
@@ -1436,8 +1632,13 @@ export default function TaskDetailsPage() {
                                 )}
                                 {!viewerState?.loading && viewerState?.outputs && viewerState.outputs.length > 0 && (
                                   <div style={{ display: 'grid', gap: 12 }}>
-                                    {viewerState.outputs.map((record) => (
-                                      <div
+                                    {viewerState.outputs.map((record) => {
+                                      const recordLoading = ocrApplyLoading[record.id] ?? {};
+                                      const recordHasText = (record.extractedText || '').trim().length > 0;
+                                      const canApplyOcr =
+                                        record.status === 'complete' && recordHasText;
+                                      return (
+                                        <div
                                         key={record.id}
                                         style={{
                                           padding: 10,
@@ -1500,9 +1701,46 @@ export default function TaskDetailsPage() {
                                             Metadata: {record.metadata}
                                           </div>
                                         )}
-                                      </div>
-                                    ))}
-                                  </div>
+                                        {canApplyOcr && (
+                                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleApplyOcr(attachment.id, record.id, 'remark')}
+                                              disabled={recordLoading.remark === true}
+                                              style={{
+                                                padding: '6px 10px',
+                                                borderRadius: 4,
+                                                border: '1px solid #e2e8f0',
+                                                background: recordLoading.remark ? '#cbd5e1' : 'white',
+                                                color: '#0f172a',
+                                                cursor: recordLoading.remark ? 'not-allowed' : 'pointer',
+                                                fontSize: 12,
+                                              }}
+                                            >
+                                              {recordLoading.remark ? 'Adding remark...' : 'Add as remark'}
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleApplyOcr(attachment.id, record.id, 'description')}
+                                              disabled={recordLoading.description === true}
+                                              style={{
+                                                padding: '6px 10px',
+                                                borderRadius: 4,
+                                                border: '1px solid #e2e8f0',
+                                                background: recordLoading.description ? '#cbd5e1' : 'white',
+                                                color: '#0f172a',
+                                                cursor: recordLoading.description ? 'not-allowed' : 'pointer',
+                                                fontSize: 12,
+                                              }}
+                                            >
+                                              {recordLoading.description ? 'Appending...' : 'Append to description'}
+                                            </button>
+                                          </div>
+                                        )}
+                                        </div>
+                                    );
+                                  })}
+                                </div>
                                 )}
                               </div>
                             )}
@@ -1726,21 +1964,19 @@ export default function TaskDetailsPage() {
                 ) : (
                   <div style={{ display: 'grid', gap: 12 }}>
                     {history.map((entry) => {
-                      const actionMap: Record<string, { label: string; color: string; icon: string }> = {
-                        'todo.create': { label: 'Created', color: '#10b981', icon: '✨' },
-                        'todo.update': { label: 'Updated', color: '#3b82f6', icon: '✏️' },
-                        'todo.schedule': { label: 'Scheduled', color: '#8b5cf6', icon: '📅' },
-                        'todo.unschedule': { label: 'Unscheduled', color: '#f97316', icon: '📤' },
-                        'todo.delete': { label: 'Deleted', color: '#dc2626', icon: '🗑️' },
-                        'todo.bulk_update': { label: 'Bulk updated', color: '#3b82f6', icon: '📝' },
-                      };
-                      const actionInfo = actionMap[entry.action] || { label: entry.action, color: '#64748b', icon: '📋' };
-                      const descChange = (entry as any)?.details?.changes?.description;
-                      const formatDesc = (val: any) => {
-                        if (val === null || val === undefined || val === '') return 'None';
-                        const text = String(val);
-                        return text.length > 120 ? `${text.slice(0, 117)}...` : text;
-                      };
+                      const actionInfo = getAuditActionInfo(entry.action);
+                      const rawStatus = entry.details?.status;
+                      const statusText = typeof rawStatus === 'string' ? rawStatus.trim() : '';
+                      const normalizedStatus = statusText.toLowerCase();
+                      const showStatus = statusText && normalizedStatus !== 'in progress';
+                      const statusColor = normalizedStatus === 'failed' ? '#dc2626' : '#64748b';
+                      const rawChangeDetails = (entry.details?.changes ?? {}) as Record<
+                        string,
+                        { from?: unknown; to?: unknown } | null | undefined
+                      >;
+                      const changeEntries = Object.entries(rawChangeDetails).filter(
+                        ([, delta]) => delta && (delta.from !== undefined || delta.to !== undefined)
+                      ) as [string, { from?: unknown; to?: unknown }][];
 
                       return (
                         <div
@@ -1751,6 +1987,7 @@ export default function TaskDetailsPage() {
                             padding: 12,
                             borderRadius: 8,
                             border: '1px solid #e2e8f0',
+                            alignItems: 'flex-start',
                           }}
                         >
                           <div style={{
@@ -1762,18 +1999,36 @@ export default function TaskDetailsPage() {
                             alignItems: 'center',
                             justifyContent: 'center',
                             flexShrink: 0,
+                            fontSize: 14,
+                            color: actionInfo.color,
                           }}>
                             {actionInfo.icon}
                           </div>
                           <div style={{ flex: 1 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                              <span style={{
-                                fontWeight: 500,
-                                fontSize: 14,
-                                color: actionInfo.color,
-                              }}>
-                                {actionInfo.label}
-                              </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{
+                                  fontWeight: 500,
+                                  fontSize: 14,
+                                  color: actionInfo.color,
+                                }}>
+                                  {actionInfo.label}
+                                </span>
+                                {showStatus && (
+                                  <span
+                                    style={{
+                                      fontSize: 11,
+                                      fontWeight: 600,
+                                      color: statusColor,
+                                      border: `1px solid ${statusColor}`,
+                                      borderRadius: 999,
+                                      padding: '2px 6px',
+                                    }}
+                                  >
+                                    {statusText}
+                                  </span>
+                                )}
+                              </div>
                               <span style={{ fontSize: 12, color: '#94a3b8' }}>
                                 {formatDateTime(entry.createdAt)}
                               </span>
@@ -1785,9 +2040,18 @@ export default function TaskDetailsPage() {
                                 {entry.details.durationMin && <span> • {entry.details.durationMin} min</span>}
                                 {entry.details.category && <span> • Category: {entry.details.category}</span>}
                                 {entry.details.done !== undefined && <span> • Done: {entry.details.done ? 'Yes' : 'No'}</span>}
-                                {descChange && (
-                                  <span> • Description: {formatDesc(descChange.from)} → {formatDesc(descChange.to)}</span>
-                                )}
+                              </div>
+                            )}
+                            {changeEntries.length > 0 && (
+                              <div style={{ marginTop: 6, fontSize: 13, color: '#475569' }}>
+                                {changeEntries.map(([field, delta]) => (
+                                  <div key={field} style={{ marginBottom: 4 }}>
+                                    <span style={{ color: '#94a3b8', fontWeight: 500 }}>{field}:</span>{' '}
+                                    <span style={{ color: '#dc2626' }}>{formatAuditChangeValue(field, delta.from)}</span>
+                                    {' → '}
+                                    <span style={{ color: '#10b981' }}>{formatAuditChangeValue(field, delta.to)}</span>
+                                  </div>
+                                ))}
                               </div>
                             )}
                           </div>

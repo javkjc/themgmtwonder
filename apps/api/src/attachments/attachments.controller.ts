@@ -1,8 +1,11 @@
 import {
+  BadRequestException,
+  Body,
   Controller,
   Delete,
   Get,
   InternalServerErrorException,
+  NotFoundException,
   Param,
   Post,
   Req,
@@ -21,6 +24,9 @@ import { AuditService } from '../audit/audit.service';
 import { DerivedOcrStatus, OcrService } from '../ocr/ocr.service';
 import * as fs from 'fs';
 import * as multer from 'multer';
+import { RemarksService } from '../remarks/remarks.service';
+import { TodosService } from '../todos/todos.service';
+import { ApplyOcrDto } from './dto/apply-ocr.dto';
 
 // Define file type to avoid Express.Multer.File issues
 type UploadedFileType = {
@@ -37,6 +43,8 @@ export class AttachmentsController {
     private readonly attachmentsService: AttachmentsService,
     private readonly audit: AuditService,
     private readonly ocrService: OcrService,
+    private readonly todosService: TodosService,
+    private readonly remarksService: RemarksService,
   ) {}
 
   // List attachments for a todo
@@ -257,5 +265,137 @@ export class AttachmentsController {
 
       throw new InternalServerErrorException(`OCR failed: ${errorMessage}`);
     }
+  }
+
+  @Post(':id/ocr/apply')
+  async applyOcr(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() dto: ApplyOcrDto,
+  ) {
+    const userId = req.user.userId;
+    const { output, attachment } = await this.ocrService.getOutputForUser(
+      userId,
+      dto.outputId,
+    );
+
+    if (attachment.id !== id) {
+      throw new BadRequestException(
+        'OCR output does not belong to this attachment',
+      );
+    }
+
+    if (output.status !== 'complete') {
+      throw new BadRequestException('OCR output is not complete');
+    }
+
+    const normalizedText = (output.extractedText || '').trim();
+    if (!normalizedText) {
+      throw new BadRequestException('OCR output contains no text to apply');
+    }
+
+    const requestDetails = {
+      attachmentId: attachment.id,
+      todoId: attachment.todoId,
+      ocrOutputId: output.id,
+    };
+
+    const ipAddress = req.ip;
+    const userAgent = req.headers['user-agent'];
+
+    if (dto.target === 'remark') {
+      if (normalizedText.length > 150) {
+        throw new BadRequestException(
+          'OCR text exceeds the 150 character limit for remarks.',
+        );
+      }
+
+      const remark = await this.remarksService.create(
+        attachment.todoId,
+        userId,
+        { content: normalizedText },
+      );
+
+      await this.audit.log({
+        userId,
+        action: 'remark.create',
+        module: 'remark',
+        resourceType: 'remark',
+        resourceId: remark.id,
+        details: {
+          ...requestDetails,
+          todoId: attachment.todoId,
+          content: normalizedText,
+          source: 'ocr',
+        },
+        ipAddress,
+        userAgent,
+      });
+
+      await this.audit.log({
+        userId,
+        action: 'ocr.apply.remark',
+        module: 'attachment',
+        resourceType: 'todo',
+        resourceId: attachment.todoId,
+        details: {
+          ...requestDetails,
+          remarkId: remark.id,
+          changes: {
+            remark: {
+              from: null,
+              to: normalizedText,
+            },
+          },
+        },
+        ipAddress,
+        userAgent,
+      });
+
+      return { type: 'remark', remarkId: remark.id };
+    }
+
+    const todo = await this.todosService.getById(userId, attachment.todoId);
+    if (!todo) {
+      throw new NotFoundException('Task not found');
+    }
+
+    const beforeDescription = todo.description ?? null;
+    const hasExistingDescription =
+      beforeDescription !== null && beforeDescription.trim().length > 0;
+    const appendedDescription = hasExistingDescription
+      ? `${beforeDescription}\n\n${normalizedText}`
+      : normalizedText;
+
+    const updated = await this.todosService.update(userId, todo.id, {
+      description: appendedDescription,
+    });
+
+    if (!updated) {
+      throw new InternalServerErrorException(
+        'Failed to append OCR text to description',
+      );
+    }
+
+    await this.audit.log({
+      userId,
+      action: 'ocr.apply.description',
+      module: 'attachment',
+      resourceType: 'todo',
+      resourceId: todo.id,
+      details: {
+        ...requestDetails,
+        changes: {
+          description: {
+            from: beforeDescription,
+            to: updated.description,
+          },
+        },
+      },
+      ipAddress,
+      userAgent,
+    });
+
+    return { type: 'description', description: updated.description };
   }
 }

@@ -34,7 +34,9 @@ export type AuditAction =
   | 'attachment.delete'
   | 'OCR_REQUESTED'
   | 'OCR_SUCCEEDED'
-  | 'OCR_FAILED';
+  | 'OCR_FAILED'
+  | 'ocr.apply.remark'
+  | 'ocr.apply.description';
 
 export type AuditModule =
   | 'auth'
