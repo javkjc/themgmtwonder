@@ -21,7 +21,7 @@
 - All buttons remain in the right-side button area
 - No duplicate status badge
 
-**Status:** Complete ✅
+**Status:** Complete ?
 
 ## 2026-01-25 - Tasks 5.1 & 5.4 Completion Verification
 
@@ -38,7 +38,7 @@
 - User-reported: Description works across task list, detail, calendar create/edit
 - No regressions reported
 
-**Status:** Tasks 5.1 & 5.4 marked ✅ DONE in plan.md
+**Status:** Tasks 5.1 & 5.4 marked ? DONE in plan.md
 
 ## 2026-01-25 - Task 5.2: Task Remarks / Notes Implementation
 
@@ -49,7 +49,7 @@
 1. Schema & Migration
    - Added `remarks` table to [apps/api/src/db/schema.ts](apps/api/src/db/schema.ts#L119-L134)
    - Fields: id, todoId, userId, content (text), createdAt
-   - Foreign keys: todoId → todos.id (cascade), userId → users.id (cascade)
+   - Foreign keys: todoId ? todos.id (cascade), userId ? users.id (cascade)
    - Indexes: remarks_todo_id_idx, remarks_todo_created_idx
    - Migration: [apps/api/drizzle/0008_cold_hex.sql](apps/api/drizzle/0008_cold_hex.sql)
 
@@ -136,18 +136,18 @@
    - Added `attachmentsLimit` state for attachments pagination
 
 **Verification:**
-- ✅ Layout visually matches approved reference
-- ✅ No description in Details card
-- ✅ Two-column layout (LEFT: Details + Attachments, RIGHT: Remarks + History)
-- ✅ Status badge on LEFT of title in header
-- ✅ Attachments pagination selector present
-- ✅ No duplicated sections
-- ✅ No console errors (TypeScript compiles)
-- ✅ Minimal, localized JSX/CSS changes only
-- ✅ No backend, schema, API, or logic changes
-- ✅ No toast behavior changes
+- ? Layout visually matches approved reference
+- ? No description in Details card
+- ? Two-column layout (LEFT: Details + Attachments, RIGHT: Remarks + History)
+- ? Status badge on LEFT of title in header
+- ? Attachments pagination selector present
+- ? No duplicated sections
+- ? No console errors (TypeScript compiles)
+- ? Minimal, localized JSX/CSS changes only
+- ? No backend, schema, API, or logic changes
+- ? No toast behavior changes
 
-**Status:** Complete ✅
+**Status:** Complete ?
 
 ## 2026-01-25 - Task Detail Page Full-Width Fix
 
@@ -165,7 +165,7 @@
 - No layout regressions
 - No console errors
 
-**Status:** Complete ✅
+**Status:** Complete ?
 
 ## 2026-01-25 - Task 5.3: Attachments Duplicate Filename Validation
 
@@ -208,18 +208,18 @@
 - Service-level validation (no DB schema changes required)
 
 **Verification Path:**
-- Upload file "test.txt" to task A → success ✅
-- Upload "test.txt" again to task A → 409 Conflict, toast shows error ✅
-- Upload "TEST.TXT" to task A → 409 Conflict (case-insensitive) ✅
-- Upload " test.txt " to task A → 409 Conflict (trimmed) ✅
-- Upload "test.txt" to task B → success (different task) ✅
-- No regressions in existing upload/delete functionality ✅
+- Upload file "test.txt" to task A ? success ?
+- Upload "test.txt" again to task A ? 409 Conflict, toast shows error ?
+- Upload "TEST.TXT" to task A ? 409 Conflict (case-insensitive) ?
+- Upload " test.txt " to task A ? 409 Conflict (trimmed) ?
+- Upload "test.txt" to task B ? success (different task) ?
+- No regressions in existing upload/delete functionality ?
 
 **Files Modified:**
 - [apps/api/src/attachments/attachments.service.ts](apps/api/src/attachments/attachments.service.ts#L1-L6,L67-L82)
 - [apps/web/app/task/[id]/page.tsx](apps/web/app/task/[id]/page.tsx#L370-L372)
 
-**Status:** Complete ✅ (pending runtime verification when Docker containers are started)
+**Status:** Complete ? (pending runtime verification when Docker containers are started)
 
 ## 2026-01-25 - Task 5.3: Attachments Duplicate Filename Validation Fix
 
@@ -258,7 +258,7 @@
 - Duplicate check logic is explicit and defensive
 - File write happens AFTER validation passes
 
-**Status:** Complete ✅
+**Status:** Complete ?
 
 ## 2026-01-25 - Task 5.5: Attachments Upload UI (Design Update)
 
@@ -284,7 +284,7 @@
    - Drag-and-drop zone features:
      - Dashed border (blue when dragging over, gray default)
      - Light background (blue tint when dragging over)
-     - 📎 icon for visual clarity
+     - ?? icon for visual clarity
      - Text: "Drag & drop your file here, or browse"
      - Inline "browse" link triggers hidden file input
      - Shows selected filename when file chosen
@@ -304,32 +304,32 @@
 - File list UI unchanged
 - Drag-and-drop events: preventDefault + stopPropagation to prevent browser defaults
 - Visual feedback on drag-over state (border and background color changes)
-- Two-step process: select file → click Upload button
+- Two-step process: select file ? click Upload button
 
 **Verification:**
-- Drag-and-drop area displayed with modern design ✅
-- Browse link triggers file picker ✅
-- Drag-and-drop sets selected file ✅
-- Upload button disabled until file selected ✅
-- Upload logic reuses existing API and validation ✅
-- Toast notifications work (success/error) ✅
-- No changes to file list UI ✅
-- No backend changes ✅
-- TypeScript compiles without errors ✅
+- Drag-and-drop area displayed with modern design ?
+- Browse link triggers file picker ?
+- Drag-and-drop sets selected file ?
+- Upload button disabled until file selected ?
+- Upload logic reuses existing API and validation ?
+- Toast notifications work (success/error) ?
+- No changes to file list UI ?
+- No backend changes ?
+- TypeScript compiles without errors ?
 
 **Files Modified:**
 - [apps/web/app/task/[id]/page.tsx](apps/web/app/task/[id]/page.tsx#L72-L73,L357-L425,L886-L949)
 
-**Status:** Complete ✅
+**Status:** Complete ?
 
-## 2026-01-25 - Task 5.6: Task Remarks – Author Display
+## 2026-01-25 - Task 5.6: Task Remarks � Author Display
 
 **Objective:** Show who wrote each remark in the task detail page.
 
 **Requirement:**
 - Display "Written by <name>" for each remark
-- Prefer displayName → email → userId
-- No displayName field exists in users schema, so fallback: email → userId
+- Prefer displayName ? email ? userId
+- No displayName field exists in users schema, so fallback: email ? userId
 - Minimal extension of existing remarks list response
 - No new endpoints
 - No changes to remarks CRUD behavior
@@ -373,19 +373,19 @@
 - No schema changes required (uses existing users.email field)
 
 **Verification:**
-- ✅ Backend query joins users table and returns authorEmail
-- ✅ Frontend type updated to include authorEmail field
-- ✅ UI displays "Written by <email>" below timestamp for each remark
-- ✅ Fallback to userId works if authorEmail is null
-- ✅ No changes to CRUD behavior, access rules, or pagination
-- ✅ TypeScript compiles without errors
-- ✅ Layout and styling consistent with existing design
+- ? Backend query joins users table and returns authorEmail
+- ? Frontend type updated to include authorEmail field
+- ? UI displays "Written by <email>" below timestamp for each remark
+- ? Fallback to userId works if authorEmail is null
+- ? No changes to CRUD behavior, access rules, or pagination
+- ? TypeScript compiles without errors
+- ? Layout and styling consistent with existing design
 
 **Files Modified:**
 - [apps/api/src/remarks/remarks.service.ts](apps/api/src/remarks/remarks.service.ts#L4,L23-L41)
 - [apps/web/app/task/[id]/page.tsx](apps/web/app/task/[id]/page.tsx#L33-L39,L1123-L1130)
 
-**Status:** Complete ✅
+**Status:** Complete ?
 
 ## 2026-01-25 - Task 5.7: Attachments UX + Validation Fixes
 
@@ -443,21 +443,21 @@
 - UI correctly displays 20MB limit everywhere
 
 **Verification:**
-- ✅ Duplicate error (409) allows immediate file reselection
-- ✅ 29MB file blocked by frontend with toast
-- ✅ ≤20MB files work correctly
-- ✅ Backend enforces 20MB limit (multer + defensive check)
-- ✅ Attachment timestamps show date + time
-- ✅ Remarks container scrolls, shows max 3 items
-- ✅ Remarks section does not push other modules down
-- ✅ File input resets after error and success
-- ✅ No regressions
+- ? Duplicate error (409) allows immediate file reselection
+- ? 29MB file blocked by frontend with toast
+- ? =20MB files work correctly
+- ? Backend enforces 20MB limit (multer + defensive check)
+- ? Attachment timestamps show date + time
+- ? Remarks container scrolls, shows max 3 items
+- ? Remarks section does not push other modules down
+- ? File input resets after error and success
+- ? No regressions
 
 **Files Modified:**
 - [apps/web/app/task/[id]/page.tsx](apps/web/app/task/[id]/page.tsx#L3,L76,L359-L373,L389-L396,L406-L443,L916,L936,L1003,L1119-L1126)
 - [apps/api/src/attachments/attachments.controller.ts](apps/api/src/attachments/attachments.controller.ts#L1-L18,L41-L46,L53-L57)
 
-**Status:** Complete ✅
+**Status:** Complete ?
 
 ## 2026-01-25 - Remarks Text Wrapping Fix (UI Only)
 
@@ -498,18 +498,18 @@
 - Flex container fix (`minWidth: 0`) ensures parent allows text wrapping
 
 **Verification:**
-- ✅ Paste very long unbroken string (e.g., 200-char URL) → wraps into multiple lines
-- ✅ Page width/layout does not change
-- ✅ Other modules (attachments, history) stay aligned
-- ✅ Normal text with spaces continues to wrap naturally
-- ✅ Intentional line breaks (newlines) are preserved
-- ✅ No logic, API, or backend changes
-- ✅ No console errors
+- ? Paste very long unbroken string (e.g., 200-char URL) ? wraps into multiple lines
+- ? Page width/layout does not change
+- ? Other modules (attachments, history) stay aligned
+- ? Normal text with spaces continues to wrap naturally
+- ? Intentional line breaks (newlines) are preserved
+- ? No logic, API, or backend changes
+- ? No console errors
 
 **Files Modified:**
 - [apps/web/app/task/[id]/page.tsx](apps/web/app/task/[id]/page.tsx#L1148-L1190)
 
-**Status:** Complete ✅
+**Status:** Complete ?
 
 ## 2026-01-25 - Remarks List Scrollable (UI Only)
 
@@ -535,22 +535,22 @@
 - No changes to wrapping logic, text overflow behavior, or other CSS
 
 **Verification:**
-- ✅ Many remarks (>3) now scroll inside the remarks list container
-- ✅ Page height does not change when more remarks are added
-- ✅ Header and add-remark form stay fixed at top
-- ✅ Load More button stays fixed at bottom
-- ✅ Scroll container has proper max-height (320px)
-- ✅ Text wrapping behavior unchanged (overflow-wrap, word-break still applied)
-- ✅ No logic or API changes
+- ? Many remarks (>3) now scroll inside the remarks list container
+- ? Page height does not change when more remarks are added
+- ? Header and add-remark form stay fixed at top
+- ? Load More button stays fixed at bottom
+- ? Scroll container has proper max-height (320px)
+- ? Text wrapping behavior unchanged (overflow-wrap, word-break still applied)
+- ? No logic or API changes
 
 **Files Modified:**
 - [apps/web/app/task/[id]/page.tsx](apps/web/app/task/[id]/page.tsx#L1148)
 
-**Status:** Complete ✅
+**Status:** Complete ?
 
 ## 2026-01-25 - Capability Audit (Core/Calendar/Duration/etc)
 
-- Conducted full capability audit per plan.md sections 1–5 list (core model, calendar v2, duration system, persistent settings, task editing, toast architecture, customizations, auth, description, remarks, attachments).
+- Conducted full capability audit per plan.md sections 1�5 list (core model, calendar v2, duration system, persistent settings, task editing, toast architecture, customizations, auth, description, remarks, attachments).
 - Updated `audit-plan.md` with PASS/FAIL/NEEDS REVIEW checklist and summary.
 - No code changes performed during audit; verification based on current repo state.
 
@@ -595,25 +595,25 @@
 - Minimal, localized changes to NotificationToast component only
 
 **Verification:**
-- ✅ Success toasts disappear after 4 seconds
-- ✅ Error toasts disappear after 8 seconds
-- ✅ Info toasts disappear after 6 seconds
-- ✅ Manual close button still works immediately
-- ✅ Maximum 4 toasts visible at once
-- ✅ Older toasts hidden when >4 notifications exist
-- ✅ No changes to existing success/error flows
-- ✅ No toast API changes
-- ✅ No call site changes
-- ✅ Timer cleanup prevents memory leaks
+- ? Success toasts disappear after 4 seconds
+- ? Error toasts disappear after 8 seconds
+- ? Info toasts disappear after 6 seconds
+- ? Manual close button still works immediately
+- ? Maximum 4 toasts visible at once
+- ? Older toasts hidden when >4 notifications exist
+- ? No changes to existing success/error flows
+- ? No toast API changes
+- ? No call site changes
+- ? Timer cleanup prevents memory leaks
 
 **Files Modified:**
 - [apps/web/app/components/NotificationToast.tsx](apps/web/app/components/NotificationToast.tsx#L3,L18-L34,L63)
 
-**Status:** Complete ✅
+**Status:** Complete ?
 
 ---
 
-## Task 5.9: Activity Log v2 — Who + Module + Target
+## Task 5.9: Activity Log v2 � Who + Module + Target
 
 **Date:** 2026-01-25
 **Objective:** Make activity log actionable by showing who performed the action and where it happened.
@@ -643,13 +643,13 @@
    - Updated listAll() to include module field in response
 
 4. **Controller Updates - Module Field Added:**
-   - AuthController: auth.register, auth.login, auth.logout, auth.password_change → module: 'auth'
-   - TodosController: todo.create, todo.update, todo.schedule/unschedule, todo.delete, todo.bulk_update, todo.bulk_delete → module: 'task'
-   - CategoriesController: category.create, category.update, category.delete → module: 'category'
-   - SettingsController: settings.update, settings.duration.update → module: 'settings'
-   - AdminController: admin.reset_password → module: 'admin'
-   - RemarksController: remark.create, remark.delete → module: 'remark' (NEW)
-   - AttachmentsController: attachment.upload, attachment.delete → module: 'attachment' (NEW)
+   - AuthController: auth.register, auth.login, auth.logout, auth.password_change ? module: 'auth'
+   - TodosController: todo.create, todo.update, todo.schedule/unschedule, todo.delete, todo.bulk_update, todo.bulk_delete ? module: 'task'
+   - CategoriesController: category.create, category.update, category.delete ? module: 'category'
+   - SettingsController: settings.update, settings.duration.update ? module: 'settings'
+   - AdminController: admin.reset_password ? module: 'admin'
+   - RemarksController: remark.create, remark.delete ? module: 'remark' (NEW)
+   - AttachmentsController: attachment.upload, attachment.delete ? module: 'attachment' (NEW)
 
 5. **Frontend Type** [apps/web/app/hooks/useAuditLogs.ts:6-17](apps/web/app/hooks/useAuditLogs.ts#L6-L17)
    - Added module: string | null to AuditLog type
@@ -659,7 +659,7 @@
    - Actor: userEmail || userId || 'System'
    - Module: displayed directly
    - Target: resourceType + truncated resourceId
-   - Layout: compact inline display with "·" separators
+   - Layout: compact inline display with "�" separators
 
 **Implementation Details:**
 - Module field is nullable (backward compatible with old logs)
@@ -669,13 +669,13 @@
 - Remarks and Attachments controllers now include audit logging
 
 **Verification:**
-- ✅ Database migration applied successfully
-- ✅ Module column added to audit_logs table
-- ✅ AuditService includes module in all queries
-- ✅ All controllers updated with module field
-- ✅ Frontend types updated
-- ✅ Activity page UI displays Who + Module + Target
-- ✅ API restarted and running successfully
+- ? Database migration applied successfully
+- ? Module column added to audit_logs table
+- ? AuditService includes module in all queries
+- ? All controllers updated with module field
+- ? Frontend types updated
+- ? Activity page UI displays Who + Module + Target
+- ? API restarted and running successfully
 
 **Files Modified:**
 - [apps/api/src/db/schema.ts](apps/api/src/db/schema.ts#L126)
@@ -691,7 +691,7 @@
 - [apps/web/app/hooks/useAuditLogs.ts](apps/web/app/hooks/useAuditLogs.ts)
 - [apps/web/app/activity/page.tsx](apps/web/app/activity/page.tsx)
 
-**Status:** Complete ✅
+**Status:** Complete ?
 
 ---
 
@@ -759,7 +759,7 @@
 - All containers running: todo-api (Up), todo-web (Up), todo-db (Healthy)
 - Login with admin@example.com works correctly
 
-**Status:** Complete ✅
+**Status:** Complete ?
 
 ---
 
@@ -809,14 +809,14 @@
 - Backward compatible: old logs with 'admin' module still display
 
 **Verification:**
-- ✅ API builds successfully (TypeScript compilation passes)
-- ✅ Web builds successfully (TypeScript compilation passes)
-- ✅ Audit log action based on isAdmin value (grant vs revoke)
-- ✅ Module field set to "user:role" (module:section format)
-- ✅ New AuditAction types included in union
-- ✅ Module type accepts string values (not restricted to enum)
-- ✅ Activity log UI has labels for new actions
-- ✅ Type system consistent across frontend and backend
+- ? API builds successfully (TypeScript compilation passes)
+- ? Web builds successfully (TypeScript compilation passes)
+- ? Audit log action based on isAdmin value (grant vs revoke)
+- ? Module field set to "user:role" (module:section format)
+- ? New AuditAction types included in union
+- ? Module type accepts string values (not restricted to enum)
+- ? Activity log UI has labels for new actions
+- ? Type system consistent across frontend and backend
 
 **Files Modified:**
 - [apps/api/src/admin/admin.controller.ts](apps/api/src/admin/admin.controller.ts#L51-L60)
@@ -824,7 +824,7 @@
 - [apps/web/app/activity/page.tsx](apps/web/app/activity/page.tsx#L26-L27)
 - [apps/web/app/types.ts](apps/web/app/types.ts#L6)
 
-**Status:** Complete ✅
+**Status:** Complete ?
 
 ---
 
@@ -854,8 +854,8 @@
    - Added `isPinned: boolean;` to Todo type
 
 2. **Task List UI** [apps/web/app/page.tsx:969-982](apps/web/app/page.tsx#L969-L982)
-   - Added pin/unpin button (📌 icon) in task row actions
-   - Shows filled pin 📌 when pinned, outline pin 📍 when unpinned
+   - Added pin/unpin button (?? icon) in task row actions
+   - Shows filled pin ?? when pinned, outline pin ?? when unpinned
    - Gold color when pinned (#f59e0b), gray when unpinned (#94a3b8)
    - Title attribute indicates current state
    - Placed between Done checkbox and task title
@@ -876,16 +876,16 @@
 - Standard toast feedback on pin/unpin
 
 **Verification:**
-- ✅ Database migration applied successfully
-- ✅ isPinned field added to todos table with default false
-- ✅ Backend returns isPinned in list/get responses
-- ✅ Backend accepts isPinned in PATCH requests
-- ✅ Frontend type includes isPinned
-- ✅ Pin button renders with correct icon/color
-- ✅ Click pin button toggles state and updates DB
-- ✅ Pinned tasks render at top of list
-- ✅ Toast shows success/error feedback
-- ✅ No regressions in existing task list functionality
+- ? Database migration applied successfully
+- ? isPinned field added to todos table with default false
+- ? Backend returns isPinned in list/get responses
+- ? Backend accepts isPinned in PATCH requests
+- ? Frontend type includes isPinned
+- ? Pin button renders with correct icon/color
+- ? Click pin button toggles state and updates DB
+- ? Pinned tasks render at top of list
+- ? Toast shows success/error feedback
+- ? No regressions in existing task list functionality
 
 **Files Modified:**
 - [apps/api/src/db/schema.ts](apps/api/src/db/schema.ts#L37)
@@ -895,7 +895,7 @@
 - [apps/web/app/types.ts](apps/web/app/types.ts#L18)
 - [apps/web/app/page.tsx](apps/web/app/page.tsx#L271-L294,L969-L982)
 
-**Status:** Complete ✅
+**Status:** Complete ?
 
 ---
 
@@ -934,17 +934,17 @@
 
 2. **Activity Page** [apps/web/app/activity/page.tsx:253-265](apps/web/app/activity/page.tsx#L253-L265)
    - Restored admin access check
-   - Non-admin authenticated users → redirect to `/` (Task List)
+   - Non-admin authenticated users ? redirect to `/` (Task List)
    - No partial rendering or stuck states
 
 3. **Customizations Page** [apps/web/app/customizations/page.tsx:377-382](apps/web/app/customizations/page.tsx#L377-L382)
    - Updated admin access check to redirect instead of showing error message
-   - Non-admin authenticated users → redirect to `/` (Task List)
+   - Non-admin authenticated users ? redirect to `/` (Task List)
    - No stuck states
 
 4. **Admin Page** [apps/web/app/admin/page.tsx:180-185](apps/web/app/admin/page.tsx#L180-L185)
    - Confirmed existing redirect behavior
-   - Non-admin authenticated users → redirect to `/` (Task List)
+   - Non-admin authenticated users ? redirect to `/` (Task List)
    - Already correct, no changes needed
 
 5. **API Error Helper** [apps/web/app/lib/api.ts:42-44](apps/web/app/lib/api.ts#L42-L44)
@@ -963,20 +963,20 @@
 - Backend enforces 403 for non-admin access to all admin-only endpoints
 - Frontend checks `isAdmin` before rendering admin pages
 - Redirect behavior:
-  - Unauthenticated → `/` (shows LoginForm)
-  - Authenticated but unauthorized → `/` (Task List)
+  - Unauthenticated ? `/` (shows LoginForm)
+  - Authenticated but unauthorized ? `/` (Task List)
 - 403 errors show permission-denied toast before redirect
 - No partial rendering or stuck page states
 - Navigation links hidden for non-admin users
 
 **Verification:**
-- ✅ Backend returns 403 for non-admin access to admin-only endpoints
-- ✅ Frontend nav links hidden for non-admin users
-- ✅ Direct URL access to admin pages redirects non-admins to `/`
-- ✅ 403 errors show toast notification before redirect
-- ✅ No partial rendering or stuck states
-- ✅ Unauthenticated users redirected to login
-- ✅ No regressions in admin functionality
+- ? Backend returns 403 for non-admin access to admin-only endpoints
+- ? Frontend nav links hidden for non-admin users
+- ? Direct URL access to admin pages redirects non-admins to `/`
+- ? 403 errors show toast notification before redirect
+- ? No partial rendering or stuck states
+- ? Unauthenticated users redirected to login
+- ? No regressions in admin functionality
 
 **Files Modified:**
 - [apps/api/src/audit/audit.controller.ts](apps/api/src/audit/audit.controller.ts#L5)
@@ -988,7 +988,7 @@
 - [apps/web/app/admin/page.tsx](apps/web/app/admin/page.tsx#L4,L60-L76,L92-L110,L112-L130,L180-L185)
 - [apps/web/app/lib/api.ts](apps/web/app/lib/api.ts#L42-L44)
 
-**Status:** Complete ✅
+**Status:** Complete ?
 
 ## 2026-01-26 - Task Description Rendering & Pin Icon Contrast
 
@@ -1047,7 +1047,7 @@
 
 ## 2026-01-26 - Drizzle Migration Journal Alignment
 
-**Task name:** SYSTEM EXECUTION PROMPT � FIX DRIZZLE MIGRATION DESYNC
+**Task name:** SYSTEM EXECUTION PROMPT ? FIX DRIZZLE MIGRATION DESYNC
 
 **Scope:** Align local Drizzle migration journal with the already-applied database schema so base CREATE TABLE migrations are not rerun and migration 0012 (login hardening) is treated as applied.
 
@@ -1084,7 +1084,7 @@
 ## 2026-01-27 - v3 OCR Blob typing fix
 
 **Changes Made:**
-- Created a trimmed `ArrayBuffer` (sliced only when offsets differ) before constructing the `Blob` so the fetch body satisfies TypeScript’s `BlobPart` requirement while keeping the same headers and timeout.
+- Created a trimmed `ArrayBuffer` (sliced only when offsets differ) before constructing the `Blob` so the fetch body satisfies TypeScript�s `BlobPart` requirement while keeping the same headers and timeout.
 
 **Verification:** Not performed (manual)
 
@@ -1103,7 +1103,7 @@
 
 **Verification:** Not performed (manual)
 
-**Status:** Complete ✅
+**Status:** Complete ?
 
 ## 2026-01-26 - Fix Duplicate system_settings Migration
 
@@ -1129,7 +1129,7 @@
 
 **Verification:** Not performed (manual)
 
-**Status:** Complete ✅
+**Status:** Complete ?
 
 ## 2026-01-26 - Admin Activity Log System-Wide
 
@@ -1237,17 +1237,17 @@ Verification: Not performed (manual)
 
 ## 2026-01-27 - Task 6.7: Closeout Review (Code + UX)
 
-**Intent:** Confirm Tasks 6.1�6.6 changes are consistent and do not introduce blockers.
+**Intent:** Confirm Tasks 6.1?6.6 changes are consistent and do not introduce blockers.
 
 **Changes:**
-- Reviewed the dashboard (apps/web/app/page.tsx, TasksTable), calendar (apps/web/app/calendar/page.tsx, CreateTaskModal, ScheduleModal), customization/audit surfaces, and backend settings/categories/audit services introduced by Tasks 6.1�6.6 to ensure handler/prop/API consistency.
+- Reviewed the dashboard (apps/web/app/page.tsx, TasksTable), calendar (apps/web/app/calendar/page.tsx, CreateTaskModal, ScheduleModal), customization/audit surfaces, and backend settings/categories/audit services introduced by Tasks 6.1?6.6 to ensure handler/prop/API consistency.
 - Verified no code refers to missing columns, migrations, or dropped callbacks.
 
 **Fixes:** None.
 
 **Verification:** Not performed (manual)
 
-## 2026-01-27 - Task 7.1: Task stages � Data & Semantics Only
+## 2026-01-27 - Task 7.1: Task stages ? Data & Semantics Only
 
 **Intent:** Introduce controlled stage tracking for todos without UX changes.
 
@@ -1273,7 +1273,7 @@ Verification: Not performed (manual)
 
 **Verification:** Not performed (manual)
 
-## 2026-01-27 - Task 7.3: Stage UX � Minimal Status Selector
+## 2026-01-27 - Task 7.3: Stage UX ? Minimal Status Selector
 
 **Intent:** Provide an explicit, confirmed stage change control under the task header.
 
@@ -1330,3 +1330,17 @@ Verification: Not performed (manual)
 **Verification:** Not performed (manual)
 
 **Status:** Complete
+
+## 2026-01-28 - Task 7.4c OCR Viewer (Read-Only, Inline)
+
+**Objective:** Surface derived OCR text per attachment in a read-only inline viewer that sits beneath the attachment card.
+
+**Changes Made:**
+- Added GET /attachments/:id/ocr so the controller can return the derived outputs straight from attachment_ocr_outputs while continuing to enforce ownership and produce an immutable list for the UI. ([apps/api/src/attachments/attachments.controller.ts#L123-L127](apps/api/src/attachments/attachments.controller.ts#L123-L127))
+- Extended the task detail page with AttachmentOcrOutput typings, viewer state, lazy fetch/copy helpers, and the inline expandable viewer that shows loading/error/no-data states, renders the stored text/metadata directly, and exposes a copy-to-clipboard action. ([apps/web/app/task/[id]/page.tsx#L33-L1490](apps/web/app/task/[id]/page.tsx#L33-L1490))
+
+**Verification:** Not performed (manual)
+
+
+
+

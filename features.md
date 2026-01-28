@@ -58,11 +58,11 @@ Core philosophy:
 ## 3. v3 — Capability Foundations (In Progress)
 
 ### Purpose
-Introduce **foundational primitives** required for future collaboration, workflows, and intelligence — **without enabling them yet**.
+Introduce **foundational primitives** required for future features — **without enabling them yet**.
 
 v3 explicitly does **not** introduce:
-- collaboration
 - workflows
+- collaboration
 - automation
 - intelligence
 - background execution
@@ -104,10 +104,10 @@ Provide a stable, explicit task state model compatible with future workflows.
 **Intent**  
 Enable deterministic text extraction from attachments to support user understanding.
 
-**Foundations (Breakdown-Ready)**
+**Foundations**
 - OCR data model (derived, immutable)
 - OCR status tracking
-- Local OCR worker (separate container)
+- Local OCR worker runs as a separate container
 
 **User Interaction**
 - Manual “Retrieve text” action per attachment
@@ -158,123 +158,188 @@ Improve reasoning about task state without prioritization or automation.
 
 ---
 
-## 4. v4 — Collaboration Semantics (Presence-Aware)
+## 4. v4 — Structural Task Relationships (Parent–Child)
 
 ### Purpose
-Allow multiple users to coexist safely **without real-time co-editing**.
+Enable structured grouping and dependency modeling **without introducing workflows or automation**.
 
-v4 introduces **awareness**, not shared control.
-
----
-
-### v4.1 Presence Awareness
-
-**Capabilities**
-- Presence indicators:
-  - viewing
-  - editing
-- Presence is:
-  - ephemeral
-  - best-effort
-  - informational only
-- Presence never blocks backend mutations
-
-**Non-Goals**
-- No hard locks
-- No correctness guarantees
-- No persistence requirements
+This phase exists to make future workflows and collaboration *possible*, not active.
 
 ---
 
-### v4.2 Soft Edit Prevention
+### v4.1 Parent–Child Task Model
 
-**Intent**
-Reduce accidental conflicts while preserving backend authority.
-
-**Capabilities**
-- UI may warn or disable edit affordances when another user is editing
-- Backend remains authoritative
-- Collisions are acceptable and explainable
-
----
-
-### v4.3 Calendar Semantics (Multi-User Safe)
-
-**Scope**
-- Schedule
-- Reschedule
-- Resize
-- Unschedule
-
-**Rules**
-- Drag / resize is local and optimistic
-- Server is authoritative
-- **First valid commit wins**
-- Conflicts are rejected with explanation
-
-**Propagation**
-- Post-commit state propagation to other users
-- Push invalidate → refetch preferred
-- Polling fallback acceptable
-
-**Non-Goals**
-- No live drag previews
-- No reservations
-- No background reconciliation
+**Core Rules**
+- A task may be:
+  - Independent
+  - Parent
+  - Child
+- Maximum depth: **2 levels**
+  - Parent → Child
+  - No grandparents
+  - No child-of-child
 
 ---
 
-### v4.4 Awareness Interaction Primitives
+### v4.2 Structural Constraints
 
-**Capabilities**
-- Conflict explanation (“why did this fail?”)
-- Change awareness (“what changed since I last looked?”)
-- “Why is this disabled?” explanations
+**Parent Task**
+- Cannot be scheduled on the calendar
+- Cannot be closed if any child task is not closed
+- Has no parent itself
+
+**Child Task**
+- Can be scheduled independently
+- Has exactly one parent
+- Cannot be reopened if its parent is closed
+
+**Independent Task**
+- Has no parent
+- May later be promoted to parent or attached as a child
 
 ---
 
-## 5. v5 — Workflow Semantics (User-Triggered Only)
+### v4.3 Stage Semantics (Non-Mutating)
+
+- Parent and child stages are independent
+- Stage changes:
+  - do not cascade
+  - do not auto-sync
+- Constraints:
+  - Parent cannot close unless all children are closed
+  - Child cannot reopen if parent is closed
+
+---
+
+### v4.4 Association & Disassociation
+
+- Tasks can be:
+  - Converted into a parent
+  - Attached to a parent as a child
+  - Detached from a parent (becoming independent)
+
+Rules:
+- Explicit user action required
+- Mandatory remark required
+- Fully audited (before/after)
+
+---
+
+### v4.5 Delete Semantics
+
+- Deleting a parent:
+  - Blocked if children exist
+- Deleting a child:
+  - Removes association only
+  - Does not affect parent state
+
+---
+
+## 5. v5 — External Intake (Telegram, Explicit Only)
 
 ### Purpose
-Enable structured execution **without automation**.
+Allow external intent capture **without automatic task mutation**.
+
+Telegram acts strictly as a **capture surface**, not an executor.
 
 ---
 
-### v5.1 Workflow Definitions
+### v5.1 Telegram Bot Setup (Out-of-Band)
+
+**Status**
+- Telegram bot is **not yet created**
+- Bot setup occurs **outside the IDE / codebase**
+
+**Setup Characteristics**
+- Bot is created via Telegram’s BotFather
+- Bot token is stored securely (environment variable / secret)
+- No logic is embedded in Telegram itself
+- Bot does not hold user authority
+
+This setup is considered **infrastructure preparation**, not a product feature.
+
+---
+
+### v5.2 Telegram Intake Capabilities
 
 **Capabilities**
-- Explicit workflow definitions
-- Allowed transitions only
-- Stable identifiers
+- Accept images and text
+- Forward content to the backend
+- Store content as attachments
+- Allow OCR to be triggered explicitly
 
-**Non-Goals**
-- No enforced order
-- No triggers
-- No automation
-
----
-
-### v5.2 Workflow Execution
-
-**Capabilities**
-- Explicit user trigger
-- Deterministic, synchronous execution
-- Single execution record per run
-- Full before/after audit
+Telegram:
+- Never mutates tasks
+- Never schedules events
+- Never executes actions autonomously
+- Never bypasses application permissions
 
 ---
 
-### v5.3 Execution Interaction Primitives
+### v5.3 Suggested Actions (User-Confirmed)
 
-**Capabilities**
-- Preview / simulate before execution
-- Explain workflow steps
-- Explicit cancel / abort
-- “Do nothing” as first-class option
+After OCR + basic extraction, the system may suggest:
+- Create a task
+- Create a calendar event
+- Add attachment to existing task
+- Schedule existing task
+- Do nothing
+
+Rules:
+- Suggestions are non-binding
+- User must explicitly choose
+- “Do nothing” is always available
 
 ---
 
-## 6. v5.x — Undo & Correction Semantics
+## 6. v6 — Workflow Orchestration (User-Triggered Only)
+
+### Purpose
+Support **explicit, multi-step orchestration** without embedding procedural logic into the core API.
+
+This phase introduces orchestration, **not automation**.
+
+---
+
+### v6.1 Role of Workflow Engine (e.g. n8n)
+
+- Runs as a separate container
+- Treated as a system actor
+- Does not authenticate users
+- Does not own permissions
+- Does not mutate core state
+
+The application:
+- Validates intent
+- Triggers workflows explicitly
+- Applies all authoritative mutations
+- Writes audit logs
+
+---
+
+### v6.2 Supported Orchestration Use Cases
+
+- OCR orchestration (engine-agnostic)
+- Multi-step “apply OCR” preparation
+- Parent–child association orchestration
+- Derived data rebuilds (e.g. search index)
+
+All executions:
+- Explicitly triggered
+- Audited
+- Non-automatic
+
+---
+
+### v6.3 Authentication Model
+
+- Users authenticate only with the application
+- Application ↔ workflow engine uses service tokens
+- Workflow callbacks are authenticated as system actors
+
+---
+
+## 7. v7 — Undo & Correction Semantics
 
 ### Purpose
 Provide **safe, honest reversibility** without time travel.
@@ -283,154 +348,33 @@ Undo restores **validity**, not history.
 
 ---
 
-### v5.x.1 Undo Eligibility
+## 8. v8 — Assistive Planning & Intelligence (Advisory)
 
-Undo allowed only if:
-- target is a single execution
-- no subsequent overwrites exist
-- no dependent operational records exist
-
-Undo blocked if:
-- multi-user interference occurred
-- operational records exist (e.g. task started, logs created)
-
----
-
-### v5.x.2 Simulated Undo
-
-**Capabilities**
-- Read-only undo simulation
-- Produces a corrective plan:
-  - safe actions
-  - blocked actions (with reasons)
-
----
-
-### v5.x.3 Undo Confirmation & Execution
-
-**Capabilities**
-- Explicit confirmation UI
-- Compensating execution (not rollback)
-- Stop-on-error
-- Full audit linkage
-
----
-
-### v5.x.4 Operational Irreversibility
-
-**Rule**
-Once operational records exist:
-- undo is not applicable
-- only corrective workflows are offered
-
----
-
-## 7. v6 — Assistive Planning & Intelligence (Advisory)
-
-### Purpose
 Help users reason **before acting**, without execution authority.
 
 ---
 
-### v6.1 Deterministic Planning Engine (Non-ML)
+## 9. v9 — Collaboration Semantics (Presence-Aware Only)
 
-**Capabilities**
-- Analyzes:
-  - tasks
-  - stages
-  - schedules
-  - OCR data
-  - constraints
-- Produces bounded explicit options
-- Always includes “do nothing”
-- No side effects
-- No state mutation
+Introduced only **after workflows and undo semantics exist**.
+
+- Informational presence only
+- No shared control
+- No correctness guarantees
 
 ---
 
-### v6.2 Assistive Intelligence (Optional ML)
+## 10. v10 — Security Hardening & Codebase Integrity
 
-**Capabilities**
-- Runs only after explicit user request
-- May:
-  - explain options
-  - describe tradeoffs
-  - structure OCR text
-  - suggest extracted fields
-
-**Non-Roles**
-- No option generation
-- No execution
-- No state mutation
-
----
-
-### v6.3 Planning Interaction Primitives
-
-**Capabilities**
-- Option explanation
-- Side-by-side comparison
-- Explicit selection
-- Abort ML job
-- User acknowledgement
-
----
-
-## 8. v6.x — Operational Continuity Interactions
-
-**Capabilities**
-- Resume where I left off
-- Pause / freeze task
-- Structured intent capture (“why”)
-- Acknowledge external changes
-- Provenance tracing (“where did this value come from?”)
-
----
-
-## 9. v7 — Security Hardening & Codebase Integrity
-
-### Purpose
-Prepare the system for scale, monetization, and external scrutiny.
-
----
-
-### v7.1 Security Hardening
-
-**Scope**
-- Auth & session review
-- Authorization boundaries
+- Auth & authorization review
 - Audit log integrity
 - Attachment safety
-- OCR worker isolation
-- Dependency vulnerability scan
-- Secrets handling audit
-
----
-
-### v7.2 Refactoring & Cleanup
-
-**Scope**
-- Remove dead code
-- Consolidate duplicated logic
-- Normalize module boundaries
-- Reduce coupling
-- Harden error paths
-- Simplify complex logic
-
----
-
-### v7.3 Code Audit
-
-**Scope**
-- Architecture review
-- Threat modeling (lightweight)
-- Performance risk review
-- Migration safety review
+- Dependency scanning
 - Explicit documentation of accepted risks
 
 ---
 
-## 10. Permanently Out of Scope
+## 11. Permanently Out of Scope
 
 - Background automation
 - Implicit execution
@@ -440,7 +384,7 @@ Prepare the system for scale, monetization, and external scrutiny.
 
 ---
 
-## 11. Canonical Invariants (Stable)
+## 12. Canonical Invariants (Stable)
 
 - Explicit > implicit
 - Auditability over convenience
@@ -453,4 +397,4 @@ Prepare the system for scale, monetization, and external scrutiny.
 ### Status
 - v1–v2: Complete
 - v3: In progress
-- v4–v7: Planned and phase-gated
+- v4–v10: Planned and phase-gated

@@ -33,6 +33,21 @@ type Attachment = {
   stageKeyAtCreation?: TaskStageKey | null;
 };
 
+type AttachmentOcrOutput = {
+  id: string;
+  extractedText: string;
+  metadata?: string | null;
+  status: 'complete' | 'failed';
+  createdAt: string;
+};
+
+type AttachmentOcrViewerState = {
+  open: boolean;
+  loading: boolean;
+  error: string | null;
+  outputs: AttachmentOcrOutput[] | null;
+};
+
 type AuditEntry = {
   id: string;
   action: string;
@@ -126,6 +141,9 @@ export default function TaskDetailsPage() {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachmentOcrViewerState, setAttachmentOcrViewerState] = useState<
+    Record<string, AttachmentOcrViewerState>
+  >({});
 
   // History
   const [history, setHistory] = useState<AuditEntry[]>([]);
@@ -545,6 +563,116 @@ export default function TaskDetailsPage() {
       }
     } finally {
       setUploading(false);
+    }
+  };
+
+  const fetchAttachmentOcr = async (attachmentId: string) => {
+    setAttachmentOcrViewerState((prev) => {
+      const existing = prev[attachmentId];
+      return {
+        ...prev,
+        [attachmentId]: {
+          ...existing,
+          open: existing?.open ?? true,
+          loading: true,
+          error: null,
+          outputs: existing?.outputs ?? null,
+        },
+      };
+    });
+
+    try {
+      const data = await apiFetchJson(`/attachments/${attachmentId}/ocr`);
+      const outputs: AttachmentOcrOutput[] = Array.isArray(data)
+        ? data.map((item) => ({
+            id: item.id,
+            extractedText: item.extractedText ?? '',
+            status: item.status === 'complete' ? 'complete' : 'failed',
+            metadata: typeof item.metadata === 'string' ? item.metadata : null,
+            createdAt: item.createdAt ?? '',
+          }))
+        : [];
+      setAttachmentOcrViewerState((prev) => ({
+        ...prev,
+        [attachmentId]: {
+          ...prev[attachmentId],
+          loading: false,
+          outputs,
+          error: null,
+        },
+      }));
+    } catch (err: any) {
+      setAttachmentOcrViewerState((prev) => ({
+        ...prev,
+        [attachmentId]: {
+          ...prev[attachmentId],
+          loading: false,
+          error: err?.message || 'Failed to load OCR text',
+          outputs: prev[attachmentId]?.outputs ?? [],
+        },
+      }));
+    }
+  };
+
+  const handleToggleOcrViewer = (attachmentId: string) => {
+    const current = attachmentOcrViewerState[attachmentId];
+    const willOpen = !current?.open;
+    setAttachmentOcrViewerState((prev) => ({
+      ...prev,
+      [attachmentId]: {
+        ...current,
+        open: willOpen,
+        outputs: current?.outputs ?? null,
+        loading: current?.loading ?? false,
+        error: current?.error ?? null,
+      },
+    }));
+    if (willOpen && current?.outputs == null && !current?.loading) {
+      fetchAttachmentOcr(attachmentId);
+    }
+  };
+
+  const handleCopyOcrText = async (text: string) => {
+    if (!text) {
+      addNotification(
+        'error',
+        'Nothing to copy',
+        'There is no OCR text available to copy.',
+        task?.title,
+        task?.id,
+      );
+      return;
+    }
+
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else if (typeof document !== 'undefined') {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      addNotification(
+        'success',
+        'OCR text copied',
+        'The OCR output is on your clipboard.',
+        task?.title,
+        task?.id,
+      );
+    } catch (err: any) {
+      addNotification(
+        'error',
+        'Copy failed',
+        err?.message || 'Unable to copy OCR text.',
+        task?.title,
+        task?.id,
+      );
     }
   };
 
@@ -1167,20 +1295,24 @@ export default function TaskDetailsPage() {
                     <div style={{ display: 'grid', gap: 8 }}>
                       {attachments.slice(0, attachmentsLimit).map((attachment) => {
                         const stageBadge = renderStageBadge(attachment.stageKeyAtCreation);
+                        const viewerState = attachmentOcrViewerState[attachment.id];
+                        const viewerOpen = viewerState?.open ?? false;
+                        const viewerCount = viewerState?.outputs?.length ?? 0;
                         return (
                           <div
                             key={attachment.id}
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            padding: 12,
-                            borderRadius: 8,
-                            border: '1px solid #e2e8f0',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                            <div style={{
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: 10,
+                              padding: 12,
+                              borderRadius: 8,
+                              border: '1px solid #e2e8f0',
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                              <div style={{
                               width: 40,
                               height: 40,
                               borderRadius: 8,
@@ -1205,8 +1337,8 @@ export default function TaskDetailsPage() {
                                 </div>
                               )}
                             </div>
-                          </div>
-                          <div style={{ display: 'flex', gap: 8 }}>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8 }}>
                             <button
                               onClick={() => handleDownload(attachment)}
                               style={{
@@ -1234,9 +1366,149 @@ export default function TaskDetailsPage() {
                             >
                               Delete
                             </button>
+                            </div>
+                          </div>
+                          <div style={{ marginTop: 10 }}>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleOcrViewer(attachment.id)}
+                              aria-expanded={viewerOpen}
+                              style={{
+                                padding: '6px 10px',
+                                borderRadius: 4,
+                                border: '1px solid #e2e8f0',
+                                background: viewerOpen ? '#e0f2fe' : 'white',
+                                color: '#0f172a',
+                                cursor: 'pointer',
+                                fontSize: 12,
+                              }}
+                            >
+                              {viewerOpen ? 'Hide OCR text' : `Show OCR text${viewerCount ? ` (${viewerCount})` : ''}`}
+                            </button>
+                            {viewerOpen && (
+                              <div
+                                style={{
+                                  marginTop: 12,
+                                  borderRadius: 8,
+                                  border: '1px solid #e2e8f0',
+                                  background: '#f8fafc',
+                                  padding: 12,
+                                }}
+                              >
+                                {viewerState?.loading && (
+                                  <p style={{ margin: 0, fontSize: 13, color: '#475569' }}>
+                                    Loading OCR text...
+                                  </p>
+                                )}
+                                {viewerState?.error && (
+                                  <div
+                                    style={{
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center',
+                                      gap: 8,
+                                      marginBottom: 8,
+                                    }}
+                                  >
+                                    <span style={{ fontSize: 13, color: '#dc2626' }}>
+                                      {viewerState.error}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => fetchAttachmentOcr(attachment.id)}
+                                      style={{
+                                        padding: '4px 8px',
+                                        borderRadius: 4,
+                                        border: '1px solid #e2e8f0',
+                                        background: 'white',
+                                        cursor: 'pointer',
+                                        fontSize: 12,
+                                      }}
+                                    >
+                                      Retry
+                                    </button>
+                                  </div>
+                                )}
+                                {!viewerState?.loading && !viewerState?.error && viewerState?.outputs && viewerState.outputs.length === 0 && (
+                                  <p style={{ margin: 0, fontSize: 13, color: '#475569' }}>
+                                    No OCR output has been captured for this attachment.
+                                  </p>
+                                )}
+                                {!viewerState?.loading && viewerState?.outputs && viewerState.outputs.length > 0 && (
+                                  <div style={{ display: 'grid', gap: 12 }}>
+                                    {viewerState.outputs.map((record) => (
+                                      <div
+                                        key={record.id}
+                                        style={{
+                                          padding: 10,
+                                          borderRadius: 8,
+                                          border: '1px solid #e2e8f0',
+                                          background: 'white',
+                                        }}
+                                      >
+                                        <div
+                                          style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            gap: 8,
+                                            marginBottom: 6,
+                                          }}
+                                        >
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <span style={{
+                                              fontSize: 11,
+                                              textTransform: 'uppercase',
+                                              letterSpacing: '0.04em',
+                                              fontWeight: 600,
+                                              color: '#0f172a',
+                                            }}>
+                                              {record.status}
+                                            </span>
+                                            <span style={{ fontSize: 12, color: '#64748b' }}>
+                                              {formatDateTime(record.createdAt)}
+                                            </span>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleCopyOcrText(record.extractedText)}
+                                            style={{
+                                              padding: '4px 8px',
+                                              borderRadius: 4,
+                                              border: '1px solid #e2e8f0',
+                                              background: 'white',
+                                              cursor: 'pointer',
+                                              fontSize: 12,
+                                            }}
+                                          >
+                                            Copy
+                                          </button>
+                                        </div>
+                                        <pre
+                                          style={{
+                                            margin: 0,
+                                            whiteSpace: 'pre-wrap',
+                                            wordBreak: 'break-word',
+                                            fontSize: 13,
+                                            color: '#0f172a',
+                                          }}
+                                        >
+                                          {record.extractedText || 'No text extracted.'}
+                                        </pre>
+                                        {record.metadata && (
+                                          <div style={{ marginTop: 6, fontSize: 11, color: '#475569', wordBreak: 'break-word' }}>
+                                            Metadata: {record.metadata}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
-                        );
+                      );
                       })}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>

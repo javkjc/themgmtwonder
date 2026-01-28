@@ -120,6 +120,12 @@ export class AttachmentsController {
     fileStream.pipe(res);
   }
 
+  // List OCR outputs for an attachment
+  @Get(':id/ocr')
+  async listOcr(@Req() req: any, @Param('id') id: string) {
+    return this.ocrService.listByAttachment(req.user.userId, id);
+  }
+
   // Delete attachment
   @Delete(':id')
   async delete(@Req() req: any, @Param('id') id: string) {

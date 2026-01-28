@@ -180,6 +180,8 @@ Allow explicit user-triggered OCR.
 
 #### **7.4c OCR Viewer (Read-Only, Inline)**
 
+**Status:** ✅ DONE
+
 **Objective**
 Present OCR output without mutating state.
 
