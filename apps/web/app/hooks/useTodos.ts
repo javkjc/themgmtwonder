@@ -17,6 +17,8 @@ export type Todo = {
   stageKey?: string | null;
   unscheduledAt?: string | null;
   isPinned?: boolean;
+  parentId?: string | null;
+  childCount?: number;
 };
 
 export type Filter = 'all' | 'active' | 'done';
@@ -42,7 +44,7 @@ type UseTodosOptions = {
 
 export type TodosActions = {
   refresh: () => Promise<void>;
-  addTodo: (title: string, category?: string, durationMin?: number, description?: string) => Promise<boolean>;
+  addTodo: (title: string, category?: string, durationMin?: number, description?: string, parentId?: string) => Promise<boolean>;
   toggleTodo: (todo: Todo) => Promise<boolean>;
   updateTodo: (todoId: string, title: string, category?: string | null, durationMin?: number, description?: string | null, isPinned?: boolean) => Promise<boolean>;
   deleteTodo: (todoId: string) => Promise<boolean>;
@@ -144,7 +146,7 @@ export function useTodos(options: UseTodosOptions): TodosState & TodosActions {
     }
   }, [userId, filter, scheduleFilter, sortDir, dateFilter, customDateRange, handleError]);
 
-  const addTodo = useCallback(async (title: string, category?: string, durationMin?: number, description?: string): Promise<boolean> => {
+  const addTodo = useCallback(async (title: string, category?: string, durationMin?: number, description?: string, parentId?: string): Promise<boolean> => {
     if (!userId) {
       setError('Please login first.');
       return false;
@@ -162,6 +164,7 @@ export function useTodos(options: UseTodosOptions): TodosState & TodosActions {
           category: category || undefined,
           durationMin: durationMin || undefined,
           description: description || undefined,
+          parentId: parentId || undefined,
         }),
       });
       await refresh();
@@ -348,7 +351,7 @@ export function useTodos(options: UseTodosOptions): TodosState & TodosActions {
     } else {
       setTodos([]);
     }
-  }, [userId, filter, sortDir, dateFilter, customDateRange]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [userId, filter, scheduleFilter, sortDir, dateFilter, customDateRange]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen for updates from other pages
   useEffect(() => {

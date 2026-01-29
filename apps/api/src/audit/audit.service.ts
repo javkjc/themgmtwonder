@@ -18,10 +18,13 @@ export type AuditAction =
   | 'todo.update'
   | 'todo.stage_change'
   | 'todo.delete'
+  | 'todo.delete_child'
   | 'todo.schedule'
   | 'todo.unschedule'
   | 'todo.bulk_update'
   | 'todo.bulk_delete'
+  | 'todo.associate'
+  | 'todo.disassociate'
   | 'category.create'
   | 'category.update'
   | 'category.delete'
@@ -36,7 +39,9 @@ export type AuditAction =
   | 'OCR_SUCCEEDED'
   | 'OCR_FAILED'
   | 'ocr.apply.remark'
-  | 'ocr.apply.description';
+  | 'ocr.apply.description'
+  | 'workflow.start'
+  | 'workflow.step_action';
 
 export type AuditModule =
   | 'auth'
@@ -45,7 +50,8 @@ export type AuditModule =
   | 'attachment'
   | 'category'
   | 'settings'
-  | 'admin';
+  | 'admin'
+  | 'workflow';
 
 export type CreateAuditLogDto = {
   userId?: string | null;

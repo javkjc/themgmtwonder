@@ -18,6 +18,8 @@ import {
   UpdateTodoDto,
   ListTodosQueryDto,
   ScheduleTodoDto,
+  AssociateTodoDto,
+  DisassociateTodoDto,
 } from './dto';
 import { AuditService } from '../audit/audit.service';
 import { TaskStageKey } from '../common/constants';
@@ -151,6 +153,20 @@ export class TodosController {
       return { error: 'Not found' };
     }
     return result;
+  }
+
+  @Get(':id/children')
+  async getChildren(@Req() req: any, @Param('id') id: string) {
+    return this.todos.getChildren(req.user.userId, id);
+  }
+
+  @Get(':id/parent')
+  async getParent(@Req() req: any, @Param('id') id: string) {
+    const parent = await this.todos.getParent(req.user.userId, id);
+    if (!parent) {
+      return { error: 'No parent found' };
+    }
+    return parent;
   }
 
   @Patch(':id')
@@ -305,14 +321,15 @@ export class TodosController {
     const result = await this.todos.remove(req.user.userId, id);
     await this.audit.log({
       userId: req.user.userId,
-      action: 'todo.delete',
+      action: result.wasChild ? 'todo.delete_child' : 'todo.delete',
       module: 'task',
       resourceType: 'todo',
       resourceId: id,
+      details: result.wasChild ? { detached: true } : undefined,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     });
-    return result;
+    return result.task;
   }
 
   @Post('bulk/done')
@@ -372,5 +389,73 @@ export class TodosController {
       userAgent: req.headers['user-agent'],
     });
     return result;
+  }
+
+  @Post(':id/associate')
+  async associate(
+    @Req() req: any,
+    @Param('id') childId: string,
+    @Body() dto: AssociateTodoDto,
+  ) {
+    const { before, after } = await this.todos.associateTask(
+      req.user.userId,
+      childId,
+      dto.parentId,
+    );
+
+    await this.audit.log({
+      userId: req.user.userId,
+      action: 'todo.associate',
+      module: 'task',
+      resourceType: 'todo',
+      resourceId: childId,
+      details: {
+        remark: dto.remark,
+        parentId: dto.parentId,
+        before: {
+          parentId: before.parentId,
+        },
+        after: {
+          parentId: after.parentId,
+        },
+      },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    return after;
+  }
+
+  @Post(':id/disassociate')
+  async disassociate(
+    @Req() req: any,
+    @Param('id') childId: string,
+    @Body() dto: DisassociateTodoDto,
+  ) {
+    const { before, after } = await this.todos.disassociateTask(
+      req.user.userId,
+      childId,
+    );
+
+    await this.audit.log({
+      userId: req.user.userId,
+      action: 'todo.disassociate',
+      module: 'task',
+      resourceType: 'todo',
+      resourceId: childId,
+      details: {
+        remark: dto.remark,
+        before: {
+          parentId: before.parentId,
+        },
+        after: {
+          parentId: after.parentId,
+        },
+      },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    return after;
   }
 }

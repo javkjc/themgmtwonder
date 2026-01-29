@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { type Todo } from '../hooks/useTodos';
 import { useCategories } from '../hooks/useCategories';
 import { useDurationSettings } from '../hooks/useDurationSettings';
 import { formatDate, formatTimeRange } from '../lib/dateTime';
+import { apiFetchJson } from '../lib/api';
 
 type TasksTableProps = {
   todos: Todo[];
@@ -39,9 +40,40 @@ export default function TasksTable({
   const [editingCategory, setEditingCategory] = useState('');
   const [editingDurationMin, setEditingDurationMin] = useState<string>(String(defaultDurationMin));
   const [savedTodoId, setSavedTodoId] = useState<string | null>(null);
+  const [relationshipModal, setRelationshipModal] = useState<{ todo: Todo; type: 'parent' | 'child' } | null>(null);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [modalData, setModalData] = useState<Todo | Todo[] | null>(null);
 
   const { getCategoryNames } = useCategories(userId);
   const categoryNames = getCategoryNames();
+
+  // Fetch relationship data when modal opens
+  useEffect(() => {
+    if (!relationshipModal) {
+      setModalData(null);
+      return;
+    }
+
+    const fetchRelationshipData = async () => {
+      setModalLoading(true);
+      try {
+        if (relationshipModal.type === 'parent') {
+          const parent = await apiFetchJson<Todo>(`/todos/${relationshipModal.todo.id}/parent`, { method: 'GET' });
+          setModalData(parent);
+        } else {
+          const children = await apiFetchJson<Todo[]>(`/todos/${relationshipModal.todo.id}/children`, { method: 'GET' });
+          setModalData(children);
+        }
+      } catch (error) {
+        console.error('Failed to fetch relationship data:', error);
+        setModalData(null);
+      } finally {
+        setModalLoading(false);
+      }
+    };
+
+    fetchRelationshipData();
+  }, [relationshipModal]);
 
   const toggleSelection = (todoId: string) => {
     if (!onSelectionChange) return;
@@ -140,6 +172,9 @@ export default function TasksTable({
               </th>
               <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>
                 Task
+              </th>
+              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', width: 100 }}>
+                Relationship
               </th>
               <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', width: 100 }}>
                 Status
@@ -457,6 +492,85 @@ export default function TasksTable({
                   )}
                 </td>
                 <td style={{ padding: '16px' }}>
+                  {(() => {
+                    const hasChildren = (t.childCount ?? 0) > 0;
+                    const hasParent = !!t.parentId;
+
+                    if (!hasChildren && !hasParent) {
+                      return (
+                        <span style={{ fontSize: 13, color: '#94a3b8' }}>
+                          Independent
+                        </span>
+                      );
+                    }
+
+                    if (hasParent && hasChildren) {
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span
+                            onClick={() => setRelationshipModal({ todo: t, type: 'parent' })}
+                            style={{
+                              fontSize: 13,
+                              color: '#8b5cf6',
+                              fontWeight: 500,
+                              cursor: 'pointer',
+                              textDecoration: 'underline',
+                            }}
+                          >
+                            Child
+                          </span>
+                          <span
+                            onClick={() => setRelationshipModal({ todo: t, type: 'child' })}
+                            style={{
+                              fontSize: 13,
+                              color: '#10b981',
+                              fontWeight: 500,
+                              cursor: 'pointer',
+                              textDecoration: 'underline',
+                            }}
+                          >
+                            Parent ({t.childCount})
+                          </span>
+                        </div>
+                      );
+                    }
+
+                    if (hasParent) {
+                      return (
+                        <span
+                          onClick={() => setRelationshipModal({ todo: t, type: 'parent' })}
+                          style={{
+                            fontSize: 13,
+                            color: '#8b5cf6',
+                            fontWeight: 500,
+                            cursor: 'pointer',
+                            textDecoration: 'underline',
+                          }}
+                        >
+                          Child
+                        </span>
+                      );
+                    }
+
+                    if (hasChildren) {
+                      return (
+                        <span
+                          onClick={() => setRelationshipModal({ todo: t, type: 'child' })}
+                          style={{
+                            fontSize: 13,
+                            color: '#10b981',
+                            fontWeight: 500,
+                            cursor: 'pointer',
+                            textDecoration: 'underline',
+                          }}
+                        >
+                          Parent ({t.childCount})
+                        </span>
+                      );
+                    }
+                  })()}
+                </td>
+                <td style={{ padding: '16px' }}>
                   <span
                     style={{
                       display: 'inline-block',
@@ -578,6 +692,174 @@ export default function TasksTable({
           </tbody>
         </table>
       </div>
+
+      {/* Relationship Modal */}
+      {relationshipModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={() => setRelationshipModal(null)}
+        >
+          <div
+            style={{
+              background: 'white',
+              borderRadius: 12,
+              padding: 24,
+              maxWidth: 600,
+              width: '90%',
+              maxHeight: '80vh',
+              overflow: 'auto',
+              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ marginBottom: 20 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, marginBottom: 8 }}>
+                {relationshipModal.type === 'parent' ? 'Parent Task' : 'Child Tasks'}
+              </h2>
+              <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>
+                Related to: {relationshipModal.todo.title}
+              </p>
+            </div>
+
+            {modalLoading ? (
+              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
+                Loading...
+              </div>
+            ) : modalData ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {relationshipModal.type === 'parent' ? (
+                  // Display parent task
+                  (() => {
+                    const parent = modalData as Todo;
+                    return (
+                      <Link
+                        href={`/task/${parent.id}`}
+                        style={{
+                          padding: '16px',
+                          borderRadius: 8,
+                          border: '1px solid #e2e8f0',
+                          background: '#f8fafc',
+                          display: 'block',
+                          textDecoration: 'none',
+                          transition: 'all 0.2s',
+                        }}
+                        onMouseOver={(e) => {
+                          e.currentTarget.style.background = '#f1f5f9';
+                          e.currentTarget.style.borderColor = '#cbd5e1';
+                        }}
+                        onMouseOut={(e) => {
+                          e.currentTarget.style.background = '#f8fafc';
+                          e.currentTarget.style.borderColor = '#e2e8f0';
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 14, fontWeight: 500, color: '#1e293b' }}>
+                            {parent.title}
+                          </span>
+                          {parent.done && (
+                            <span style={{
+                              padding: '2px 8px',
+                              borderRadius: 4,
+                              background: '#dcfce7',
+                              color: '#166534',
+                              fontSize: 11,
+                              fontWeight: 600,
+                            }}>
+                              DONE
+                            </span>
+                          )}
+                        </div>
+                        {parent.description && (
+                          <div style={{ fontSize: 13, color: '#64748b', marginTop: 8 }}>
+                            {parent.description}
+                          </div>
+                        )}
+                      </Link>
+                    );
+                  })()
+                ) : (
+                  // Display child tasks
+                  (modalData as Todo[]).map((child) => (
+                    <Link
+                      key={child.id}
+                      href={`/task/${child.id}`}
+                      style={{
+                        padding: '16px',
+                        borderRadius: 8,
+                        border: '1px solid #e2e8f0',
+                        background: '#f8fafc',
+                        display: 'block',
+                        textDecoration: 'none',
+                        transition: 'all 0.2s',
+                      }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.background = '#f1f5f9';
+                        e.currentTarget.style.borderColor = '#cbd5e1';
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.background = '#f8fafc';
+                        e.currentTarget.style.borderColor = '#e2e8f0';
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: 14, fontWeight: 500, color: '#1e293b' }}>
+                          {child.title}
+                        </span>
+                        {child.done && (
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: 4,
+                            background: '#dcfce7',
+                            color: '#166534',
+                            fontSize: 11,
+                            fontWeight: 600,
+                          }}>
+                            DONE
+                          </span>
+                        )}
+                      </div>
+                      {child.description && (
+                        <div style={{ fontSize: 13, color: '#64748b', marginTop: 8 }}>
+                          {child.description}
+                        </div>
+                      )}
+                    </Link>
+                  ))
+                )}
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
+                No data found
+              </div>
+            )}
+
+            <div style={{ marginTop: 20, textAlign: 'right' }}>
+              <button
+                onClick={() => setRelationshipModal(null)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 6,
+                  border: '1px solid #e2e8f0',
+                  background: 'white',
+                  color: '#64748b',
+                  cursor: 'pointer',
+                  fontSize: 14,
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

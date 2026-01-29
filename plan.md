@@ -1,15 +1,15 @@
-﻿PLAN — v3 Execution Contract
+﻿# PLAN — v6 Execution Contract (Workflow Management — Admin UI)
 
 CLAUDE / CODEX:
-Read sections 1–5 only.
-Execute Next Actions sequentially.
-One concern per task.
+Read sections 1–5 only.  
+Execute **Next Actions** sequentially.  
+One concern per task.  
 Stop immediately when all tasks are marked ✅ DONE.
 
-This plan governs **v3 Capability Foundations ONLY**.
-No work beyond v3 is permitted under this plan.
+This plan governs **v6 Workflow Management (Admin UI) ONLY**.  
+No work beyond v6 is permitted under this plan.
 
-v1 and v2 are complete and must not be modified unless explicitly stated.
+v1–v5 are **complete and locked** and must not be modified unless explicitly stated.
 
 ---
 
@@ -25,209 +25,195 @@ Infrastructure: Dockerized (Web → API → DB → OCR Worker)
 
 ---
 
-## 2. v3 Scope Lock & Principles
+## 2. v6 Scope Lock & Principles
 
-### Scope Lock (v3)
-- Introduce **foundational primitives only**
-- No automatic workflows
-- No background automation without explicit user action
-- No real-time collaboration
+### Scope Lock (v6)
+
+- Introduce **admin-only UI** for managing workflow definitions
+- Allow **creation, editing, versioning, activation** of workflows
+- Provide **validation and preview** only
+- No execution from admin UI
+- No task mutation
+- No background automation
 - No permission model redesign
-- No breaking API changes unless explicitly listed
+- No workflow participation UI (belongs to v7)
 
-### Explicitly Out of Scope for v3
-- Collaboration features
-- Workflow engines
+### Explicitly Out of Scope for v6
+
+- Workflow execution UI
+- User inbox or participation
+- Task state mutation
+- Automatic triggers or routing
+- Background jobs, timers, schedulers
 - Undo / correction semantics
-- Assistive planning or ML intelligence
-- Security refactors or audits beyond local changes required by OCR
+- Intelligence or ML
+- External intake (Telegram)
+- Collaboration semantics
 
 These belong to **future plan phases**.
 
 ---
 
 ### Core Design Rule (Non-Negotiable)
-> All v3 changes MUST remain valid if the system later supports:
-> - multiple users per task
-> - workflow-driven transitions
-> - system actors performing derived actions
 
-v3 must **prepare for** but not **enable** these capabilities.
+> v6 MUST expose workflows as **human-defined, inspectable, inert graphs**,  
+> NOT as executable automation and NOT as hidden system behavior.
+
+Admin UI:
+- manages **definitions only**
+- never executes workflows
+- never mutates tasks
+- never implies automation
 
 ---
 
 ### Definition of Done (All Tasks)
-- Runtime behavior verified manually by user
-- No regressions to v2 behavior
-- No implicit state mutation
-- Audit trail complete and accurate
+
+- Admin UI functions verified manually by user
+- No regressions to v5 behavior
+- No workflow execution triggered via UI
+- Validation is non-mutating and non-persistent
+- Audit trail complete for all admin actions
 - Changes are minimal, localized, reversible
 - plan.md updated at start and end of work
-- executionnotes.md appended (append-only)
-- Verification: Not performed (manual), unless explicitly stated otherwise
+- executionnotes.md appended (append-only, latest at bottom)
+- Verification: Manual (owned by user)
 
 ---
 
-## 3. Current State (v3 Entry Point)
+## 3. Current State (v6 Entry Point)
 
-- v1 Feature Delivery: ✅ Complete
-- v1 Hardening & Correctness: ✅ Complete
-- v2 UX & Product Evolution: ✅ Complete
-- Codebase stable, auditable, migration-safe
-- No known blocking runtime issues
-
-### Regression Gate (Informational Only)
-- Automated regression scripts are **not gating v3**:
-  - `typecheck` script not defined
-  - `lint` failures due to **pre-existing** `@typescript-eslint/react-hooks/unsafe-any`
-  - `jest` unit/e2e exit with `jest-worker` spawn `EPERM` (environmental)
-- These issues are acknowledged and documented
-- **No fixes are required for v3 completion**
-- Manual verification remains authoritative
-
-(See `executionnotes.md` → 2026-01-27 Regression Gate)
+- v1–v5 complete and locked
+- Workflow definitions & execution models exist
+- Backend APIs available for workflow CRUD (data-level)
+- No admin UI exists
+- No validation or preview tooling exists
+- Codebase migration-safe
 
 ---
 
 ## 4. Next Actions (Execution Queue)
 
-MODE: Capability Foundations (v3 only)  
+MODE: Workflow Management — Admin UI (v6 only)  
 Sequential execution. One concern per task.
 
 ---
 
-### **7.1 Task Stages — Data & Semantics Only**
+### **10.1 Admin Workflow List & Detail Pages (Read-Only)**
 
 **Status:** ✅ DONE
 
-- Added `stageKey` to tasks
-- Defined system stage constants
-- Stage changes are explicit and audited
-- Existing tasks default safely
-
-No further work permitted under this task.
-
----
-
-### **7.2 Stage-Aware Content Tagging (Remarks & Attachments)**
-
-**Status:** ✅ DONE
-
-- Remarks and attachments capture `stageKeyAtCreation`
-- Informational stage badges displayed
-- No mutation of existing data
-
-No further work permitted under this task.
-
----
-
-### **7.3 Derived Task Views (UX Clarity)**
-
-**Status:** ✅ DONE
-
-**Objective**
-Provide derived, read-only task views to improve user reasoning without prioritization or automation.
+**Objective**  
+Provide admin-only visibility into existing workflow definitions.
 
 **In Scope**
-- Derived task lists (e.g. unscheduled tasks)
-- Read-only, user-controlled filters
-- No prioritization logic
-- No highlighting or auto-focus
+- Admin route(s) for workflow management
+- List view:
+  - name
+  - version
+  - active status
+  - last updated
+- Detail view:
+  - workflow metadata
+  - ordered steps
+  - conditions (read-only)
+- No mutation capability
 
-**Out of Scope**
-- Any implicit guidance
-- Any mutation of task state
-
-No further work permitted under this task.
-
----
-
-### **7.4 Document Intelligence (OCR) — Foundations**
-
-OCR is treated as **deterministic extraction**, not intelligence.
-
-Subtasks must be executed **in order**.
+**Rules**
+- Admin-only access
+- No execution controls
+- No side effects
 
 ---
 
-#### **7.4a OCR Storage & Data Model (Derived-Only)**
+### **10.2 Workflow Definition Editor (Draft Mode)**
 
-**Status:** ✅ DONE
+**Status:** ⬜ TODO
 
----
-
-#### **7.4b Manual OCR Trigger**
-
-**Status:** ✅ DONE
-
-- Explicit per-attachment user action
-- Backend trigger endpoint functional
-- OCR worker invocation, derived storage, and audits complete
-- No automation or background execution
-
----
-
-#### **7.4c OCR Viewer (Read-Only, Inline)**
-
-**Status:** ✅ DONE
-
-- Inline expandable viewer under attachment
-- Read-only extracted text
-- Copy-to-clipboard
-- Clear status indicators
-
----
-
-#### **7.4d OCR → Task / Remark Apply (Explicit & Audited)**
-
-**Status:** ✅ DONE
-
-- Explicit apply actions only
-- Confirmation required
-- Before/after audit snapshots recorded
-- No interpretation or parsing
-
----
-
-#### **7.4e OCR Search Index**
-
-**Status:** ⏸️ DEFERRED (v3 Scope Lock)
-
-**Decision**
-Deferred to a future phase.
-
-**Rationale**
-- Search semantics not yet stable
-- Must align with future workflows and intelligence
-- v3 remains extraction + explicit interaction only
-
----
-
-### **7.5 Collaboration Readiness Audit (No Enablement)**
-
-**Status:** ✅ DONE
-
-**Objective**
-Verify v3 changes do not block future collaboration.
+**Objective**  
+Allow admins to create and edit workflow definitions safely.
 
 **In Scope**
-- Schema review
-- Audit expressiveness review
-- Identification of blockers only
+- Create new workflow definitions
+- Edit name and description
+- Edit ordered steps:
+  - step type
+  - assignee (role / user reference)
+- Draft state only
+- Explicit save required
+
+**Rules**
+- No execution
+- No auto-save
+- Changes are inert until activated
+- Validation errors block save
 
 ---
 
-### **7.6 Workflow Readiness Audit (No Enablement)**
+### **10.3 Workflow Versioning & Activation Controls**
 
-**Status:** ✅ DONE
+**Status:** ⬜ TODO
 
-**Objective**
-Verify v3 changes do not block future workflows.
+**Objective**  
+Allow admins to manage workflow versions and activation state.
 
 **In Scope**
-- Explicit transition validation
-- Audit sufficiency
-- No implicit assumptions
+- Explicit version increment
+- Activate / deactivate workflow versions
+- Enforce:
+  - only one active version per workflow
+- Display version history
+
+**Rules**
+- Activation is explicit
+- Deactivation does not affect existing executions
+- Full audit entries for all state changes
+
+---
+
+### **10.4 Workflow Validation & Dry-Run Preview**
+
+**Status:** ⬜ TODO
+
+**Objective**  
+Provide non-executing validation and preview tooling.
+
+**In Scope**
+- Structural validation:
+  - step ordering
+  - missing assignees
+  - unsupported step types
+- Dry-run preview:
+  - human-readable execution path
+  - condition evaluation explanation
+- No persistence of preview results
+
+**Rules**
+- No execution records created
+- No task mutation
+- No workflow execution triggered
+
+---
+
+### **10.5 Admin Audit Coverage Verification**
+
+**Status:** ⬜ TODO
+
+**Objective**  
+Ensure all admin workflow actions are auditable.
+
+**In Scope**
+- Audit entries for:
+  - create
+  - edit
+  - version
+  - activate / deactivate
+- Before/after snapshots where applicable
+- Actor attribution (admin user)
+
+**Rules**
+- Append-only audit log
+- No silent changes
 
 ---
 
@@ -235,46 +221,47 @@ Verify v3 changes do not block future workflows.
 
 ### Runtime Preconditions
 - Docker services must be running
-- OCR worker available when executing OCR tasks
+- Database migrations applied
 - If missing → **STOP**
 
 ### Forbidden
-- ❌ Web browsing
+- ❌ Workflow execution from admin UI
+- ❌ Task mutation
+- ❌ Background automation
+- ❌ Implicit validation side effects
 - ❌ Dependency changes unless specified
-- ❌ Implicit automation
-- ❌ Silent state mutation
-- ❌ Schema redesign beyond task scope
 
 ### Required Patterns
-- ✅ Explicit user actions
-- ✅ Derived data never authoritative
-- ✅ Audit-first changes
+- ✅ Explicit admin intent
+- ✅ Draft vs active separation
+- ✅ Inert definitions
+- ✅ Audit-first design
 - ✅ Page-level orchestration
-- ✅ Global toast system only
 
 ### Documentation Rules
-- executionnotes.md → append-only
+- executionnotes.md → append-only (latest at bottom)
 - codemapcc.md → structure/navigation only
 - Never mix execution notes into codemapcc.md
 
 ---
 
-## STOP CONDITION (v3)
+## STOP CONDITION (v6)
 
 Stop immediately when:
-- Tasks **7.1–7.6** are all marked ✅ DONE
+- Tasks **10.1–10.5** are all marked ✅ DONE
 - No undocumented blockers remain
 
 Do NOT proceed to:
-- collaboration
-- workflows
-- undo
+- workflow participation UI
+- execution UI
+- automation
 - intelligence
-- security refactors
+- external intake
+- collaboration
 
-without a **new plan.md for the next phase**.
+without a **new plan.md for the next phase (v7)**.
 
 ---
 
 Last Updated: 2026-01-29  
-Status: v3 Foundations — In Progress (7.3, 7.5, 7.6 remaining)
+Status: v6 Workflow Management (Admin UI) — ⬜ NOT STARTED

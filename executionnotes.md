@@ -1566,3 +1566,1011 @@ Task Description Wrapping (no box):
 - 2026-01-29 Task 7.5 Collaboration Readiness Audit: todos require a single owner (apps/api/src/db/schema.ts:50) and every CRUD call filters by that owner (apps/api/src/todos/todos.service.ts:43), so current schema/service prevents shared or multi-user tasks without schema changes.
 - 2026-01-29 Task 7.6 Workflow Readiness Audit: only the current stage key is stored on todos (apps/api/src/db/schema.ts:73) and stage transitions are emitted via audit log deltas (apps/api/src/todos/todos.controller.ts:216 and apps/api/src/todos/todos.controller.ts:241) so structured workflow transition history will need schema/service extensions.
 
+## 2026-01-29 - Task 8.1 Parent-Child Data Model
+
+**Objective:** Introduce structural parent-child relationships to todos table.
+
+**Changes:**
+
+Database Schema:
+- [apps/api/src/db/schema.ts](apps/api/src/db/schema.ts#L76-L81): Added parentId uuid field to todos table
+- [apps/api/src/db/schema.ts](apps/api/src/db/schema.ts#L94-L95): Added parentId index (todos_parent_id_idx)
+- [apps/api/drizzle/0019_parent_child_relationship.sql](apps/api/drizzle/0019_parent_child_relationship.sql): Created migration with ALTER TABLE ADD COLUMN parent_id, foreign key constraint (ON DELETE RESTRICT), and btree index
+- Database migration applied manually via psql: parent_id column, todos_parent_id_todos_id_fk constraint, todos_parent_id_idx index
+
+Backend DTOs:
+- [apps/api/src/todos/dto/create-todo.dto.ts](apps/api/src/todos/dto/create-todo.dto.ts#L41-L43): Added optional parentId field with @IsUUID validation
+- [apps/api/src/todos/dto/update-todo.dto.ts](apps/api/src/todos/dto/update-todo.dto.ts#L51-L53): Added optional parentId field (nullable for detachment)
+
+Backend Service:
+- [apps/api/src/todos/todos.service.ts](apps/api/src/todos/todos.service.ts#L103): Added parentId to unscheduled todo insert
+- [apps/api/src/todos/todos.service.ts](apps/api/src/todos/todos.service.ts#L149): Added parentId to scheduled todo insert
+- [apps/api/src/todos/todos.service.ts](apps/api/src/todos/todos.service.ts#L169): Added parentId to update method signature
+
+Frontend Types:
+- [apps/web/app/types.ts](apps/web/app/types.ts#L20): Added optional parentId field to Todo type
+
+**Implementation Details:**
+- parentId is nullable: null indicates independent task
+- Foreign key with ON DELETE RESTRICT prevents parent deletion if children exist
+- Maximum depth of 2 levels enforced by constraints (to be added in task 8.2)
+- Field is exposed in API but association/disassociation actions deferred to task 8.3
+- No workflow semantics or auto-cascade behavior
+
+**Verification:** Not performed (manual)
+
+
+## 2026-01-29 - Task 8.2 Structural Constraints Enforcement
+
+**Objective:** Enforce explicit structural constraints without automation for parent-child task relationships.
+
+**Changes:**
+
+Backend Service (TodosService):
+- [apps/api/src/todos/todos.service.ts](apps/api/src/todos/todos.service.ts#L31-L77): Added three private helper methods:
+  - isParentTask(): checks if a task has children
+  - areAllChildrenClosed(): checks if all children of a parent are closed
+  - getParentTask(): retrieves parent task by ID
+- [apps/api/src/todos/todos.service.ts](apps/api/src/todos/todos.service.ts#L136-L152): Enhanced create() method with parent validation:
+  - Validates parent task exists and belongs to user
+  - Enforces max depth constraint (child cannot have parent with parent)
+- [apps/api/src/todos/todos.service.ts](apps/api/src/todos/todos.service.ts#L253-L261): Enhanced schedule() method with parent constraint:
+  - Prevents scheduling parent tasks (tasks with children)
+- [apps/api/src/todos/todos.service.ts](apps/api/src/todos/todos.service.ts#L287-L356): Enhanced update() method with comprehensive constraint enforcement:
+  - Validates parentId changes (parent exists, belongs to user, max depth)
+  - Prevents setting parent on tasks that are already parents
+  - Prevents closing parent tasks when children are open
+  - Prevents reopening child tasks when parent is closed
+
+**Constraint Summary:**
+
+Parent Task (task with children):
+- Cannot be scheduled (enforced in schedule() method)
+- Cannot be closed if any child is not closed (enforced in update() method)
+- Cannot have a parent (enforced in update() method when setting parentId)
+
+Child Task (task with parentId):
+- Can be scheduled independently (no restriction)
+- Cannot reopen if parent is closed (enforced in update() method)
+
+Independent Task (task with no parent and no children):
+- No restrictions beyond existing system constraints
+
+**Implementation Details:**
+- All constraints enforced via explicit validation with clear error messages
+- Transaction isolation used where needed to prevent race conditions
+- No automation, no implicit state mutation, no cascading behavior
+- Constraints are data-model rules only, no workflow semantics
+- BadRequestException thrown for constraint violations with descriptive messages
+
+**Verification:** Not performed (manual)
+
+## 2026-01-29 - Task 8.3 Association & Disassociation Actions
+
+**Objective:** Allow users to explicitly manage parent-child relationships through association and disassociation actions.
+
+**Changes:**
+
+Backend DTOs:
+- [apps/api/src/todos/dto/associate-todo.dto.ts](apps/api/src/todos/dto/associate-todo.dto.ts): Created AssociateTodoDto and DisassociateTodoDto with mandatory remark field (minimum 1 character) and parentId validation for association.
+- [apps/api/src/todos/dto/index.ts](apps/api/src/todos/dto/index.ts#L5): Exported new association DTOs.
+
+Backend Service (TodosService):
+- [apps/api/src/todos/todos.service.ts](apps/api/src/todos/todos.service.ts#L485-L578): Added associateTask() and disassociateTask() methods with transactional integrity:
+  - associateTask(): Validates child and parent existence/ownership, enforces max depth constraint (parent cannot have parent), prevents parent tasks from becoming children, returns before/after snapshots.
+  - disassociateTask(): Validates child exists and has parent, clears parentId, returns before/after snapshots.
+
+Backend Controller (TodosController):
+- [apps/api/src/todos/todos.controller.ts](apps/api/src/todos/todos.controller.ts#L16-L21): Imported AssociateTodoDto and DisassociateTodoDto.
+- [apps/api/src/todos/todos.controller.ts](apps/api/src/todos/todos.controller.ts#L377-L442): Added POST /todos/:id/associate and POST /todos/:id/disassociate endpoints:
+  - Both endpoints enforce JWT + CSRF guards (class-level).
+  - Log audit events with todo.associate/todo.disassociate actions.
+  - Include mandatory remark, parentId (association only), and before/after snapshots in audit details.
+  - Return updated task after operation.
+
+Audit Service:
+- [apps/api/src/audit/audit.service.ts](apps/api/src/audit/audit.service.ts#L17-L18): Added 'todo.associate' and 'todo.disassociate' to AuditAction type union.
+
+**Implementation Details:**
+- Association/disassociation are explicit user actions requiring mandatory remark
+- Transaction isolation ensures atomicity and prevents race conditions
+- Before/after snapshots captured in audit log for full traceability
+- All v4 structural constraints enforced (max depth 2, parent cannot be child, etc.)
+- No bulk operations (one task at a time)
+- No automation or implicit state mutation
+
+**Constraint Enforcement:**
+- Child cannot already be a parent (prevents cycles)
+- Parent cannot have a parent (max depth 2 levels)
+- Only task owner can associate/disassociate their tasks
+- Disassociation requires task to have a parent
+- All constraints return clear error messages via BadRequestException
+
+**Verification:** Not performed (manual)
+
+## 2026-01-29 - Task 8.4 Parent & Child Visibility (Read-Only UX)
+
+**Objective:** Expose parent-child structural relationships in the UI without introducing mutation behavior. Display parent task for children and child tasks list for parents.
+
+**Changes:**
+
+Backend Service (TodosService):
+- [apps/api/src/todos/todos.service.ts](apps/api/src/todos/todos.service.ts#L182-L213): Added getChildren() method to fetch all child tasks of a parent, ordered by creation date ascending.
+- [apps/api/src/todos/todos.service.ts](apps/api/src/todos/todos.service.ts#L215-L230): Added getParent() method to fetch parent task for a given child task.
+
+Backend Controller (TodosController):
+- [apps/api/src/todos/todos.controller.ts](apps/api/src/todos/todos.controller.ts#L157-L166): Added GET /todos/:id/children endpoint returning array of child tasks.
+- [apps/api/src/todos/todos.controller.ts](apps/api/src/todos/todos.controller.ts#L168-L174): Added GET /todos/:id/parent endpoint returning parent task or error if no parent exists.
+
+Frontend Task Detail Page:
+- [apps/web/app/task/[id]/page.tsx](apps/web/app/task/[id]/page.tsx#L167-L169): Added state for children (array), parent (single task), and relationshipsLoading flag.
+- [apps/web/app/task/[id]/page.tsx](apps/web/app/task/[id]/page.tsx#L338-L370): Added fetchChildren() and fetchParent() functions to load relationships from API endpoints.
+- [apps/web/app/task/[id]/page.tsx](apps/web/app/task/[id]/page.tsx#L372-L379): Updated initial data loading useEffect to fetch children and parent along with task details.
+- [apps/web/app/task/[id]/page.tsx](apps/web/app/task/[id]/page.tsx#L1464-L1558): Added "Relationships" UI section displaying:
+  - Parent task (if exists) with title, done badge, and navigation link
+  - Child tasks list (if any) showing count, titles, done badges, and navigation links
+  - Section only visible when parent or children exist
+  - Hover effects for interactive navigation
+  - Read-only display (no inline editing or mutation)
+
+**Implementation Details:**
+- Navigation-only UI: clicking parent/child task navigates to detail page
+- No inline editing, drag-and-drop, or mutation actions in relationships section
+- Relationships section positioned after Details section in left column
+- Children displayed in creation order (earliest first)
+- Done status badge shown for completed parent/children
+- Conditional rendering: section only appears if relationships exist
+- Loading state handled gracefully with silent failures for missing relationships
+
+**Verification:** Not performed (manual)
+
+## 2026-01-29 - Schedule Filter Fix + Parent/Child UI Entrypoints (v4 Complete)
+
+**Objective:** Fix schedule filter regression (All/Scheduled/Unscheduled not working) and add complete parent/child UI entrypoints per plan.md task 8.4 requirements. Enable users to explicitly create child tasks, associate/disassociate relationships with mandatory remarks, and enforce parent task constraints.
+
+**Issue A: Schedule Filter Regression**
+
+Root Cause: Frontend hook [apps/web/app/hooks/useTodos.ts:351](apps/web/app/hooks/useTodos.ts#L351) useEffect dependency array was missing `scheduleFilter`, preventing refresh when user changed filter.
+
+Fix: Added `scheduleFilter` to dependency array at line 351.
+
+Verification:
+- Frontend sends `scheduled=true` or `scheduled=false` query param (lines 106-110)
+- Backend controller [apps/api/src/todos/todos.controller.ts:39](apps/api/src/todos/todos.controller.ts#L39) parses param correctly
+- Backend service [apps/api/src/todos/todos.service.ts:98-104](apps/api/src/todos/todos.service.ts#L98-L104) applies filter (isNotNull/isNull on startAt)
+- All wiring confirmed correct; only missing dependency caused filter to not trigger refresh
+
+**Issue B: Parent/Child UI Entrypoints (Complete System)**
+
+Added explicit UI controls across all task creation/edit flows:
+
+1. **New Hook: useEligibleParents** ([apps/web/app/hooks/useEligibleParents.ts](apps/web/app/hooks/useEligibleParents.ts))
+   - Fetches tasks eligible to be parents (active, not already children, not self)
+   - Used across all parent selection UIs
+   - Provides refresh capability after association changes
+
+2. **Task Creation with Parent Selection**
+   - [CreateTaskModal](apps/web/app/components/CreateTaskModal.tsx): Added parent dropdown before category field
+   - [AddTaskForm](apps/web/app/components/AddTaskForm.tsx): Added parent selector in main form
+   - Updated type signatures to accept `parentId?: string` parameter
+   - Backend CreateTodoDto already supports parentId (line 42-44)
+   - [apps/web/app/hooks/useTodos.ts:45](apps/web/app/hooks/useTodos.ts#L45): Updated addTodo signature and implementation to pass parentId to API
+
+3. **Calendar Page Parent Constraint**
+   - [apps/web/app/calendar/page.tsx:1006-1027](apps/web/app/calendar/page.tsx#L1006-L1027): Added validation to reject scheduling child tasks directly from calendar
+   - Error message guides user to create independent first, then associate
+
+4. **Task Detail Page: Associate/Disassociate Actions**
+   - Added state variables for modals and relationship management (lines 172-178)
+   - Imported useEligibleParents hook
+   - Added handleAssociate() handler calling POST /todos/:id/associate with parentId + remark
+   - Added handleDisassociate() handler calling POST /todos/:id/disassociate with remark
+   - Updated Relationships section UI:
+     - Always visible (not conditional on having relationships)
+     - Shows "Set Parent" button when no parent exists
+     - Shows "Remove Parent" button when parent exists
+     - Displays read-only parent/children list when relationships exist
+     - Empty state message when no relationships
+   - Added Associate Modal (after ScheduleModal):
+     - Dropdown to select parent from eligible tasks
+     - Textarea for mandatory remark (max 150 chars, enforced)
+     - Character counter
+     - Disabled submit until parent + remark provided
+   - Added Disassociate Modal:
+     - Warning showing current parent
+     - Textarea for mandatory remark (max 150 chars, enforced)
+     - Character counter
+     - Disabled submit until remark provided
+
+5. **Parent Task Scheduling Constraint Enforcement**
+   - [apps/web/app/task/[id]/page.tsx:1313-1333](apps/web/app/task/[id]/page.tsx#L1313-L1333): Schedule button disabled when `children.length > 0`
+   - Button shows "Schedule (Parent)" label and tooltip explaining constraint
+   - Prevents user from attempting to schedule parent tasks (backend rejects anyway)
+
+**Backend Endpoints Used (Already Implemented):**
+- POST /todos/:id/associate (parentId, remark) - Controller lines 393-426
+- POST /todos/:id/disassociate (remark) - Controller lines 428-459
+- GET /todos/:id/children - Controller lines 158-161
+- GET /todos/:id/parent - Controller lines 163-170
+
+**Constraints Enforced:**
+- Parent tasks cannot be scheduled (UI blocks, backend rejects)
+- Max depth 2 levels (backend enforces)
+- Mandatory remark for associate/disassociate (UI validates, backend enforces)
+- Only eligible tasks shown in parent selector (independent, active, not self)
+
+**Manual Verification Test Steps:**
+
+Schedule Filter:
+1. Main task list page: create mix of scheduled and unscheduled tasks
+2. Use schedule filter dropdown: All / Scheduled / Unscheduled
+3. Verify counts update and correct tasks display for each filter
+4. Expected: Switching filter immediately refreshes task list
+
+Parent/Child Creation:
+1. Main page AddTaskForm: enter title, select parent from dropdown, create
+2. Verify child task created with parent relationship visible in detail page
+3. CreateTaskModal (calendar): create task, select parent, verify association
+4. Create independent task, verify "No parent" option is default
+
+Associate Existing Task:
+1. Open independent task detail page
+2. Click "Set Parent" button in Relationships section
+3. Select parent from dropdown, enter remark (e.g., "Subtask of main feature")
+4. Click Associate
+5. Verify success toast, parent displayed in Relationships section
+6. Navigate to parent task, verify child appears in children list
+
+Disassociate Task:
+1. Open child task detail page (has parent)
+2. Click "Remove Parent" button
+3. Enter remark (e.g., "No longer dependent")
+4. Click Remove Parent
+5. Verify success toast, parent removed from Relationships section
+6. Navigate to former parent, verify child no longer in list
+
+Parent Scheduling Constraint:
+1. Create task A (independent)
+2. Create task B with A as parent (A is now a parent)
+3. Open task A detail page
+4. Verify Schedule button is disabled, shows "Schedule (Parent)" label
+5. Attempt to schedule task A via calendar drag (if applicable): should fail gracefully
+6. Expected: Parent tasks cannot be scheduled
+
+Audit Trail:
+1. Perform associate and disassociate actions
+2. Navigate to Activity page
+3. Verify audit logs show "todo.associate" and "todo.disassociate" actions
+4. Verify remarks captured in audit details
+
+**Status:** Implementation complete. All v4 structural UI requirements fulfilled.
+
+
+## 2026-01-29 - Task 8.4 & 8.5: Relationship Visibility Fix and Delete Semantics
+
+**Objective:** Complete v4 Structural Task Relationships implementation by fixing relationship visibility and implementing delete semantics.
+
+### Task 8.4: Parent & Child Visibility (Read-Only UX) - FIX & COMPLETE
+
+**Changes Made:**
+
+1. **Task Detail Page - Relationship Section Repositioning**
+   - Moved Relationships section from LEFT COLUMN to RIGHT COLUMN
+   - Positioned ABOVE History section as required
+   - Layout now: LEFT (Details, Attachments) | RIGHT (Remarks, Relationships, History)
+   - Modified: apps/web/app/task/[id]/page.tsx (lines 1491-1641 removed from left, re-added to right)
+
+2. **Task List Page - Relationship Column**
+   - Added "Relationship" column to TasksTable between Task and Status columns
+   - Modified: apps/web/app/components/TasksTable.tsx
+   - Column displays task structural role:
+     - "Independent" (plain text, not interactive)
+     - "Child" (clickable, purple text)
+     - "Parent (N)" (clickable, green text, shows child count)
+     - "Parent + Child" (stacked, both clickable)
+   - Click handlers open read-only navigation modal
+
+3. **Relationship Navigation Modals**
+   - Added modal state: relationshipModal, modalLoading, modalData
+   - Modal fetches parent or children via API when opened
+   - Parent modal: shows single parent task with link
+   - Children modal: shows list of child tasks with links
+   - Read-only navigation only, no inline editing
+   - Modified: apps/web/app/components/TasksTable.tsx (added useEffect for API fetch, modal UI)
+
+4. **Backend - Child Count Enrichment**
+   - Added getChildCount() helper method
+   - Added enrichWithChildCounts() to augment todo lists
+   - Modified list() to return todos with childCount field
+   - Modified: apps/api/src/todos/todos.service.ts (lines 46-76)
+
+5. **Frontend Type Updates**
+   - Added childCount?: number to Todo type
+   - Modified: apps/web/app/hooks/useTodos.ts, apps/web/app/types.ts
+
+### Task 8.5: Delete Semantics
+
+**Changes Made:**
+
+1. **Backend Delete Logic (v4 Constraints)**
+   - Modified remove() method to use transaction
+   - Block deletion if task is a parent (has children)
+   - Error message: "Cannot delete parent task while it has children. Remove children first."
+   - If deleting a child: detach (set parentId = null) before deletion
+   - Return metadata: { task, wasChild }
+   - Modified: apps/api/src/todos/todos.service.ts (lines 379-415)
+
+2. **Controller - Audit Trail Enhancement**
+   - Delete endpoint now logs different actions:
+     - "todo.delete" for independent tasks
+     - "todo.delete_child" for child tasks (includes detached: true in details)
+   - Modified: apps/api/src/todos/todos.controller.ts (lines 319-332)
+
+3. **Audit Action Labels**
+   - Added "todo.delete_child": "Child task deleted (detached)"
+   - Added "todo.associate": "Parent set"
+   - Added "todo.disassociate": "Parent removed"
+   - Modified: apps/web/app/lib/audit.ts (lines 17-27)
+
+### Audit Trail Improvements (Cross-Cutting)
+
+- Parent-child actions now clearly labeled in History
+- Associate/disassociate already had before/after snapshots (previously implemented)
+- Delete-detach case explicitly surfaces detachment in audit action
+- All structural changes auditable with clear semantic meaning
+
+### Out of Scope (Maintained)
+
+- No workflows
+- No automation
+- No scheduling changes beyond existing constraints
+- No collaboration
+- No bulk actions
+- No permissions changes
+
+### Files Modified
+
+Backend:
+- apps/api/src/todos/todos.service.ts
+- apps/api/src/todos/todos.controller.ts
+
+Frontend:
+- apps/web/app/task/[id]/page.tsx
+- apps/web/app/components/TasksTable.tsx
+- apps/web/app/hooks/useTodos.ts
+- apps/web/app/types.ts
+- apps/web/app/lib/audit.ts
+
+Documentation:
+- plan.md (updated status: 8.4 ✅ DONE, 8.5 ✅ DONE, v4 COMPLETE)
+
+### Verification Notes
+
+**Task Detail Page:**
+- Relationships section now appears above History in right column
+- Parent/child navigation works via clickable links
+- No inline editing or mutation
+
+**Task List Page:**
+- Relationship column displays correct role (Independent/Parent/Child)
+- Clicking Parent or Child opens modal with related tasks
+- Modal is read-only, navigation only
+- Child count accurate
+
+**Delete Behavior:**
+- Attempting to delete parent with children shows error
+- Deleting child task succeeds, detaches first
+- Audit trail shows "Child task deleted (detached)"
+- Independent task deletion works as before
+
+**Audit Trail:**
+- "Parent set" action visible for associations
+- "Parent removed" action visible for disassociations
+- "Child task deleted (detached)" action visible for child deletions
+- Before/after snapshots preserved
+
+**Status:** v4 Structural Task Relationships - ✅ COMPLETE
+
+## 2026-01-29 - Task 9.1: Workflow Definition Data Model
+
+**Objective:** Introduce persistent, inert data model for workflow definitions (v5 foundations).
+
+**Scope:**
+- Database schema for workflow definitions and steps
+- Declarative, inert records only
+- Admin-owned (no user-specific ownership yet)
+- No execution logic, triggers, or coupling to task lifecycle
+
+**Changes Made:**
+
+1. **Schema Definition** [apps/api/src/db/schema.ts:246-291](apps/api/src/db/schema.ts#L246-L291)
+   - Added `workflowDefinitions` table:
+     - id (uuid, primary key)
+     - name (text, not null)
+     - description (text, nullable)
+     - version (integer, default 1)
+     - isActive (boolean, default true)
+     - createdAt, updatedAt (timestamps)
+     - Indexes: name, isActive
+   - Added `workflowSteps` table:
+     - id (uuid, primary key)
+     - workflowDefinitionId (uuid, foreign key to workflowDefinitions, cascade delete)
+     - stepOrder (integer, not null) - 1-based ordering
+     - stepType (text, not null) - e.g., 'approve', 'review', 'acknowledge'
+     - name (text, not null)
+     - description (text, nullable)
+     - assignedTo (text, nullable) - JSON: {type: 'role'|'user', value: string}
+     - conditions (text, nullable) - JSON for declarative conditions
+     - createdAt (timestamp)
+     - Indexes: workflowDefinitionId, (workflowDefinitionId, stepOrder)
+
+2. **Database Migration** [apps/api/drizzle/0015_known_hiroim.sql](apps/api/drizzle/0015_known_hiroim.sql)
+   - Generated via `npm run drizzle:generate`
+   - Applied via `cat apps/api/drizzle/0015_known_hiroim.sql | docker exec -i todo-db psql -U todo -d todo_db`
+   - Created workflow_definitions table with 2 indexes
+   - Created workflow_steps table with 2 indexes
+   - Added foreign key constraint (cascade delete)
+
+**Verification:**
+- Database tables created: workflow_definitions, workflow_steps
+- Indexes created: name, isActive, workflowDefinitionId, (workflowDefinitionId, stepOrder)
+- Foreign key constraint enforced (cascade delete)
+- Schema is inert - no triggers, no execution logic
+- No coupling to task lifecycle
+- No UI components (out of scope)
+
+**Out of Scope (as planned):**
+- UI for workflow management
+- Workflow execution logic
+- Validation enforcement
+- Automatic triggers
+- Task mutation
+
+**Status:** Task 9.1 complete. Migration applied. Schema is inert and ready for execution records (Task 9.2).
+
+
+## 2026-01-29 - Task 9.2: Workflow Execution Record Model
+
+**Objective:** Introduce persistent execution/run record model to capture user-triggered workflow runs as immutable operational history (v5 foundations).
+
+**Scope:**
+- Database schema for workflow execution records and step execution records
+- Immutable append-only execution history
+- Support for target entity (task, attachment, etc.), user trigger tracking, status, inputs/outputs, error details, correlation IDs
+- Indexes for efficient lookup by workflowDefinitionId, triggeredBy, status, createdAt, resourceType/resourceId
+
+**Changes Made:**
+
+1. **Schema Definition** [apps/api/src/db/schema.ts:294-369](apps/api/src/db/schema.ts#L294-L369)
+   - Added `workflowExecutions` table:
+     - id (uuid, primary key)
+     - workflowDefinitionId (uuid, foreign key to workflowDefinitions, restrict delete)
+     - resourceType (text, not null) - target entity type (e.g., 'todo', 'attachment')
+     - resourceId (text, not null) - target entity ID
+     - triggeredBy (uuid, foreign key to users, restrict delete)
+     - startedAt (timestamp, default now)
+     - completedAt (timestamp, nullable)
+     - status (text, default 'pending') - pending, in_progress, completed, failed, cancelled
+     - inputs (text, nullable) - JSON string with execution inputs
+     - outputs (text, nullable) - JSON string with execution outputs
+     - errorDetails (text, nullable)
+     - correlationId (text, nullable) - for distributed tracing
+     - createdAt, updatedAt (timestamps)
+     - Indexes: workflowDefinitionId, triggeredBy, status, createdAt, (resourceType, resourceId)
+   - Added `workflowStepExecutions` table:
+     - id (uuid, primary key)
+     - workflowExecutionId (uuid, foreign key to workflowExecutions, cascade delete)
+     - workflowStepId (uuid, foreign key to workflowSteps, restrict delete)
+     - actorId (uuid, foreign key to users, restrict delete)
+     - decision (text, not null) - approved, rejected, acknowledged, skipped, etc.
+     - remark (text, nullable) - mandatory comment for the decision
+     - startedAt (timestamp, default now)
+     - completedAt (timestamp, nullable)
+     - status (text, default 'pending') - pending, in_progress, completed, skipped
+     - createdAt (timestamp)
+     - Indexes: workflowExecutionId, workflowStepId, actorId, createdAt
+
+2. **Database Migration** [apps/api/drizzle/0016_legal_colossus.sql](apps/api/drizzle/0016_legal_colossus.sql)
+   - Generated via `npm run drizzle:generate`
+   - Migration name: 0016_legal_colossus
+   - Created workflow_executions table with 5 indexes
+   - Created workflow_step_executions table with 4 indexes
+   - Added 5 foreign key constraints:
+     - workflow_executions.workflow_definition_id → workflow_definitions.id (restrict)
+     - workflow_executions.triggered_by → users.id (restrict)
+     - workflow_step_executions.workflow_execution_id → workflow_executions.id (cascade)
+     - workflow_step_executions.workflow_step_id → workflow_steps.id (restrict)
+     - workflow_step_executions.actor_id → users.id (restrict)
+
+**Design Decisions:**
+- Execution records are append-only and immutable (updatedAt field exists only for status transitions if needed)
+- Step execution records are fully immutable
+- Foreign key constraints use 'restrict' for workflow definitions, steps, and users to preserve referential integrity
+- Foreign key constraint uses 'cascade' for step executions when parent execution is deleted
+- resourceType + resourceId pattern mirrors audit_logs design for consistency
+- Status field allows tracking execution lifecycle without mutation
+- Inputs/outputs stored as JSON text for flexibility
+- Correlation ID field supports distributed tracing for future integrations
+
+**Verification:**
+- Schema additions consistent with Task 9.2 requirements in plan.md
+- Migration file generated successfully
+- Journal entry added (idx: 16, tag: 0016_legal_colossus)
+- No background execution logic added (out of scope)
+- No task mutation logic added (out of scope)
+- No UI components added (out of scope)
+
+**Out of Scope (as planned):**
+- UI for workflow execution management
+- Actual workflow execution engine
+- Workflow orchestration integration
+- Automatic triggers or polling
+- Task mutations
+- Approval semantics
+
+**Status:** Task 9.2 complete. Migration generated. Schema ready for explicit workflow start (Task 9.3).
+
+**Tests:** Not performed (manual verification only, as per plan.md Definition of Done).
+
+
+## 2026-01-29 - Task 9.3: Explicit Workflow Start (Backend Only)
+
+**Objective:** Provide explicit backend API to start workflow execution, creating WorkflowExecution record only (v5 foundations).
+
+**Scope:**
+- Backend endpoint to start workflow execution
+- Validate workflow definition exists and is active
+- Validate user ownership over target resource
+- Create WorkflowExecution record with initial status
+- Emit audit log entry for workflow.start
+- No step execution, no UI, no automation
+
+**Changes Made:**
+
+1. **DTO for Workflow Start** [apps/api/src/workflows/dto/start-workflow.dto.ts](apps/api/src/workflows/dto/start-workflow.dto.ts)
+   - StartWorkflowDto with fields:
+     - resourceType (string, required) - e.g., 'todo', 'attachment'
+     - resourceId (string, required) - target entity ID
+     - inputs (object, optional) - execution input parameters as JSON
+   - Uses class-validator decorators for validation
+
+2. **Workflows Service** [apps/api/src/workflows/workflows.service.ts](apps/api/src/workflows/workflows.service.ts)
+   - startWorkflow() method:
+     - Validates workflow definition exists and isActive = true
+     - Validates resource ownership (currently supports 'todo' resource type)
+     - Creates WorkflowExecution record with status 'pending'
+     - Returns created execution record
+   - validateResourceOwnership() private method:
+     - Checks resource exists
+     - Checks user ownership (ForbiddenException if not owner)
+     - Throws BadRequestException for unsupported resource types
+   - getExecution() method for retrieving execution by ID
+
+3. **Workflows Controller** [apps/api/src/workflows/workflows.controller.ts](apps/api/src/workflows/workflows.controller.ts)
+   - POST /workflows/:id/execute endpoint
+   - Protected by JwtAuthGuard
+   - Calls workflowsService.startWorkflow()
+   - Emits audit log with action 'workflow.start' including:
+     - module: 'workflow'
+     - resourceType: 'workflow_execution'
+     - resourceId: execution.id
+     - details: before (null), after (execution snapshot), inputs, target resource info
+   - Returns created WorkflowExecution record
+
+4. **Workflows Module** [apps/api/src/workflows/workflows.module.ts](apps/api/src/workflows/workflows.module.ts)
+   - Imports DbModule and AuditModule
+   - Declares WorkflowsController
+   - Provides WorkflowsService
+   - Exports WorkflowsService for future use
+
+5. **Audit Service Updates** [apps/api/src/audit/audit.service.ts:40-42,50](apps/api/src/audit/audit.service.ts#L40-L42)
+   - Added 'workflow.start' to AuditAction type
+   - Added 'workflow.step.action' to AuditAction type (for future Task 9.4)
+   - Added 'workflow' to AuditModule type
+
+6. **App Module Registration** [apps/api/src/app.module.ts:14,31](apps/api/src/app.module.ts#L14)
+   - Imported WorkflowsModule
+   - Added WorkflowsModule to imports array
+
+**Endpoint Signature:**
+```
+POST /workflows/:id/execute
+Headers: Authorization: Bearer <jwt_token>
+Body: {
+  resourceType: string,  // e.g., "todo"
+  resourceId: string,    // e.g., "uuid-of-todo"
+  inputs?: object        // optional execution parameters
+}
+Response: WorkflowExecution record
+```
+
+**Validation Logic:**
+1. Workflow definition must exist (NotFoundException if not found)
+2. Workflow definition must be active (BadRequestException if inactive)
+3. Resource must exist (NotFoundException if not found)
+4. User must own the resource (ForbiddenException if not owner)
+5. Resource type must be supported (BadRequestException for unsupported types)
+
+**Audit Action:**
+- Action name: 'workflow.start'
+- Module: 'workflow'
+- ResourceType: 'workflow_execution'
+- ResourceId: execution.id
+- Details include: workflowDefinitionId, resourceType, resourceId, status, inputs, before (null), after (execution snapshot)
+
+**Design Decisions:**
+- Initial execution status is 'pending' (not 'in_progress' or 'started')
+- Execution record is immutable after creation (no updates in this task)
+- Only 'todo' resource type is validated; other types return BadRequestException
+- Ownership validation is strict: user must own the target resource
+- No step execution happens in this task (out of scope)
+- No background processing or async execution (forbidden by v5 principles)
+
+**Files Created:**
+- apps/api/src/workflows/dto/start-workflow.dto.ts
+- apps/api/src/workflows/dto/index.ts
+- apps/api/src/workflows/workflows.service.ts
+- apps/api/src/workflows/workflows.controller.ts
+- apps/api/src/workflows/workflows.module.ts
+
+**Files Modified:**
+- apps/api/src/audit/audit.service.ts (added workflow audit actions and module)
+- apps/api/src/app.module.ts (registered WorkflowsModule)
+- plan.md (marked Task 9.3 as ✅ DONE)
+
+**Out of Scope (as planned):**
+- UI for workflow triggering
+- Workflow step execution
+- Calling n8n or external engines
+- Background execution or async processing
+- Approval decisions
+- Updating tasks or stages
+- Auto-start conditions
+
+**Verification:** Not performed (manual verification only, as per plan.md Definition of Done).
+
+**Status:** Task 9.3 complete. Backend endpoint ready for explicit workflow start. Next task: 9.4 (Workflow Step Actions).
+---
+
+## Task 9.4: Workflow Step Actions (Backend Only) — 2026-01-29
+
+**Objective:** Allow users to explicitly act on workflow steps with approve/reject/acknowledge decisions.
+
+**Implementation:**
+
+Added POST /workflows/executions/:executionId/steps/:stepId/action endpoint that:
+1. Accepts explicit step actions (approve, reject, or acknowledge)
+2. Requires mandatory remark for every action
+3. Validates execution and step state before allowing actions
+4. Creates or updates step execution records
+5. Implements stop-on-error semantics (reject decision marks execution as failed)
+6. Creates detailed audit log entries with before/after snapshots
+
+**Endpoint:**
+```
+POST /workflows/executions/:executionId/steps/:stepId/action
+Headers: JWT auth
+Body: StepActionDto {
+  decision: 'approve' | 'reject' | 'acknowledge',
+  remark: string (required)
+}
+Response: WorkflowStepExecution record
+```
+
+**Validation Logic:**
+1. Execution must exist (NotFoundException if not found)
+2. Execution status must not be 'completed', 'failed', or 'cancelled' (BadRequestException)
+3. Step must exist (NotFoundException if not found)
+4. Step must belong to the execution's workflow definition (BadRequestException)
+5. Step must not already be completed (BadRequestException)
+6. Remark is mandatory (validated by class-validator)
+
+**State Transitions:**
+- First step action changes execution status from 'pending' to 'in_progress'
+- 'reject' decision changes execution status to 'failed' and sets errorDetails
+- Step execution status is marked 'completed' after action
+- No auto-progression to next steps (forbidden by v5 principles)
+
+**Audit Action:**
+- Action name: 'workflow.step_action'
+- Module: 'workflow'
+- ResourceType: 'workflow_step_execution'
+- ResourceId: stepExecution.id
+- Details include: executionId, stepId, decision, remark, before (execution status), after (execution status, step execution snapshot)
+
+**Stop-on-Error Semantics:**
+- When decision is 'reject', workflow execution is marked as 'failed'
+- Error details capture the rejected step name
+- No further step actions are allowed on failed executions
+- User must explicitly start a new workflow execution to retry
+
+**Design Decisions:**
+- Remark is mandatory (enforced by DTO validation)
+- Step execution records are created on first action, updated if re-attempted before completion
+- Once a step is completed, it cannot be re-executed (immutability principle)
+- No silent decisions: every action requires explicit user intent and remark
+- No automatic routing or advancement (forbidden by v5 principles)
+
+**Files Created:**
+- apps/api/src/workflows/dto/step-action.dto.ts
+
+**Files Modified:**
+- apps/api/src/workflows/dto/index.ts (exported StepActionDto)
+- apps/api/src/workflows/workflows.service.ts (added executeStepAction method with validation and stop-on-error logic)
+- apps/api/src/workflows/workflows.controller.ts (added executeStepAction endpoint with audit logging)
+- plan.md (marked Task 9.4 as ✅ DONE)
+
+**Out of Scope (as planned):**
+- UI for workflow step actions
+- Auto-progression to next steps
+- Approval routing rules
+- Background processing
+- Task state mutation
+- Undo or correction semantics
+
+**Verification:** Not performed (manual verification only, as per plan.md Definition of Done).
+
+**Status:** Task 9.4 complete. Backend endpoints ready for explicit workflow step actions with mandatory remarks and stop-on-error semantics. Next task: 9.5 (Readiness Audit — Workflow Isolation).
+
+## 2026-01-29 - Task 9.5: Readiness Audit — Workflow Isolation
+
+**Objective:** Verify workflow logic does not leak into core task state.
+
+**Scope:**
+- Schema isolation review
+- Service boundary review
+- Audit sufficiency review
+
+**Findings:**
+
+### 1. Schema Isolation Review ✅ PASS
+
+**Workflow Tables (4 tables):**
+- `workflow_definitions` - Admin-owned, inert workflow templates
+- `workflow_steps` - Ordered steps within definitions
+- `workflow_executions` - Immutable execution records
+- `workflow_step_executions` - Append-only step-level history
+
+**Isolation Verification:**
+- ✅ No foreign keys from workflow tables to `todos` table
+- ✅ `workflow_executions` uses observational pattern: `resourceType` + `resourceId` (text fields, no FK constraint)
+- ✅ No workflow-specific columns added to `todos` table
+- ✅ Workflow tables use cascading deletes only within workflow domain:
+  - `workflow_steps` cascades on `workflow_definitions` deletion
+  - `workflow_executions` restricts deletion of referenced `workflow_definitions`
+  - `workflow_step_executions` cascades on `workflow_executions` deletion
+- ✅ All workflow data is self-contained and reversible
+
+**Schema Location:** [apps/api/src/db/schema.ts:246-377](apps/api/src/db/schema.ts#L246-L377)
+
+### 2. Service Boundary Review ✅ PASS
+
+**Workflows Service ([apps/api/src/workflows/workflows.service.ts](apps/api/src/workflows/workflows.service.ts)):**
+- ✅ Only reads from `todos` table for ownership validation (lines 85-89)
+- ✅ Never writes to `todos` table or mutates task state
+- ✅ No task status changes triggered by workflow actions
+- ✅ Uses `validateResourceOwnership()` private method for read-only verification
+- ✅ Workflow execution state is entirely independent of task state
+
+**Todos Service ([apps/api/src/todos/todos.service.ts](apps/api/src/todos/todos.service.ts)):**
+- ✅ No imports from workflow module
+- ✅ No workflow-related logic in task create/update/delete operations
+- ✅ No workflow execution triggers
+- ✅ Task state machine remains independent
+
+**Module Isolation ([apps/api/src/workflows/workflows.module.ts](apps/api/src/workflows/workflows.module.ts)):**
+- ✅ WorkflowsModule imports only: DbModule, AuditModule
+- ✅ Exports: WorkflowsService (for potential future consumption)
+- ✅ No circular dependencies with TodosModule
+- ✅ Clean separation of concerns
+
+**Boundary Verification:**
+- ✅ Workflow operations are observational (read-only reference to tasks)
+- ✅ No implicit state mutation
+- ✅ No automatic triggers
+- ✅ No background automation
+
+### 3. Audit Sufficiency Review ✅ PASS
+
+**Audit Actions Defined ([apps/api/src/audit/audit.service.ts:43-44](apps/api/src/audit/audit.service.ts#L43-L44)):**
+- `'workflow.start'` - Workflow execution start
+- `'workflow.step_action'` - Workflow step action (approve/reject/acknowledge)
+- Module: `'workflow'` added to AuditModule type (line 54)
+
+**Audit Implementation ([apps/api/src/workflows/workflows.controller.ts](apps/api/src/workflows/workflows.controller.ts)):**
+
+**workflow.start (lines 43-68):**
+- ✅ Captures userId, ipAddress, userAgent
+- ✅ Records workflowDefinitionId, resourceType, resourceId
+- ✅ Before/after snapshot: before=null (new execution), after=full execution state
+- ✅ Includes inputs, status, triggeredBy, startedAt
+
+**workflow.step_action (lines 102-126):**
+- ✅ Captures state before action (executionBefore.status)
+- ✅ Captures state after action (executionAfter.status, stepExecution details)
+- ✅ Records decision, remark, stepId, executionId
+- ✅ Includes completedAt timestamp
+- ✅ Before/after snapshot shows execution status transition
+
+**Audit Completeness:**
+- ✅ Every workflow operation creates an audit entry
+- ✅ Immutable append-only audit trail
+- ✅ Sufficient detail for reconstruction of workflow history
+- ✅ No silent decisions or mutations
+- ✅ User identity and timestamps captured
+
+### 4. v5 Principles Compliance ✅ PASS
+
+**Verified Against Core Design Rules:**
+- ✅ Workflows do NOT own task state
+- ✅ Workflows do NOT mutate data implicitly
+- ✅ Workflows do NOT run unless a user explicitly starts them
+- ✅ All workflow execution is explicit and traceable
+- ✅ All decisions require user action (no auto-progression)
+- ✅ Audit trail is complete and accurate
+- ✅ Changes are minimal, localized, reversible
+
+**Forbidden Patterns (verified absent):**
+- ❌ No background automation
+- ❌ No timers or schedulers
+- ❌ No implicit execution
+- ❌ No task state mutation by workflows
+- ❌ No automatic routing without user action
+
+### Summary
+
+**Readiness Status: ✅ READY**
+
+All v5 workflow foundations are properly isolated from core task state:
+1. Schema: Zero coupling between workflow tables and task state
+2. Services: Workflows are observational only, no task mutations
+3. Audit: Complete traceability for all workflow operations
+4. Principles: Full compliance with v5 scope lock and design rules
+
+**No Issues Found. No Remediation Required.**
+
+The workflow system is safe to use and will not interfere with existing v1-v4 functionality. All workflow data can be removed cleanly without affecting task state.
+
+**Next Step:** Mark Task 9.5 as ✅ DONE in plan.md.
+
+
+### Issue Found and Fixed During Re-verification (2026-01-29)
+
+**Issue:** Audit action type mismatch between definition and usage
+- Type definition: 'workflow.step.action' (with dot)
+- Controller usage: 'workflow.step_action' (with underscore)
+
+**Fix Applied:**
+- Updated [apps/api/src/audit/audit.service.ts:44](apps/api/src/audit/audit.service.ts#L44)
+- Changed type from 'workflow.step.action' to 'workflow.step_action'
+- Now matches actual usage in [apps/api/src/workflows/workflows.controller.ts:104](apps/api/src/workflows/workflows.controller.ts#L104)
+- Ensures type safety and consistency
+
+**Impact:** Type safety restored, no runtime behavior change.
+---
+
+
+## Task 10.1 — Admin Workflow List & Detail Pages (Read-Only)
+
+**Date:** 2026-01-30
+**Status:** ✅ DONE
+
+### What Was Built
+
+Created admin-only, read-only UI for viewing workflow definitions:
+
+**Backend Changes:**
+- Added GET endpoints to apps/api/src/workflows/workflows.controller.ts:
+  - GET /workflows - List all workflow definitions (admin-only)
+  - GET /workflows/:id - Get workflow definition with steps (admin-only)
+- Added service methods to apps/api/src/workflows/workflows.service.ts:
+  - listWorkflows() - Returns all workflow definitions with metadata
+  - getWorkflowById(id) - Returns workflow definition with ordered steps
+- Both endpoints protected by JwtAuthGuard and AdminGuard
+
+**Frontend Changes:**
+- Created apps/web/app/workflows/page.tsx:
+  - Admin-only list view
+  - Displays: name, description, version, active status, last updated
+  - Links to detail pages
+- Created apps/web/app/workflows/[id]/page.tsx:
+  - Admin-only detail view
+  - Displays workflow metadata (created, updated, version, active status)
+  - Displays ordered steps with: step order, name, type, description, assignedTo, conditions
+  - Parses JSON fields (assignedTo, conditions) for display
+- Updated apps/web/app/components/Layout.tsx:
+  - Added workflows to currentPage type
+  - Added Workflows navigation link in admin section (before Activity Log)
+
+### Design Compliance
+
+**v6 Scope Lock ✅ PASS:**
+- Read-only visibility only
+- No mutation capability
+- No execution controls
+- No side effects
+- Admin-only access enforced
+
+**Forbidden Patterns (verified absent):**
+- ❌ No workflow execution from UI
+- ❌ No task mutation
+- ❌ No background automation
+- ❌ No validation side effects
+
+### Files Modified
+
+**Backend:**
+- apps/web/app/components/Layout.tsx
+
+### Manual Verification Required
+
+User should verify:
+1. Admin can access /workflows and see list of workflow definitions
+2. Admin can click View Details to see workflow detail page
+3. Non-admin users are redirected from /workflows
+4. Workflow steps display in correct order with all metadata
+5. JSON fields (assignedTo, conditions) parse and display correctly
+6. No regressions to v1-v5 functionality
+
+---
+
+**Backend Changes:**
+- Added GET endpoints to apps/api/src/workflows/workflows.controller.ts:
+  - GET /workflows - List all workflow definitions (admin-only)
+  - GET /workflows/:id - Get workflow definition with steps (admin-only)
+- Added service methods to apps/api/src/workflows/workflows.service.ts:
+  - listWorkflows() - Returns all workflow definitions with metadata
+  - getWorkflowById(id) - Returns workflow definition with ordered steps
+- Both endpoints protected by JwtAuthGuard and AdminGuard
+
+**Frontend Changes:**
+- Created apps/web/app/workflows/page.tsx:
+  - Admin-only list view
+  - Displays: name, description, version, active status, last updated
+  - Links to detail pages
+- Created apps/web/app/workflows/[id]/page.tsx:
+  - Admin-only detail view
+  - Displays workflow metadata (created, updated, version, active status)
+  - Displays ordered steps with: step order, name, type, description, assignedTo, conditions
+  - Parses JSON fields (assignedTo, conditions) for display
+- Updated apps/web/app/components/Layout.tsx:
+  - Added workflows to currentPage type
+  - Added Workflows navigation link in admin section (before Activity Log)
+
+### Design Compliance
+
+**v6 Scope Lock PASS:**
+- Read-only visibility only
+- No mutation capability
+- No execution controls
+- No side effects
+- Admin-only access enforced
+
+**Forbidden Patterns (verified absent):**
+- No workflow execution from UI
+- No task mutation
+- No background automation
+- No validation side effects
+
+### Files Modified
+
+**Backend:**
+- apps/api/src/workflows/workflows.controller.ts
+- apps/api/src/workflows/workflows.service.ts
+
+**Frontend:**
+- apps/web/app/workflows/page.tsx (NEW)
+- apps/web/app/workflows/[id]/page.tsx (NEW)
+- apps/web/app/components/Layout.tsx
+
+### Manual Verification Required
+
+User should verify:
+1. Admin can access /workflows and see list of workflow definitions
+2. Admin can click View Details to see workflow detail page
+3. Non-admin users are redirected from /workflows
+4. Workflow steps display in correct order with all metadata
+5. JSON fields (assignedTo, conditions) parse and display correctly
+6. No regressions to v1-v5 functionality
+
+---

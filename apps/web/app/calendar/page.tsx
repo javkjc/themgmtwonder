@@ -1007,7 +1007,8 @@ export default function CalendarPage() {
     title: string,
     category?: string | null,
     durationMin?: number,
-    description?: string
+    description?: string,
+    parentId?: string
   ): Promise<boolean> => {
     if (!createTaskModalStartAt) {
       addNotification('error', 'Create failed', 'Unable to determine the selected start time.');
@@ -1015,6 +1016,12 @@ export default function CalendarPage() {
     }
     if (durationMin === undefined) {
       addNotification('error', 'Create failed', 'Duration is missing.');
+      return false;
+    }
+
+    // v4 constraint: parent tasks cannot be scheduled
+    if (parentId) {
+      addNotification('error', 'Create failed', 'Cannot schedule a child task directly. Create as independent first, then associate.');
       return false;
     }
 

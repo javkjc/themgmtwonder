@@ -27,6 +27,86 @@ import { TaskStageKey } from '../common/constants';
 export class TodosService {
   constructor(private readonly dbs: DbService) {}
 
+  /**
+   * Check if a task is a parent (has children)
+   */
+  private async isParentTask(
+    todoId: string,
+    txDb?: typeof this.dbs.db,
+  ): Promise<boolean> {
+    const db = txDb ?? this.dbs.db;
+    const children = await db
+      .select()
+      .from(todos)
+      .where(eq(todos.parentId, todoId))
+      .limit(1);
+    return children.length > 0;
+  }
+
+  /**
+   * Get child count for a task
+   */
+  private async getChildCount(
+    todoId: string,
+    txDb?: typeof this.dbs.db,
+  ): Promise<number> {
+    const db = txDb ?? this.dbs.db;
+    const children = await db
+      .select()
+      .from(todos)
+      .where(eq(todos.parentId, todoId));
+    return children.length;
+  }
+
+  /**
+   * Enrich todos with child counts
+   */
+  private async enrichWithChildCounts(
+    todoList: any[],
+    txDb?: typeof this.dbs.db,
+  ) {
+    const db = txDb ?? this.dbs.db;
+    const enriched = await Promise.all(
+      todoList.map(async (todo) => {
+        const childCount = await this.getChildCount(todo.id, db);
+        return { ...todo, childCount };
+      }),
+    );
+    return enriched;
+  }
+
+  /**
+   * Check if all children of a parent task are closed
+   */
+  private async areAllChildrenClosed(
+    parentId: string,
+    txDb?: typeof this.dbs.db,
+  ): Promise<boolean> {
+    const db = txDb ?? this.dbs.db;
+    const openChildren = await db
+      .select()
+      .from(todos)
+      .where(and(eq(todos.parentId, parentId), eq(todos.done, false)))
+      .limit(1);
+    return openChildren.length === 0;
+  }
+
+  /**
+   * Get parent task if it exists
+   */
+  private async getParentTask(
+    parentId: string | null | undefined,
+    txDb?: typeof this.dbs.db,
+  ) {
+    if (!parentId) return null;
+    const db = txDb ?? this.dbs.db;
+    const [parent] = await db
+      .select()
+      .from(todos)
+      .where(eq(todos.id, parentId));
+    return parent ?? null;
+  }
+
   async list(
     userId: string,
     opts?: {
@@ -77,15 +157,34 @@ export class TodosService {
     const orderExpr =
       sortDir === 'asc' ? asc(todos.createdAt) : desc(todos.createdAt);
 
-    return this.dbs.db
+    const todoList = await this.dbs.db
       .select()
       .from(todos)
       .where(and(...conditions))
       .orderBy(orderExpr)
       .limit(limit);
+
+    return this.enrichWithChildCounts(todoList);
   }
 
   async create(userId: string, dto: CreateTodoDto) {
+    // v4 constraint: validate parentId if provided
+    if (dto.parentId) {
+      const parent = await this.getParentTask(dto.parentId);
+      if (!parent) {
+        throw new BadRequestException('Parent task not found');
+      }
+      if (parent.userId !== userId) {
+        throw new BadRequestException('Parent task does not belong to user');
+      }
+      // v4 constraint: child cannot have a parent that already has a parent (max depth 2)
+      if (parent.parentId) {
+        throw new BadRequestException(
+          'Cannot create child of child task (max depth: 2 levels)',
+        );
+      }
+    }
+
     // If scheduling fields provided, validate and check overlap
     if (dto.startAt && dto.durationMin) {
       return this.createScheduled(userId, dto);
@@ -100,6 +199,7 @@ export class TodosService {
         description: dto.description,
         category: dto.category,
         durationMin: dto.durationMin,
+        parentId: dto.parentId,
       })
       .returning();
     return row;
@@ -111,6 +211,39 @@ export class TodosService {
       .from(todos)
       .where(and(eq(todos.id, todoId), eq(todos.userId, userId)));
     return row ?? null;
+  }
+
+  /**
+   * Get children of a parent task (v4 visibility)
+   */
+  async getChildren(userId: string, parentId: string) {
+    const children = await this.dbs.db
+      .select()
+      .from(todos)
+      .where(and(eq(todos.parentId, parentId), eq(todos.userId, userId)))
+      .orderBy(asc(todos.createdAt));
+    return children;
+  }
+
+  /**
+   * Get parent of a child task (v4 visibility)
+   */
+  async getParent(userId: string, childId: string) {
+    const [child] = await this.dbs.db
+      .select()
+      .from(todos)
+      .where(and(eq(todos.id, childId), eq(todos.userId, userId)));
+
+    if (!child || !child.parentId) {
+      return null;
+    }
+
+    const [parent] = await this.dbs.db
+      .select()
+      .from(todos)
+      .where(and(eq(todos.id, child.parentId), eq(todos.userId, userId)));
+
+    return parent ?? null;
   }
 
   private async createScheduled(userId: string, dto: CreateTodoDto) {
@@ -146,6 +279,7 @@ export class TodosService {
           startAt: startAt,
           durationMin: dto.durationMin,
           category: dto.category,
+          parentId: dto.parentId,
         })
         .returning();
 
@@ -164,24 +298,122 @@ export class TodosService {
       durationMin: number;
       isPinned: boolean;
       stageKey: TaskStageKey | null;
+      parentId: string | null;
     }>,
   ) {
-    const [row] = await this.dbs.db
-      .update(todos)
-      .set({ ...patch, updatedAt: new Date(), durationMin: patch.durationMin })
-      .where(and(eq(todos.id, todoId), eq(todos.userId, userId)))
-      .returning();
+    return this.dbs.tx(async (txDb) => {
+      // Get current task state
+      const [currentTask] = await txDb
+        .select()
+        .from(todos)
+        .where(and(eq(todos.id, todoId), eq(todos.userId, userId)))
+        .for('update');
 
-    return row ?? null;
+      if (!currentTask) {
+        return null;
+      }
+
+      // v4 constraint: validate parentId change if provided
+      if (patch.parentId !== undefined && patch.parentId !== null) {
+        const parent = await this.getParentTask(patch.parentId, txDb);
+        if (!parent) {
+          throw new BadRequestException('Parent task not found');
+        }
+        if (parent.userId !== userId) {
+          throw new BadRequestException('Parent task does not belong to user');
+        }
+        // v4 constraint: child cannot have a parent that already has a parent (max depth 2)
+        if (parent.parentId) {
+          throw new BadRequestException(
+            'Cannot attach to child task (max depth: 2 levels)',
+          );
+        }
+        // v4 constraint: cannot set parent on a task that is already a parent
+        const isParent = await this.isParentTask(todoId, txDb);
+        if (isParent) {
+          throw new BadRequestException(
+            'Cannot set parent on a parent task (parent tasks cannot have parents)',
+          );
+        }
+      }
+
+      // v4 constraint: check done status change
+      if (patch.done !== undefined && patch.done !== currentTask.done) {
+        // Closing a parent task
+        if (patch.done === true) {
+          const isParent = await this.isParentTask(todoId, txDb);
+          if (isParent) {
+            const allChildrenClosed = await this.areAllChildrenClosed(
+              todoId,
+              txDb,
+            );
+            if (!allChildrenClosed) {
+              throw new BadRequestException(
+                'Cannot close parent task while children are open',
+              );
+            }
+          }
+        }
+
+        // Reopening a child task
+        if (patch.done === false && currentTask.parentId) {
+          const parent = await this.getParentTask(currentTask.parentId, txDb);
+          if (parent && parent.done) {
+            throw new BadRequestException(
+              'Cannot reopen child task while parent is closed',
+            );
+          }
+        }
+      }
+
+      const [row] = await txDb
+        .update(todos)
+        .set({ ...patch, updatedAt: new Date(), durationMin: patch.durationMin })
+        .where(eq(todos.id, todoId))
+        .returning();
+
+      return row ?? null;
+    });
   }
 
   async remove(userId: string, todoId: string) {
-    const [row] = await this.dbs.db
-      .delete(todos)
-      .where(and(eq(todos.id, todoId), eq(todos.userId, userId)))
-      .returning();
+    return this.dbs.tx(async (txDb) => {
+      // Get the task to check ownership and relationships
+      const [task] = await txDb
+        .select()
+        .from(todos)
+        .where(and(eq(todos.id, todoId), eq(todos.userId, userId)));
 
-    return row ?? null;
+      if (!task) {
+        throw new NotFoundException('Task not found');
+      }
+
+      // v4 constraint: Block deletion if parent has children
+      const isParent = await this.isParentTask(todoId, txDb);
+      if (isParent) {
+        throw new BadRequestException(
+          'Cannot delete parent task while it has children. Remove children first.',
+        );
+      }
+
+      // v4 behavior: If deleting a child, it detaches (parentId cleared) before deletion
+      // This ensures audit trail shows detachment, though task is ultimately deleted
+      const wasChild = !!task.parentId;
+      if (task.parentId) {
+        await txDb
+          .update(todos)
+          .set({ parentId: null })
+          .where(eq(todos.id, todoId));
+      }
+
+      // Delete the task
+      const [row] = await txDb
+        .delete(todos)
+        .where(and(eq(todos.id, todoId), eq(todos.userId, userId)))
+        .returning();
+
+      return { task: row ?? null, wasChild };
+    });
   }
 
   async schedule(userId: string, todoId: string, dto: ScheduleTodoDto) {
@@ -202,6 +434,16 @@ export class TodosService {
 
       if (!todo) {
         throw new NotFoundException('Todo not found');
+      }
+
+      // v4 constraint: parent tasks cannot be scheduled
+      if (startAt !== null) {
+        const isParent = await this.isParentTask(todoId, txDb);
+        if (isParent) {
+          throw new BadRequestException(
+            'Cannot schedule parent task (parent tasks cannot be scheduled)',
+          );
+        }
       }
 
       // If unscheduling, clear startAt only (preserve durationMin) and set unscheduledAt
@@ -335,5 +577,96 @@ export class TodosService {
       )
       .orderBy(desc(todos.unscheduledAt))
       .limit(Math.min(limit, 50));
+  }
+
+  /**
+   * Associate a child task with a parent task.
+   * Returns both before and after snapshots for audit logging.
+   */
+  async associateTask(userId: string, childId: string, parentId: string) {
+    return this.dbs.tx(async (txDb) => {
+      // Get child task (must exist and belong to user)
+      const [child] = await txDb
+        .select()
+        .from(todos)
+        .where(and(eq(todos.id, childId), eq(todos.userId, userId)))
+        .for('update');
+
+      if (!child) {
+        throw new NotFoundException('Child task not found');
+      }
+
+      // Get parent task (must exist and belong to user)
+      const parent = await this.getParentTask(parentId, txDb);
+      if (!parent) {
+        throw new BadRequestException('Parent task not found');
+      }
+      if (parent.userId !== userId) {
+        throw new BadRequestException('Parent task does not belong to user');
+      }
+
+      // v4 constraint: child cannot already be a parent
+      const childIsParent = await this.isParentTask(childId, txDb);
+      if (childIsParent) {
+        throw new BadRequestException(
+          'Cannot attach a parent task as child (convert children first)',
+        );
+      }
+
+      // v4 constraint: parent cannot have a parent (max depth 2)
+      if (parent.parentId) {
+        throw new BadRequestException(
+          'Parent task is already a child (max depth: 2 levels)',
+        );
+      }
+
+      // Capture before state
+      const before = { ...child };
+
+      // Update child to set parentId
+      const [after] = await txDb
+        .update(todos)
+        .set({ parentId })
+        .where(eq(todos.id, childId))
+        .returning();
+
+      return { before, after };
+    });
+  }
+
+  /**
+   * Disassociate a child task from its parent.
+   * Returns both before and after snapshots for audit logging.
+   */
+  async disassociateTask(userId: string, childId: string) {
+    return this.dbs.tx(async (txDb) => {
+      // Get child task (must exist and belong to user)
+      const [child] = await txDb
+        .select()
+        .from(todos)
+        .where(and(eq(todos.id, childId), eq(todos.userId, userId)))
+        .for('update');
+
+      if (!child) {
+        throw new NotFoundException('Task not found');
+      }
+
+      // v4 constraint: must have a parent to disassociate
+      if (!child.parentId) {
+        throw new BadRequestException('Task has no parent to disassociate from');
+      }
+
+      // Capture before state
+      const before = { ...child };
+
+      // Update child to clear parentId
+      const [after] = await txDb
+        .update(todos)
+        .set({ parentId: null })
+        .where(eq(todos.id, childId))
+        .returning();
+
+      return { before, after };
+    });
   }
 }

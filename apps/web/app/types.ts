@@ -17,4 +17,6 @@ export type Todo = {
   category?: string | null;
   stageKey?: string | null;
   isPinned?: boolean;
+  parentId?: string | null;
+  childCount?: number;
 };

@@ -3,6 +3,7 @@ import {
   IsISO8601,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -36,4 +37,9 @@ export class CreateTodoDto {
   @Min(1)
   @Max(10000)
   durationMin?: number;
+
+  // ✅ v4 parent-child relationship (optional)
+  @IsOptional()
+  @IsUUID()
+  parentId?: string;
 }

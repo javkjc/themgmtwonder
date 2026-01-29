@@ -215,9 +215,10 @@ export default function Home() {
     title: string,
     category?: string,
     durationMin?: number,
-    description?: string
+    description?: string,
+    parentId?: string
   ) => {
-    const success = await todos.addTodo(title, category, durationMin, description);
+    const success = await todos.addTodo(title, category, durationMin, description, parentId);
     if (success) {
       addNotification('success', 'Task created', 'The task has been added successfully.', title);
     }

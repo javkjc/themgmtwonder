@@ -3,12 +3,13 @@
 import { useEffect, useState } from 'react';
 import { useCategories } from '../hooks/useCategories';
 import { useDurationSettings } from '../hooks/useDurationSettings';
+import { useEligibleParents } from '../hooks/useEligibleParents';
 import { DURATION_PRESETS } from '../lib/constants';
 
 type CreateTaskModalProps = {
   isOpen: boolean;
   onClose: () => void;
-  onCreate: (title: string, category?: string, durationMin?: number, description?: string) => Promise<boolean>;
+  onCreate: (title: string, category?: string, durationMin?: number, description?: string, parentId?: string) => Promise<boolean>;
   userId: string | null;
 };
 
@@ -16,10 +17,12 @@ export default function CreateTaskModal({ isOpen, onClose, onCreate, userId }: C
   const { minDurationMin, maxDurationMin, defaultDurationMin } = useDurationSettings();
   const { getCategoryNames } = useCategories(userId);
   const categoryNames = getCategoryNames();
+  const { eligibleParents } = useEligibleParents(userId);
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
+  const [parentId, setParentId] = useState('');
   const [durationMinInput, setDurationMinInput] = useState(String(defaultDurationMin));
   const [durationFeedback, setDurationFeedback] = useState('');
   const [error, setError] = useState('');
@@ -30,6 +33,7 @@ export default function CreateTaskModal({ isOpen, onClose, onCreate, userId }: C
       setTitle('');
       setDescription('');
       setCategory('');
+      setParentId('');
       setDurationMinInput(String(defaultDurationMin));
       setDurationFeedback('');
       setError('');
@@ -69,13 +73,14 @@ export default function CreateTaskModal({ isOpen, onClose, onCreate, userId }: C
     }
 
     setSaving(true);
-    const success = await onCreate(trimmedTitle, category || undefined, clampedDuration, description.trim() || undefined);
+    const success = await onCreate(trimmedTitle, category || undefined, clampedDuration, description.trim() || undefined, parentId || undefined);
     setSaving(false);
 
     if (success) {
       setTitle('');
       setDescription('');
       setCategory('');
+      setParentId('');
       setDurationMinInput(String(defaultDurationMin));
       setDurationFeedback('');
       setError('');
@@ -263,6 +268,33 @@ export default function CreateTaskModal({ isOpen, onClose, onCreate, userId }: C
                 {durationFeedback}
               </div>
             )}
+          </div>
+
+          <div>
+            <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 13, color: '#475569' }}>
+              Parent Task (Optional)
+            </label>
+            <select
+              value={parentId}
+              onChange={(e) => setParentId(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                borderRadius: 8,
+                border: '1px solid #e2e8f0',
+                fontSize: 14,
+                outline: 'none',
+                color: parentId ? '#0f172a' : '#94a3b8',
+              }}
+            >
+              <option value="">Independent task (no parent)</option>
+              {eligibleParents.map((parent) => (
+                <option key={parent.id} value={parent.id}>{parent.title}</option>
+              ))}
+            </select>
+            <div style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>
+              Create this as a child of an existing task
+            </div>
           </div>
 
           <div>

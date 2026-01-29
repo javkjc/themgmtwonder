@@ -17,404 +17,353 @@ All features below preserve the following **non-negotiable invariants**:
 
 ---
 
-## 1. Product Overview
+## v1–v2 — Core Task & Calendar System (Complete)
 
-A task-, calendar-, and signal-aware work management system designed to unify:
+### Purpose
+Establish a correct, auditable single-user task and calendar system.
 
-- Human-entered work (tasks, remarks, schedules)
-- Machine-generated signals (documents, sensors, devices)
-- Explicit orchestration without automation
-- Audit-first operational correctness
+### Capabilities
+- Task CRUD as authoritative work unit
+- Calendar as derived scheduling view
+- Explicit schedule / reschedule / unschedule
+- Attachments and remarks
+- Full audit logging
+- Ownership & permission enforcement
 
-Core philosophy:
-- Tasks are the single source of truth
-- Calendar is a derived, disposable view
-- External inputs (OCR, sensors, messages) are **observational**
-- The system helps users **understand before acting**
-- The system never acts without explicit user choice
-
----
-
-## 2. Core System Capabilities
-
-### 2.1 Task & Calendar Foundations
-
-**Capabilities**
-- Task CRUD as the authoritative work unit
-- Calendar as a derived view of scheduled tasks
-- Explicit scheduling, rescheduling, and unscheduling
-- No calendar-owned state
-
-**Rules**
-- Calendar mutations always originate from task changes
-- No implicit scheduling
-- Conflicts are rejected explicitly
-
----
-
-### 2.2 Attachments, Remarks & Audit
-
-**Capabilities**
-- File attachments linked to tasks
-- Append-only remarks
-- Full audit log with before/after snapshots
-- Ownership and permission enforcement
-
-**Rules**
+### Execution Boundaries
+- Explicit user actions only
+- No automation
 - No background processing
-- No implicit content mutation
-- Derived data never overwrites user input
+
+### Status
+✅ Complete
 
 ---
 
-## 3. Task State Foundations
+## v3 — Task State & Document Intelligence Foundations (Complete)
 
-### 3.1 Explicit Task Stages
+### Purpose
+Introduce **foundational primitives** required for future workflows and intelligence **without enabling them**.
+
+---
+
+### v3.1 Explicit Task Stages
 
 **Capabilities**
-- Tasks have a single explicit stage
-- Stage changes require explicit user action
-- Stage transitions are fully audited
-- Stable, system-defined stage keys
+- Single explicit stage per task
+- Stage changes require confirmation
+- Stage transitions fully audited
+- Stable system-defined stage keys
 
-**Rules**
-- Stages are status, not workflows
-- No enforced order
+**Execution Boundaries**
+- Backend + UI
+- No workflows
 - No automation
 
+**Status**
+✅ Complete
+
 ---
 
-### 3.2 Stage-Aware Context
+### v3.2 Stage-Aware Context
 
 **Capabilities**
 - Remarks capture stage-at-creation
 - Attachments capture stage-at-creation
-- Informational badges only
+- Informational only
 
-**Rules**
-- No retroactive mutation
-- No cascade effects
-
----
-
-## 4. Document Intelligence — OCR (Deterministic Extraction)
-
-### Purpose
-Enable deterministic text extraction to support user understanding, **not intelligence or automation**.
+**Status**
+✅ Complete
 
 ---
 
-### 4.1 OCR Foundations
+### v3.3 Derived Task Views
+
+**Capabilities**
+- Derived, read-only task lists
+- Scheduled / unscheduled filtering
+- Calendar unscheduled panels
+
+**Execution Boundaries**
+- UI-only derivation
+- No state mutation
+
+**Status**
+✅ Complete
+
+---
+
+### v3.4 Document Intelligence — OCR (Deterministic)
 
 **Capabilities**
 - Derived OCR storage per attachment
-- Immutable OCR outputs (re-runs create new rows)
-- Status tracking:
-  - Ready
-  - In Progress
-  - Complete
-  - Failed
-- Local OCR worker runs as a separate container
-- Supports image and PDF OCR through the same `/ocr` contract
+- Image + PDF OCR
+- Explicit user-triggered execution
+- Read-only viewer
+- Explicit apply to remark / description
+- Full audit trail
 
-**Rules**
-- OCR is inert observational data
-- OCR outputs never become authoritative
-- No shared filesystem assumptions between API and worker (byte-stream based)
-
----
-
-### 4.2 Manual OCR Trigger
-
-**Capabilities**
-- Explicit “Retrieve OCR text” action per attachment
-- User-triggered only
-- Fully audited (request / success / failure)
-
-**Rules**
-- No automatic OCR on upload
-- No background retries
-- No silent execution
-
----
-
-### 4.3 OCR Viewer (Read-Only)
-
-**Capabilities**
-- Inline expandable viewer under attachment
-- Read-only extracted text
-- Copy-to-clipboard
-- Clear status indicators (single source of truth, no duplicate badges)
-
-**Rules**
-- Viewer never mutates task state
-- Viewer does not re-run OCR unless explicitly triggered
-
----
-
-### 4.4 Explicit OCR Apply Actions
-
-**Capabilities**
-- User may explicitly:
-  - Add OCR text as a remark
-  - Append OCR text to task description
-- Confirmation required
-- Before/after audit snapshots recorded
-
-**Rules**
-- No auto-apply
+**Execution Boundaries**
+- Backend + UI
+- No auto OCR
 - No interpretation
-- No field extraction
+- No search coupling
+
+**Status**
+✅ Complete
 
 ---
 
-### 4.5 OCR Search Participation (Deferred)
-
-OCR-derived text **may** participate in search in a future phase.
-This is explicitly deferred until search semantics are stable.
-
----
-
-## 5. Derived Task Views (UX Clarity)
-
-**Capabilities**
-- Derived, read-only task views (e.g. unscheduled lists)
-- User-controlled filtering
-- No prioritization logic
-
-**Rules**
-- No highlighting
-- No auto-focus
-- No implicit guidance
-
----
-
-## 6. Structural Task Relationships (Parent–Child)
+## v4 — Structural Task Relationships (Parent / Child) (Complete)
 
 ### Purpose
-Enable structured grouping without workflows or automation.
+Enable **structural grouping** of tasks without workflows or automation.
 
 ---
 
-### 6.1 Parent–Child Model
-
-**Rules**
-- A task may be:
-  - Independent
-  - Parent
-  - Child
-- Maximum depth: 2 levels
-- No child-of-child
-
----
-
-### 6.2 Constraints
-
-**Parent Task**
-- Cannot be scheduled
-- Cannot be closed if any child is open
-- Cannot have a parent
-
-**Child Task**
-- Can be scheduled independently
-- Cannot reopen if parent is closed
-
----
-
-### 6.3 Association & Disassociation
+### v4.1 Parent–Child Data Model
 
 **Capabilities**
-- Convert independent task into parent
-- Attach task as child
-- Detach child back to independent
+- Independent / Parent / Child roles
+- Max depth: 2 levels
+- One parent per child
 
-**Rules**
-- Explicit user action
+**Execution Boundaries**
+- Backend schema + constraints only
+
+**Status**
+✅ Complete
+
+---
+
+### v4.2 Structural Constraints
+
+**Capabilities**
+- Parent cannot be scheduled
+- Parent cannot close with open children
+- Child cannot reopen if parent is closed
+
+**Status**
+✅ Complete
+
+---
+
+### v4.3 Association & Disassociation
+
+**Capabilities**
+- Explicit attach / detach
 - Mandatory remark
-- Fully audited
+- Before/after audit snapshots
+
+**Status**
+✅ Complete
 
 ---
 
-## 7. External Intake (Explicit Only)
-
-### 7.1 Telegram Intake
+### v4.4 Read-Only Relationship Visibility
 
 **Capabilities**
-- Accept images and text via bot
-- Store as attachments
-- OCR may be triggered explicitly later
-- Suggested actions are non-binding and require explicit confirmation
+- Relationship section in task detail
+- Parent / children navigation
+- Relationship column in task list
+- Read-only modals
 
-**Rules**
-- Telegram is capture-only
+**Status**
+✅ Complete
+
+---
+
+### v4.5 Delete Semantics
+
+**Capabilities**
+- Parent deletion blocked if children exist
+- Child deletion detaches before delete
+- Explicit audit entries
+
+**Status**
+✅ Complete
+
+---
+
+## v5 — Workflow Foundations (Backend Only) (Complete)
+
+### Purpose
+Introduce **inert workflow primitives** without execution automation or UI.
+
+---
+
+### v5.1 Workflow Definitions (Data Model)
+
+**Capabilities**
+- Workflow definitions
+- Versioned, admin-owned
+- Declarative steps and conditions
+- No execution logic
+
+**Execution Boundaries**
+- Backend only
+- Inert data
+
+**Status**
+✅ Complete
+
+---
+
+### v5.2 Workflow Execution Records
+
+**Capabilities**
+- Workflow execution records
+- Step execution history
+- Status tracking
+- Target via resourceType/resourceId
+
+**Status**
+✅ Complete
+
+---
+
+### v5.3 Explicit Workflow Start
+
+**Capabilities**
+- User-triggered workflow start
+- Ownership validation
+- Audit logging
+
+**Status**
+✅ Complete
+
+---
+
+### v5.4 Workflow Step Actions
+
+**Capabilities**
+- Explicit approve / reject / acknowledge
+- Mandatory remark
+- Stop-on-error semantics
+- No auto-progression
+
+**Status**
+✅ Complete
+
+---
+
+### v5.5 Workflow Isolation Audit
+
+**Capabilities**
+- No coupling to tasks
+- No service cross-dependencies
+- Audit sufficiency verified
+
+**Status**
+✅ Complete
+
+---
+
+## v6 — Workflow Management (Admin UI) (Planned)
+
+### Purpose
+Allow **admins to define and manage workflows**.
+
+---
+
+### v6.1 Workflow Definition Management
+
+**Capabilities**
+- Admin UI to create/edit workflows
+- Step ordering
+- Conditional routing rules
+- Versioning and activation
+
+**Execution Boundaries**
+- Admin-only UI
+- No execution
+- No task mutation
+
+---
+
+### v6.2 Workflow Validation & Preview
+
+**Capabilities**
+- Dry-run validation
+- Human-readable explanation
+- No execution
+
+---
+
+## v7 — Workflow Participation (User UI) (Planned)
+
+### Purpose
+Allow users to **interact with workflows explicitly**.
+
+---
+
+### v7.1 Workflow Inbox
+
+**Capabilities**
+- List of pending workflow steps
+- Read-only context
+- Explicit action buttons
+
+---
+
+### v7.2 Workflow History & Traceability
+
+**Capabilities**
+- Full execution timeline
+- Step decisions & remarks
+- Audit-backed visibility
+
+---
+
+## v8 — External Intake (Telegram) (Planned)
+
+### Purpose
+Capture **external intent** without mutation.
+
+---
+
+### v8.1 Telegram Capture
+
+**Capabilities**
+- Receive images and text
+- Store as attachments
+- OCR optional and explicit
+
+**Execution Boundaries**
+- Capture-only
 - No task mutation
 - No scheduling
-- No bypassing permissions
-
-**Prerequisites (Out-of-Band Setup)**
-- Bot created via Telegram BotFather
-- Bot token stored as environment variable / secret
-- Webhook/polling configured outside IDE if needed
-- Bot does not hold user authority
 
 ---
 
-### 7.2 Suggested Actions (Non-Binding)
-
-After OCR or intake, the system may suggest:
-- Create task
-- Create event
-- Attach to existing task
-- Do nothing
-
-User must explicitly choose.
-
----
-
-## 8. Workflow Orchestration (User-Triggered Only)
-
-### Purpose
-Support explicit multi-step orchestration **without embedding automation**.
-
----
-
-### 8.1 Workflow Engine Role
-
-**Characteristics**
-- Runs as a separate container (e.g. n8n)
-- Acts as a system actor
-- Never authenticates users
-- Never mutates core state directly
-
-**Application Responsibilities**
-- Validate intent
-- Apply mutations
-- Write audit logs
-
----
-
-## 9. Live Sensor & Device Integration
-
-### Purpose
-Enable real-time visibility into physical-world signals **without allowing live data to mutate state automatically**.
-
----
-
-### 9.1 Sensor Hardware (ESP8266 / ESP32)
+### v8.2 Suggested Actions
 
 **Capabilities**
-- Read onboard or attached sensors
-- Publish telemetry at ≥ 6 ticks/sec
-- Stateless, reconnect-safe
-
-**Rules**
-- Devices never hold authority
-- Devices never mutate tasks
+- Non-binding suggestions
+- Explicit user choice
+- “Do nothing” always available
 
 ---
 
-### 9.2 Sensor Transport (MQTT)
-
-**Capabilities**
-- MQTT broker runs as a separate service
-- Topic-based device isolation
-- Fire-and-forget publishing
-
-**Rules**
-- Core application does not subscribe directly
-- Transport is not authoritative
-
----
-
-### 9.3 Ingestion Service (System Actor)
-
-**Capabilities**
-- Subscribes to MQTT
-- Validates device identity
-- Normalizes sensor payloads
-- Maintains latest values in memory
-- Detects thresholds or conditions
-
-**Rules**
-- No direct task mutation
-- No scheduling
-- No audit ownership
-
----
-
-### 9.4 Live Dashboard (Read-Only)
-
-**Capabilities**
-- Real-time charts and indicators
-- Rolling windows (seconds/minutes)
-- Device health (online/offline)
-
-**Rules**
-- Read-only
-- No persistence required
-- No audit entries
-
----
-
-### 9.5 Explicit Snapshot Actions
-
-From the dashboard, users may explicitly:
-- Create a task from a snapshot
-- Attach snapshot to an existing task
-- Trigger workflows manually
-- Do nothing
-
-All actions:
-- Explicit
-- Snapshot-based
-- Fully audited
-
----
-
-## 10. Undo & Correction Semantics
+## v9 — Undo & Correction Semantics (Future)
 
 Undo restores **validity**, not history.
-No time travel.
-No automatic rollback.
 
 ---
 
-## 11. Assistive Planning & Intelligence (Advisory)
+## v10 — Assistive Planning & Intelligence (Future)
 
-- Suggestions only
-- No execution authority
-- No implicit mutation
+Advisory only. No execution authority.
 
 ---
 
-## 12. Collaboration Semantics (Deferred)
+## v11 — Collaboration Semantics (Future)
 
-- Presence-aware only
-- No shared control
-- Introduced only after workflows and undo exist
+Presence-aware only. No shared control.
 
 ---
 
-## 13. Security & Integrity
-
-- Auth & authorization review
-- Device isolation
-- Audit log integrity
-- Dependency scanning
-
----
-
-## 14. Permanently Out of Scope
-
-- Background automation
-- Implicit execution
-- Real-time collaborative editing
-- AI-driven auto-mutation
-- System acting without explicit user intent
-
----
-
-## 15. Canonical Invariants
+## Canonical Invariants (Stable)
 
 - Explicit > implicit
 - Auditability over convenience

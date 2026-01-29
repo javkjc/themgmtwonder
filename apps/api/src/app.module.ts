@@ -12,6 +12,7 @@ import { AttachmentsModule } from './attachments/attachments.module';
 import { RemarksModule } from './remarks/remarks.module';
 import { OcrModule } from './ocr/ocr.module';
 import { BootstrapModule } from './bootstrap/bootstrap.module';
+import { WorkflowsModule } from './workflows/workflows.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { BootstrapModule } from './bootstrap/bootstrap.module';
     AttachmentsModule,
     OcrModule,
     RemarksModule,
+    WorkflowsModule,
   ],
 })
 export class AppModule {}

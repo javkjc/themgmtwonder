@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import { useCategories } from '../hooks/useCategories';
 import { useDurationSettings } from '../hooks/useDurationSettings';
+import { useEligibleParents } from '../hooks/useEligibleParents';
 import { DURATION_PRESETS } from '../lib/constants';
 
 type AddTaskFormProps = {
-  onAdd: (title: string, category?: string, durationMin?: number, description?: string) => Promise<boolean>;
+  onAdd: (title: string, category?: string, durationMin?: number, description?: string, parentId?: string) => Promise<boolean>;
   userId: string | null;
 };
 
@@ -15,10 +16,12 @@ export default function AddTaskForm({ onAdd, userId }: AddTaskFormProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
+  const [parentId, setParentId] = useState('');
   const [durationMinInput, setDurationMinInput] = useState(String(defaultDurationMin));
   const [durationFeedback, setDurationFeedback] = useState('');
   const { getCategoryNames } = useCategories(userId);
   const categoryNames = getCategoryNames();
+  const { eligibleParents } = useEligibleParents(userId);
 
   const handleAdd = async () => {
     const parsedDuration = parseInt(durationMinInput, 10);
@@ -40,11 +43,12 @@ export default function AddTaskForm({ onAdd, userId }: AddTaskFormProps) {
       return;
     }
 
-    const success = await onAdd(title.trim(), category || undefined, clampedDuration, description.trim() || undefined);
+    const success = await onAdd(title.trim(), category || undefined, clampedDuration, description.trim() || undefined, parentId || undefined);
     if (success) {
       setTitle('');
       setDescription('');
       setCategory('');
+      setParentId('');
       setDurationMinInput(String(defaultDurationMin));
       setDurationFeedback('');
     }
@@ -72,6 +76,25 @@ export default function AddTaskForm({ onAdd, userId }: AddTaskFormProps) {
             outline: 'none',
           }}
         />
+        <select
+          value={parentId}
+          onChange={(e) => setParentId(e.target.value)}
+          style={{
+            padding: '10px 14px',
+            border: '1px solid #e2e8f0',
+            borderRadius: 6,
+            fontSize: 14,
+            outline: 'none',
+            minWidth: 160,
+            color: parentId ? '#1e293b' : '#94a3b8',
+          }}
+          title="Optional: Select parent task"
+        >
+          <option value="">No parent</option>
+          {eligibleParents.map((parent) => (
+            <option key={parent.id} value={parent.id}>{parent.title}</option>
+          ))}
+        </select>
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value)}

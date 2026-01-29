@@ -13,6 +13,7 @@ import { useCategories } from '../../hooks/useCategories';
 import { useDurationSettings } from '../../hooks/useDurationSettings';
 import { useScheduledEvents } from '../../hooks/useScheduledEvents';
 import { useSettings } from '../../hooks/useSettings';
+import { useEligibleParents } from '../../hooks/useEligibleParents';
 import ScheduleModal from '../../components/ScheduleModal';
 import NotificationToast, { type Notification } from '../../components/NotificationToast';
 import type { Todo } from '../../hooks/useTodos';
@@ -163,6 +164,20 @@ export default function TaskDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedStage, setSelectedStage] = useState<TaskStageKey>(DEFAULT_TASK_STAGE_KEY);
   const [stageSaving, setStageSaving] = useState(false);
+
+  // Parent-child relationship state (v4 visibility)
+  const [children, setChildren] = useState<Todo[]>([]);
+  const [parent, setParent] = useState<Todo | null>(null);
+  const [relationshipsLoading, setRelationshipsLoading] = useState(false);
+
+  // Associate/disassociate modals (v4 actions)
+  const [showAssociateModal, setShowAssociateModal] = useState(false);
+  const [showDisassociateModal, setShowDisassociateModal] = useState(false);
+  const [associateParentId, setAssociateParentId] = useState('');
+  const [associateRemark, setAssociateRemark] = useState('');
+  const [disassociateRemark, setDisassociateRemark] = useState('');
+  const [associating, setAssociating] = useState(false);
+  const { eligibleParents, refresh: refreshEligibleParents } = useEligibleParents(me?.userId ?? null, taskId);
 
   // Edit state
   const [isEditing, setIsEditing] = useState(false);
@@ -330,14 +345,50 @@ export default function TaskDetailsPage() {
     }
   };
 
+  // Fetch children tasks (v4 visibility)
+  const fetchChildren = useCallback(async () => {
+    if (!me || !taskId) return;
+
+    setRelationshipsLoading(true);
+    try {
+      const data = await apiFetchJson(`/todos/${taskId}/children`);
+      setChildren(Array.isArray(data) ? data : []);
+    } catch {
+      setChildren([]);
+    } finally {
+      setRelationshipsLoading(false);
+    }
+  }, [me, taskId]);
+
+  // Fetch parent task (v4 visibility)
+  const fetchParent = useCallback(async () => {
+    if (!me || !taskId) return;
+
+    setRelationshipsLoading(true);
+    try {
+      const data = await apiFetchJson(`/todos/${taskId}/parent`);
+      if (data && !data.error) {
+        setParent(data);
+      } else {
+        setParent(null);
+      }
+    } catch {
+      setParent(null);
+    } finally {
+      setRelationshipsLoading(false);
+    }
+  }, [me, taskId]);
+
   useEffect(() => {
     if (me && taskId) {
       fetchTask();
       fetchAttachments();
       fetchHistory(historyLimit, 0, false);
       fetchRemarks(remarksLimit, 0, false);
+      fetchChildren();
+      fetchParent();
     }
-  }, [me, taskId, fetchTask, fetchAttachments]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [me, taskId, fetchTask, fetchAttachments, fetchChildren, fetchParent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Refetch history when limit changes
   useEffect(() => {
@@ -532,6 +583,64 @@ export default function TaskDetailsPage() {
       router.push('/');
     } catch (e: any) {
       addNotification('error', 'Delete failed', e?.message || 'Failed to delete task', task.title, task.id);
+    }
+  };
+
+  // Associate task as child of a parent
+  const handleAssociate = async () => {
+    if (!task || !associateParentId || !associateRemark.trim()) {
+      addNotification('error', 'Association failed', 'Parent and remark are required.');
+      return;
+    }
+
+    setAssociating(true);
+    try {
+      await apiFetchJson(`/todos/${task.id}/associate`, {
+        method: 'POST',
+        body: JSON.stringify({
+          parentId: associateParentId,
+          remark: associateRemark.trim(),
+        }),
+      });
+      addNotification('success', 'Task associated', 'The task has been associated as a child.', task.title, task.id);
+      setShowAssociateModal(false);
+      setAssociateParentId('');
+      setAssociateRemark('');
+      // Refresh relationships
+      fetchParent();
+      refreshEligibleParents();
+    } catch (e: any) {
+      addNotification('error', 'Association failed', e?.message || 'Failed to associate task', task.title, task.id);
+    } finally {
+      setAssociating(false);
+    }
+  };
+
+  // Disassociate task from its parent
+  const handleDisassociate = async () => {
+    if (!task || !disassociateRemark.trim()) {
+      addNotification('error', 'Disassociation failed', 'Remark is required.');
+      return;
+    }
+
+    setAssociating(true);
+    try {
+      await apiFetchJson(`/todos/${task.id}/disassociate`, {
+        method: 'POST',
+        body: JSON.stringify({
+          remark: disassociateRemark.trim(),
+        }),
+      });
+      addNotification('success', 'Task disassociated', 'The task has been removed from its parent.', task.title, task.id);
+      setShowDisassociateModal(false);
+      setDisassociateRemark('');
+      // Refresh relationships
+      fetchParent();
+      refreshEligibleParents();
+    } catch (e: any) {
+      addNotification('error', 'Disassociation failed', e?.message || 'Failed to disassociate task', task.title, task.id);
+    } finally {
+      setAssociating(false);
     }
   };
 
@@ -1201,6 +1310,22 @@ export default function TaskDetailsPage() {
                         }}
                       >
                         Unschedule
+                      </button>
+                    ) : children.length > 0 ? (
+                      <button
+                        disabled
+                        title="Parent tasks cannot be scheduled"
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: 6,
+                          border: 'none',
+                          background: '#cbd5e1',
+                          color: '#94a3b8',
+                          cursor: 'not-allowed',
+                          fontSize: 13,
+                        }}
+                      >
+                        Schedule (Parent)
                       </button>
                     ) : (
                       <button
@@ -1926,6 +2051,158 @@ export default function TaskDetailsPage() {
                 )}
               </div>
 
+              {/* Parent-Child Relationships (v4 visibility + actions) */}
+              <div style={{
+                background: 'white',
+                borderRadius: 12,
+                padding: 24,
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Relationships</h2>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {!parent && (
+                      <button
+                        onClick={() => setShowAssociateModal(true)}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: 6,
+                          border: '1px solid #3b82f6',
+                          background: '#eff6ff',
+                          color: '#2563eb',
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Set Parent
+                      </button>
+                    )}
+                    {parent && (
+                      <button
+                        onClick={() => setShowDisassociateModal(true)}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: 6,
+                          border: '1px solid #ef4444',
+                          background: '#fef2f2',
+                          color: '#dc2626',
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Remove Parent
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {(parent || children.length > 0) ? (
+                  <div>
+
+                  {parent && (
+                    <div style={{ marginBottom: children.length > 0 ? 16 : 0 }}>
+                      <div style={{ fontSize: 13, color: '#64748b', marginBottom: 8, fontWeight: 500 }}>Parent Task</div>
+                      <div
+                        onClick={() => router.push(`/task/${parent.id}`)}
+                        style={{
+                          padding: '12px 16px',
+                          borderRadius: 8,
+                          border: '1px solid #e2e8f0',
+                          background: '#f8fafc',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = '#f1f5f9';
+                          e.currentTarget.style.borderColor = '#cbd5e1';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = '#f8fafc';
+                          e.currentTarget.style.borderColor = '#e2e8f0';
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 14, fontWeight: 500, color: '#1e293b', flex: 1 }}>
+                            {parent.title}
+                          </span>
+                          {parent.done && (
+                            <span style={{
+                              padding: '2px 8px',
+                              borderRadius: 4,
+                              background: '#dcfce7',
+                              color: '#166534',
+                              fontSize: 11,
+                              fontWeight: 600,
+                            }}>
+                              DONE
+                            </span>
+                          )}
+                          <span style={{ fontSize: 18, color: '#94a3b8' }}>→</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {children.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 13, color: '#64748b', marginBottom: 8, fontWeight: 500 }}>
+                        Child Tasks ({children.length})
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {children.map((child) => (
+                          <div
+                            key={child.id}
+                            onClick={() => router.push(`/task/${child.id}`)}
+                            style={{
+                              padding: '12px 16px',
+                              borderRadius: 8,
+                              border: '1px solid #e2e8f0',
+                              background: '#f8fafc',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = '#f1f5f9';
+                              e.currentTarget.style.borderColor = '#cbd5e1';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = '#f8fafc';
+                              e.currentTarget.style.borderColor = '#e2e8f0';
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontSize: 14, fontWeight: 500, color: '#1e293b', flex: 1 }}>
+                                {child.title}
+                              </span>
+                              {child.done && (
+                                <span style={{
+                                  padding: '2px 8px',
+                                  borderRadius: 4,
+                                  background: '#dcfce7',
+                                  color: '#166534',
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                }}>
+                                  DONE
+                                </span>
+                              )}
+                              <span style={{ fontSize: 18, color: '#94a3b8' }}>→</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                ) : (
+                  <div style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', padding: '16px 0' }}>
+                    No parent or child tasks. Use "Set Parent" to associate this task.
+                  </div>
+                )}
+              </div>
+
               {/* History Timeline */}
               <div style={{
                 background: 'white',
@@ -2101,6 +2378,211 @@ export default function TaskDetailsPage() {
         onSave={handleSchedule}
         onClose={() => setShowScheduleModal(false)}
       />
+
+      {/* Associate Modal */}
+      {showAssociateModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: 16,
+          }}
+          onClick={() => setShowAssociateModal(false)}
+        >
+          <div
+            style={{
+              background: 'white',
+              borderRadius: 12,
+              padding: 24,
+              width: '100%',
+              maxWidth: 480,
+              boxShadow: '0 24px 80px rgba(0,0,0,0.25)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>Set Parent Task</h2>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 13, color: '#475569' }}>
+                Parent Task <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              <select
+                value={associateParentId}
+                onChange={(e) => setAssociateParentId(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  border: '1px solid #e2e8f0',
+                  fontSize: 14,
+                  outline: 'none',
+                }}
+              >
+                <option value="">Select a parent task</option>
+                {eligibleParents.map((p) => (
+                  <option key={p.id} value={p.id}>{p.title}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 13, color: '#475569' }}>
+                Remark <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              <textarea
+                value={associateRemark}
+                onChange={(e) => setAssociateRemark(e.target.value)}
+                placeholder="Why is this task a child of the selected parent?"
+                rows={3}
+                maxLength={150}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  border: '1px solid #e2e8f0',
+                  fontSize: 13,
+                  resize: 'vertical',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+              <div style={{ marginTop: 4, fontSize: 11, color: '#94a3b8', textAlign: 'right' }}>
+                {associateRemark.length}/150 characters
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                onClick={() => setShowAssociateModal(false)}
+                disabled={associating}
+                style={{
+                  padding: '10px 16px',
+                  borderRadius: 8,
+                  border: '1px solid #e2e8f0',
+                  background: 'white',
+                  color: '#475569',
+                  fontWeight: 600,
+                  cursor: associating ? 'not-allowed' : 'pointer',
+                  opacity: associating ? 0.7 : 1,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAssociate}
+                disabled={associating || !associateParentId || !associateRemark.trim()}
+                style={{
+                  padding: '10px 18px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: associateParentId && associateRemark.trim() ? '#2563eb' : '#cbd5e1',
+                  color: 'white',
+                  fontWeight: 700,
+                  cursor: (associating || !associateParentId || !associateRemark.trim()) ? 'not-allowed' : 'pointer',
+                  opacity: associating ? 0.8 : 1,
+                }}
+              >
+                {associating ? 'Associating...' : 'Associate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Disassociate Modal */}
+      {showDisassociateModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: 16,
+          }}
+          onClick={() => setShowDisassociateModal(false)}
+        >
+          <div
+            style={{
+              background: 'white',
+              borderRadius: 12,
+              padding: 24,
+              width: '100%',
+              maxWidth: 480,
+              boxShadow: '0 24px 80px rgba(0,0,0,0.25)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>Remove Parent Task</h2>
+            <div style={{ marginBottom: 16, padding: '12px 16px', background: '#fef3c7', borderRadius: 8, fontSize: 13, color: '#92400e' }}>
+              This will detach "{task?.title}" from its parent "{parent?.title}".
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 13, color: '#475569' }}>
+                Remark <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              <textarea
+                value={disassociateRemark}
+                onChange={(e) => setDisassociateRemark(e.target.value)}
+                placeholder="Why are you removing this parent relationship?"
+                rows={3}
+                maxLength={150}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  border: '1px solid #e2e8f0',
+                  fontSize: 13,
+                  resize: 'vertical',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+              <div style={{ marginTop: 4, fontSize: 11, color: '#94a3b8', textAlign: 'right' }}>
+                {disassociateRemark.length}/150 characters
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                onClick={() => setShowDisassociateModal(false)}
+                disabled={associating}
+                style={{
+                  padding: '10px 16px',
+                  borderRadius: 8,
+                  border: '1px solid #e2e8f0',
+                  background: 'white',
+                  color: '#475569',
+                  fontWeight: 600,
+                  cursor: associating ? 'not-allowed' : 'pointer',
+                  opacity: associating ? 0.7 : 1,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDisassociate}
+                disabled={associating || !disassociateRemark.trim()}
+                style={{
+                  padding: '10px 18px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: disassociateRemark.trim() ? '#dc2626' : '#cbd5e1',
+                  color: 'white',
+                  fontWeight: 700,
+                  cursor: (associating || !disassociateRemark.trim()) ? 'not-allowed' : 'pointer',
+                  opacity: associating ? 0.8 : 1,
+                }}
+              >
+                {associating ? 'Removing...' : 'Remove Parent'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Notification Toast */}
       <NotificationToast notifications={notifications} onDismiss={dismissNotification} />

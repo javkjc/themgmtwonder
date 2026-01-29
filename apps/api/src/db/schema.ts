@@ -71,6 +71,14 @@ export const todos = pgTable(
 
     // âœ… explicit task stage/status tag
     stageKey: text('stage_key').default(DEFAULT_TASK_STAGE_KEY),
+
+    // ✅ parent-child relationship (v4 structural)
+    // - null = independent task
+    // - references todos.id = this is a child task
+    // - parent tasks have children referencing them
+    parentId: uuid('parent_id').references(() => todos.id, {
+      onDelete: 'restrict',
+    }),
   },
   (t) => ({
     userIdIdx: index('todos_user_id_idx').on(t.userId),
@@ -82,6 +90,9 @@ export const todos = pgTable(
 
     // âœ… optional, but recommended for calendar queries
     userStartIdx: index('todos_user_start_at_idx').on(t.userId, t.startAt),
+
+    // ✅ v4 parent-child index
+    parentIdIdx: index('todos_parent_id_idx').on(t.parentId),
   }),
 );
 
@@ -231,3 +242,136 @@ export const systemSettings = pgTable('system_settings', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
+
+// Workflow definitions (v5 - admin-owned, inert records)
+export const workflowDefinitions = pgTable(
+  'workflow_definitions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    name: text('name').notNull(),
+    description: text('description'),
+    version: integer('version').default(1).notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    nameIdx: index('workflow_definitions_name_idx').on(t.name),
+    activeIdx: index('workflow_definitions_active_idx').on(t.isActive),
+  }),
+);
+
+// Workflow steps (v5 - ordered steps within a workflow definition)
+export const workflowSteps = pgTable(
+  'workflow_steps',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    workflowDefinitionId: uuid('workflow_definition_id')
+      .notNull()
+      .references(() => workflowDefinitions.id, { onDelete: 'cascade' }),
+    stepOrder: integer('step_order').notNull(), // 1-based ordering
+    stepType: text('step_type').notNull(), // e.g., 'approve', 'review', 'acknowledge'
+    name: text('name').notNull(),
+    description: text('description'),
+    // Assigned role or user (stored as JSON: {type: 'role'|'user', value: string})
+    assignedTo: text('assigned_to'),
+    // Declarative conditions evaluated at execution start only (stored as JSON)
+    conditions: text('conditions'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    workflowDefIdIdx: index('workflow_steps_workflow_def_id_idx').on(
+      t.workflowDefinitionId,
+    ),
+    workflowDefOrderIdx: index('workflow_steps_workflow_def_order_idx').on(
+      t.workflowDefinitionId,
+      t.stepOrder,
+    ),
+  }),
+);
+
+// Workflow execution records (v5 - immutable operational history of workflow runs)
+export const workflowExecutions = pgTable(
+  'workflow_executions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    workflowDefinitionId: uuid('workflow_definition_id')
+      .notNull()
+      .references(() => workflowDefinitions.id, { onDelete: 'restrict' }),
+    // Target entity (task, attachment, etc.) using same pattern as audit logs
+    resourceType: text('resource_type').notNull(), // e.g., 'todo', 'attachment'
+    resourceId: text('resource_id').notNull(), // ID of target entity
+    // User who triggered the workflow execution
+    triggeredBy: uuid('triggered_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    // Execution lifecycle timestamps
+    startedAt: timestamp('started_at').defaultNow().notNull(),
+    completedAt: timestamp('completed_at'),
+    // Status: pending, in_progress, completed, failed, cancelled
+    status: text('status').notNull().default('pending'),
+    // Input parameters and output results as JSON
+    inputs: text('inputs'), // JSON string with execution inputs
+    outputs: text('outputs'), // JSON string with execution outputs
+    // Error tracking
+    errorDetails: text('error_details'),
+    // Correlation ID for distributed tracing
+    correlationId: text('correlation_id'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    workflowDefIdIdx: index('workflow_executions_workflow_def_id_idx').on(
+      t.workflowDefinitionId,
+    ),
+    triggeredByIdx: index('workflow_executions_triggered_by_idx').on(
+      t.triggeredBy,
+    ),
+    statusIdx: index('workflow_executions_status_idx').on(t.status),
+    createdAtIdx: index('workflow_executions_created_at_idx').on(t.createdAt),
+    resourceIdx: index('workflow_executions_resource_idx').on(
+      t.resourceType,
+      t.resourceId,
+    ),
+  }),
+);
+
+// Workflow step execution records (v5 - immutable append-only step-level history)
+export const workflowStepExecutions = pgTable(
+  'workflow_step_executions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    workflowExecutionId: uuid('workflow_execution_id')
+      .notNull()
+      .references(() => workflowExecutions.id, { onDelete: 'cascade' }),
+    workflowStepId: uuid('workflow_step_id')
+      .notNull()
+      .references(() => workflowSteps.id, { onDelete: 'restrict' }),
+    // User who acted on this step
+    actorId: uuid('actor_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    // Decision made: approved, rejected, acknowledged, skipped, etc.
+    decision: text('decision').notNull(),
+    // Mandatory remark/comment for the decision
+    remark: text('remark'),
+    // Step execution lifecycle
+    startedAt: timestamp('started_at').defaultNow().notNull(),
+    completedAt: timestamp('completed_at'),
+    // Status: pending, in_progress, completed, skipped
+    status: text('status').notNull().default('pending'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    executionIdIdx: index('workflow_step_executions_execution_id_idx').on(
+      t.workflowExecutionId,
+    ),
+    stepIdIdx: index('workflow_step_executions_step_id_idx').on(
+      t.workflowStepId,
+    ),
+    actorIdIdx: index('workflow_step_executions_actor_id_idx').on(t.actorId),
+    createdAtIdx: index('workflow_step_executions_created_at_idx').on(
+      t.createdAt,
+    ),
+  }),
+);

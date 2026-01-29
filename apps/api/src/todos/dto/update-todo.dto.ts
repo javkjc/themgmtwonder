@@ -4,6 +4,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   MinLength,
   Min,
   Max,
@@ -44,4 +45,9 @@ export class UpdateTodoDto {
   @IsString()
   @IsIn(TASK_STAGE_KEYS)
   stageKey?: TaskStageKey | null;
+
+  // ✅ v4 parent-child relationship (optional, null to detach)
+  @IsOptional()
+  @IsUUID()
+  parentId?: string | null;
 }

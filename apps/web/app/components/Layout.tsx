@@ -6,7 +6,7 @@ import GlobalSearch from './GlobalSearch';
 
 type LayoutProps = {
   children: ReactNode;
-  currentPage: 'home' | 'calendar' | 'profile' | 'customizations' | 'admin' | 'activity';
+  currentPage: 'home' | 'calendar' | 'profile' | 'customizations' | 'admin' | 'activity' | 'workflows';
   userEmail?: string;
   userRole?: string;
   isAdmin?: boolean;
@@ -144,6 +144,26 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
               >
                 <span style={{ fontSize: 18 }}>⚙️</span>
                 {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>Customizations</span>}
+              </Link>
+
+              <Link
+                href="/workflows"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: isCollapsed ? '12px 0' : '12px 20px',
+                  justifyContent: isCollapsed ? 'center' : 'flex-start',
+                  textDecoration: 'none',
+                  color: currentPage === 'workflows' ? 'var(--sidebar-text)' : 'var(--sidebar-text-muted)',
+                  background: currentPage === 'workflows' ? 'var(--sidebar-link-active)' : 'transparent',
+                  borderLeft: currentPage === 'workflows' ? '3px solid var(--sidebar-link-border)' : '3px solid transparent',
+                  transition: 'all 0.2s',
+                }}
+                title="Workflows"
+              >
+                <span style={{ fontSize: 18 }}>🔄</span>
+                {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>Workflows</span>}
               </Link>
 
               <Link
