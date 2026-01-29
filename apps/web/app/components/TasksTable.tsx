@@ -433,16 +433,16 @@ export default function TasksTable({
                         )}
                       </div>
                       {t.description && (
-                        <div style={{
-                          fontSize: 12,
-                          color: '#64748b',
-                          marginBottom: 4,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}>
-                          {t.description}
-                        </div>
+                      <div style={{
+                        fontSize: 12,
+                        color: '#64748b',
+                        marginBottom: 4,
+                        wordBreak: 'break-word',
+                        whiteSpace: 'pre-wrap',
+                        overflowWrap: 'anywhere',
+                      }}>
+                        {t.description}
+                      </div>
                       )}
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: '#94a3b8' }}>
                         <span>Created {formatDate(t.createdAt)}</span>

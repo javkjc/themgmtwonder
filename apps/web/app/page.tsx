@@ -12,7 +12,7 @@ import ConfirmModal from './components/ConfirmModal';
 import BulkActionsBar from './components/BulkActionsBar';
 import CreateTaskModal from './components/CreateTaskModal';
 import { useAuth } from './hooks/useAuth';
-import { useTodos, type Filter, type SortDir, type DateFilter, type Todo } from './hooks/useTodos';
+import { useTodos, type Filter, type ScheduleFilter, type SortDir, type DateFilter, type Todo } from './hooks/useTodos';
 import { useModal, type ScheduleModalData, type ConfirmModalData } from './hooks/useModal';
 import { useScheduledEvents } from './hooks/useScheduledEvents';
 import { useSettings } from './hooks/useSettings';
@@ -23,6 +23,7 @@ export default function Home() {
 
   // Filter and sort state
   const [filter, setFilter] = useState<Filter>('all');
+  const [scheduleFilter, setScheduleFilter] = useState<ScheduleFilter>('all');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const [customDateRange, setCustomDateRange] = useState<{ start: string; end: string } | null>(null);
@@ -31,6 +32,7 @@ export default function Home() {
   const todos = useTodos({
     userId: auth.me?.userId ?? null,
     filter,
+    scheduleFilter,
     sortDir,
     dateFilter,
     customDateRange,
@@ -370,10 +372,12 @@ export default function Home() {
 
           <TaskFilters
             filter={filter}
+            scheduleFilter={scheduleFilter}
             sortDir={sortDir}
             dateFilter={dateFilter}
             customDateRange={customDateRange}
             onFilterChange={setFilter}
+            onScheduleFilterChange={setScheduleFilter}
             onSortDirChange={setSortDir}
             onDateFilterChange={setDateFilter}
             onCustomDateRangeChange={setCustomDateRange}

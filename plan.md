@@ -15,7 +15,7 @@ v1 and v2 are complete and must not be modified unless explicitly stated.
 
 ## 1. Project Snapshot (Stable)
 
-Stack
+**Stack**
 
 Frontend: Next.js (App Router, React, TypeScript)  
 Backend: NestJS + Drizzle ORM  
@@ -72,7 +72,7 @@ v3 must **prepare for** but not **enable** these capabilities.
 
 - v1 Feature Delivery: ✅ Complete
 - v1 Hardening & Correctness: ✅ Complete
-- v2 UX & Product Evolution: ✅ Complete (6.1–6.7)
+- v2 UX & Product Evolution: ✅ Complete
 - Codebase stable, auditable, migration-safe
 - No known blocking runtime issues
 
@@ -121,17 +121,24 @@ No further work permitted under this task.
 
 ---
 
-### **7.3 Stage UX — Minimal Status Selector**
+### **7.3 Derived Task Views (UX Clarity)**
 
 **Status:** ✅ DONE
 
-- Task detail supports explicit stage changes
-- Confirmation required
-- Audit entries aligned with standard `changes` structure
-  - `changes.stageKey.before`
-  - `changes.stageKey.after`
+**Objective**
+Provide derived, read-only task views to improve user reasoning without prioritization or automation.
 
-No further UX expansion permitted under this task.
+**In Scope**
+- Derived task lists (e.g. unscheduled tasks)
+- Read-only, user-controlled filters
+- No prioritization logic
+- No highlighting or auto-focus
+
+**Out of Scope**
+- Any implicit guidance
+- Any mutation of task state
+
+No further work permitted under this task.
 
 ---
 
@@ -140,7 +147,6 @@ No further UX expansion permitted under this task.
 OCR is treated as **deterministic extraction**, not intelligence.
 
 Subtasks must be executed **in order**.
-Do not proceed to later subtasks until the current one is complete.
 
 ---
 
@@ -154,33 +160,10 @@ Do not proceed to later subtasks until the current one is complete.
 
 **Status:** ✅ DONE
 
-**Objective**  
-Allow explicit user-triggered OCR.
-
-**Current State (Factual)**
-- Backend trigger endpoint (`POST /attachments/:id/ocr`) exists and is functional
-- OCR worker invocation, derived storage, and audit events are implemented
-- OCR retrieval currently requires developer tools (no user-facing UI trigger)
-
-**Remaining Work**
-- Expose an explicit user-facing action in the task detail UI to trigger OCR retrieval
-- Ensure the action is explicit, auditable, and reusable for future derived retrieval actions
-
-**In Scope**
-- Explicit “Retrieve text” / “Run OCR” UI action per attachment
-- Use existing backend trigger endpoint
-- Ownership, CSRF, and audit behavior unchanged
-- No automation, no background processing
-
-**Out of Scope**
-- Automatic OCR on upload
-- Background jobs
-- Re-interpretation or parsing of OCR output
-- Retry semantics beyond explicit user action
-
-- Added a per-attachment “Retrieve OCR text” action that hits `POST /attachments/:id/ocr`, refreshes history, and mirrors the existing viewer/audit flows.
-
-
+- Explicit per-attachment user action
+- Backend trigger endpoint functional
+- OCR worker invocation, derived storage, and audits complete
+- No automation or background execution
 
 ---
 
@@ -188,42 +171,41 @@ Allow explicit user-triggered OCR.
 
 **Status:** ✅ DONE
 
+- Inline expandable viewer under attachment
+- Read-only extracted text
+- Copy-to-clipboard
+- Clear status indicators
+
 ---
 
 #### **7.4d OCR → Task / Remark Apply (Explicit & Audited)**
 
 **Status:** ✅ DONE
 
-**Objective**
-Allow OCR output to assist users **without automation**.
-
-**In Scope**
-- Explicit apply actions
+- Explicit apply actions only
 - Confirmation required
-- Audit entries with before/after snapshot
+- Before/after audit snapshots recorded
+- No interpretation or parsing
 
 ---
 
-#### **7.4e OCR Search Index (Optional, Derived)**
+#### **7.4e OCR Search Index**
 
-**Status:** ⬜ NOT STARTED
+**Status:** ⏸️ DEFERRED (v3 Scope Lock)
 
-**Objective**
-Allow OCR text to participate in search.
+**Decision**
+Deferred to a future phase.
 
-**In Scope**
-- Include OCR text in search queries
-- Derived, rebuildable index
-
-**Note**
-This subtask may be deferred if scope pressure arises.
-Deferral must be documented explicitly.
+**Rationale**
+- Search semantics not yet stable
+- Must align with future workflows and intelligence
+- v3 remains extraction + explicit interaction only
 
 ---
 
 ### **7.5 Collaboration Readiness Audit (No Enablement)**
 
-**Status:** ⬜ NOT STARTED
+**Status:** ✅ DONE
 
 **Objective**
 Verify v3 changes do not block future collaboration.
@@ -231,13 +213,13 @@ Verify v3 changes do not block future collaboration.
 **In Scope**
 - Schema review
 - Audit expressiveness review
-- Identify blockers only
+- Identification of blockers only
 
 ---
 
 ### **7.6 Workflow Readiness Audit (No Enablement)**
 
-**Status:** ⬜ NOT STARTED
+**Status:** ✅ DONE
 
 **Objective**
 Verify v3 changes do not block future workflows.
@@ -251,26 +233,26 @@ Verify v3 changes do not block future workflows.
 
 ## 5. Guardrails (Inherited)
 
-Runtime Preconditions
+### Runtime Preconditions
 - Docker services must be running
 - OCR worker available when executing OCR tasks
-- If missing → STOP
+- If missing → **STOP**
 
-Forbidden
+### Forbidden
 - ❌ Web browsing
 - ❌ Dependency changes unless specified
 - ❌ Implicit automation
 - ❌ Silent state mutation
 - ❌ Schema redesign beyond task scope
 
-Required Patterns
+### Required Patterns
 - ✅ Explicit user actions
 - ✅ Derived data never authoritative
 - ✅ Audit-first changes
 - ✅ Page-level orchestration
 - ✅ Global toast system only
 
-Documentation Rules
+### Documentation Rules
 - executionnotes.md → append-only
 - codemapcc.md → structure/navigation only
 - Never mix execution notes into codemapcc.md
@@ -294,5 +276,5 @@ without a **new plan.md for the next phase**.
 
 ---
 
-Last Updated: 2026-01-28  
-Status: v3 Foundations — In Progress (7.4d pending)
+Last Updated: 2026-01-29  
+Status: v3 Foundations — In Progress (7.3, 7.5, 7.6 remaining)

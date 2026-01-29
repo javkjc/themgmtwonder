@@ -20,6 +20,7 @@ export type Todo = {
 };
 
 export type Filter = 'all' | 'active' | 'done';
+export type ScheduleFilter = 'all' | 'scheduled' | 'unscheduled';
 export type SortDir = 'asc' | 'desc';
 export type DateFilter = 'all' | 'today' | 'this_week' | 'custom';
 
@@ -32,6 +33,7 @@ export type TodosState = {
 type UseTodosOptions = {
   userId: string | null;
   filter?: Filter;
+  scheduleFilter?: ScheduleFilter;
   sortDir?: SortDir;
   dateFilter?: DateFilter;
   customDateRange?: { start: string; end: string } | null;
@@ -58,7 +60,7 @@ function notifyTodoUpdate(action: string) {
 }
 
 export function useTodos(options: UseTodosOptions): TodosState & TodosActions {
-  const { userId, filter = 'all', sortDir = 'desc', dateFilter = 'all', customDateRange, onUnauthorized } = options;
+  const { userId, filter = 'all', scheduleFilter = 'all', sortDir = 'desc', dateFilter = 'all', customDateRange, onUnauthorized } = options;
 
   const [todos, setTodos] = useState<Todo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -100,6 +102,13 @@ export function useTodos(options: UseTodosOptions): TodosState & TodosActions {
         params.set('done', 'true');
       }
 
+      // Schedule filter logic
+      if (scheduleFilter === 'scheduled') {
+        params.set('scheduled', 'true');
+      } else if (scheduleFilter === 'unscheduled') {
+        params.set('scheduled', 'false');
+      }
+
       // Date filter logic
       if (dateFilter === 'today') {
         const today = new Date();
@@ -133,7 +142,7 @@ export function useTodos(options: UseTodosOptions): TodosState & TodosActions {
     } finally {
       setLoading(false);
     }
-  }, [userId, filter, sortDir, dateFilter, customDateRange, handleError]);
+  }, [userId, filter, scheduleFilter, sortDir, dateFilter, customDateRange, handleError]);
 
   const addTodo = useCallback(async (title: string, category?: string, durationMin?: number, description?: string): Promise<boolean> => {
     if (!userId) {

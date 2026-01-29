@@ -1490,3 +1490,79 @@ Verification: Not performed (manual)
   - apps/ocr-worker entry now details FastAPI routes, PDF/image handling, metadata, requirements, and the ocrw.Dockerfile command
   - Shared utils/frontend overview and infrastructure references were aligned with the current repo layout
 - Verification: Not performed (manual)
+
+## 2026-01-29 - Task 7.3 Derived Task Views
+
+**Objective:** Provide derived, read-only task views to improve user reasoning without prioritization or automation.
+
+**Changes:**
+
+Backend (API):
+- [apps/api/src/todos/todos.service.ts](apps/api/src/todos/todos.service.ts#L7-L17): Added isNull import from drizzle-orm
+- [apps/api/src/todos/todos.service.ts](apps/api/src/todos/todos.service.ts#L29-L67): Added scheduled parameter (boolean) to list() method options, added schedule status filter logic using isNotNull/isNull checks on todos.startAt field
+- [apps/api/src/todos/todos.controller.ts](apps/api/src/todos/todos.controller.ts#L32-L95): Added scheduled query parameter to list() endpoint, parses 'true'/'false' string to boolean and passes to service
+
+Frontend (Web):
+- [apps/web/app/hooks/useTodos.ts](apps/web/app/hooks/useTodos.ts#L22-L24): Added ScheduleFilter type ('all' | 'scheduled' | 'unscheduled')
+- [apps/web/app/hooks/useTodos.ts](apps/web/app/hooks/useTodos.ts#L32-L39): Added scheduleFilter parameter to UseTodosOptions type
+- [apps/web/app/hooks/useTodos.ts](apps/web/app/hooks/useTodos.ts#L61): Added scheduleFilter to useTodos function parameters with default 'all'
+- [apps/web/app/hooks/useTodos.ts](apps/web/app/hooks/useTodos.ts#L99-L109): Added schedule filter logic in refresh() to set scheduled query param based on scheduleFilter state
+- [apps/web/app/hooks/useTodos.ts](apps/web/app/hooks/useTodos.ts#L145): Added scheduleFilter to refresh callback dependencies
+- [apps/web/app/components/TaskFilters.tsx](apps/web/app/components/TaskFilters.tsx#L1-L15): Imported ScheduleFilter type, added scheduleFilter prop and onScheduleFilterChange handler to component props
+- [apps/web/app/components/TaskFilters.tsx](apps/web/app/components/TaskFilters.tsx#L98-L107): Added Schedule filter UI with three buttons (All/Scheduled/Unscheduled) following existing filter button pattern
+- [apps/web/app/page.tsx](apps/web/app/page.tsx#L15): Imported ScheduleFilter type
+- [apps/web/app/page.tsx](apps/web/app/page.tsx#L25-L34): Added scheduleFilter state and passed to useTodos hook
+- [apps/web/app/page.tsx](apps/web/app/page.tsx#L373-L383): Added scheduleFilter and onScheduleFilterChange props to TaskFilters component
+
+**Implementation Details:**
+- Schedule filter is a derived view: filters existing task data without mutation
+- Three filter options: All (no filter), Scheduled (has startAt), Unscheduled (no startAt)
+- Read-only, user-controlled filtering with no prioritization or highlighting
+- No implicit guidance or auto-focus behavior
+- Filter persists in component state only (no URL params or localStorage)
+- Backend filter uses database-level null checks for performance
+
+**Verification:** Not performed (manual)
+
+
+## 2026-01-29 - Task 7.3 Additional Changes (Calendar Unscheduled Panel)
+
+**Objective:** Add filter toggle to calendar's unscheduled panel and fix task description text wrapping.
+
+**Changes:**
+
+Calendar Unscheduled Panel Filter:
+- [apps/web/app/calendar/page.tsx](apps/web/app/calendar/page.tsx#L434): Added unscheduledFilter state ('all' | 'recent')
+- [apps/web/app/calendar/page.tsx](apps/web/app/calendar/page.tsx#L540-L552): Updated fetchUnscheduled() to support both filter modes:
+  - 'all': Fetches all unscheduled tasks via GET /todos?scheduled=false&limit=50
+  - 'recent': Fetches recently unscheduled tasks via GET /todos/recently-unscheduled?limit=5
+- [apps/web/app/calendar/page.tsx](apps/web/app/calendar/page.tsx#L543): Fixed incorrect query param from 'unscheduled=true' to 'scheduled=false' (matches backend implementation)
+- [apps/web/app/calendar/page.tsx](apps/web/app/calendar/page.tsx#L1220-L1242): Added filter toggle buttons (All/Recent) to unscheduled panel header with active state styling
+
+Task List Description Text Wrapping:
+- [apps/web/app/components/TasksTable.tsx](apps/web/app/components/TasksTable.tsx#L435-L446): Changed description display from overflow ellipsis (whiteSpace: 'nowrap') to wrapped text (whiteSpace: 'pre-wrap', wordBreak: 'break-word')
+
+**Implementation Details:**
+- Calendar unscheduled panel now has two derived views: All unscheduled and Recently unscheduled (last 5)
+- Filter state is local to calendar page, resets on page reload
+- Recently unscheduled uses existing backend endpoint that filters by unscheduledAt timestamp
+- Task descriptions now wrap properly in the main task list table without extending page width
+- Pre-wrap preserves line breaks from user input while wrapping long lines
+
+**Verification:** Not performed (manual)
+
+Boxed Task Descriptions:
+- [apps/web/app/components/descriptionBoxStyles.ts](apps/web/app/components/descriptionBoxStyles.ts#L1-L13): Added shared boxed monospace description styling for task text blocks.
+- [apps/web/app/components/TasksTable.tsx](apps/web/app/components/TasksTable.tsx#L436-L443): Wrapped the task list description cell in the boxed container so long or multiline text stays in the shared style.
+- [apps/web/app/task/[id]/page.tsx](apps/web/app/task/[id]/page.tsx#L1352-L1361): Rendered the detail description inside the same boxed container while keeping the placeholder text visible.
+**Verification:** Not performed (manual)
+
+Task Description Wrapping (no box):
+- [apps/web/app/components/TasksTable.tsx](apps/web/app/components/TasksTable.tsx#L436-L443): Task list description now uses inline styles (pre-wrap, break-word, overflow-wrap) to wrap text without adding borders or padding.
+- [apps/web/app/task/[id]/page.tsx](apps/web/app/task/[id]/page.tsx#L1352-L1361): Task detail description uses the same wrapping strategy, keeping the existing layout and placeholder while preventing overflow.
+**Verification:** Not performed (manual)
+
+
+- 2026-01-29 Task 7.5 Collaboration Readiness Audit: todos require a single owner (apps/api/src/db/schema.ts:50) and every CRUD call filters by that owner (apps/api/src/todos/todos.service.ts:43), so current schema/service prevents shared or multi-user tasks without schema changes.
+- 2026-01-29 Task 7.6 Workflow Readiness Audit: only the current stage key is stored on todos (apps/api/src/db/schema.ts:73) and stage transitions are emitted via audit log deltas (apps/api/src/todos/todos.controller.ts:216 and apps/api/src/todos/todos.controller.ts:241) so structured workflow transition history will need schema/service extensions.
+

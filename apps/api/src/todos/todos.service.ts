@@ -11,6 +11,7 @@ import {
   desc,
   ne,
   isNotNull,
+  isNull,
   sql,
   ilike,
   or,
@@ -30,6 +31,7 @@ export class TodosService {
     userId: string,
     opts?: {
       done?: boolean;
+      scheduled?: boolean;
       limit?: number;
       sortDir?: 'asc' | 'desc';
       createdAfter?: Date;
@@ -42,6 +44,15 @@ export class TodosService {
 
     if (typeof opts?.done === 'boolean') {
       conditions.push(eq(todos.done, opts.done));
+    }
+
+    // Schedule status filter
+    if (typeof opts?.scheduled === 'boolean') {
+      if (opts.scheduled) {
+        conditions.push(isNotNull(todos.startAt));
+      } else {
+        conditions.push(isNull(todos.startAt));
+      }
     }
 
     // Date range filters for createdAt

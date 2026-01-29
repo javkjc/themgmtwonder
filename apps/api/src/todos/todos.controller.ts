@@ -34,6 +34,7 @@ export class TodosController {
   list(
     @Req() req: any,
     @Query('done') done?: string,
+    @Query('scheduled') scheduled?: string,
     @Query('limit') limit?: string,
     @Query('sortDir') sortDir?: string,
     @Query('createdAfter') createdAfter?: string,
@@ -47,6 +48,15 @@ export class TodosController {
         : done.toLowerCase() === 'true'
           ? true
           : done.toLowerCase() === 'false'
+            ? false
+            : undefined;
+
+    const scheduledBool =
+      scheduled === undefined
+        ? undefined
+        : scheduled.toLowerCase() === 'true'
+          ? true
+          : scheduled.toLowerCase() === 'false'
             ? false
             : undefined;
 
@@ -73,6 +83,7 @@ export class TodosController {
 
     return this.todos.list(req.user.userId, {
       done: doneBool,
+      scheduled: scheduledBool,
       limit: Number.isFinite(limitNum) ? limitNum : undefined,
       sortDir: sortDirNorm,
       createdAfter:

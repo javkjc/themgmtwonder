@@ -1,14 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import { type Filter, type SortDir, type DateFilter } from '../hooks/useTodos';
+import { type Filter, type ScheduleFilter, type SortDir, type DateFilter } from '../hooks/useTodos';
 
 type TaskFiltersProps = {
   filter: Filter;
+  scheduleFilter: ScheduleFilter;
   sortDir: SortDir;
   dateFilter: DateFilter;
   customDateRange: { start: string; end: string } | null;
   onFilterChange: (filter: Filter) => void;
+  onScheduleFilterChange: (scheduleFilter: ScheduleFilter) => void;
   onSortDirChange: (sortDir: SortDir) => void;
   onDateFilterChange: (dateFilter: DateFilter) => void;
   onCustomDateRangeChange: (range: { start: string; end: string } | null) => void;
@@ -42,10 +44,12 @@ function FilterButton({ active, onClick, children }: FilterButtonProps) {
 
 export default function TaskFilters({
   filter,
+  scheduleFilter,
   sortDir,
   dateFilter,
   customDateRange,
   onFilterChange,
+  onScheduleFilterChange,
   onSortDirChange,
   onDateFilterChange,
   onCustomDateRangeChange,
@@ -92,6 +96,19 @@ export default function TaskFilters({
           </FilterButton>
           <FilterButton active={filter === 'done'} onClick={() => onFilterChange('done')}>
             Done
+          </FilterButton>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: '#475569' }}>Schedule:</span>
+          <FilterButton active={scheduleFilter === 'all'} onClick={() => onScheduleFilterChange('all')}>
+            All
+          </FilterButton>
+          <FilterButton active={scheduleFilter === 'scheduled'} onClick={() => onScheduleFilterChange('scheduled')}>
+            Scheduled
+          </FilterButton>
+          <FilterButton active={scheduleFilter === 'unscheduled'} onClick={() => onScheduleFilterChange('unscheduled')}>
+            Unscheduled
           </FilterButton>
         </div>
 

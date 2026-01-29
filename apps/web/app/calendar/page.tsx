@@ -431,6 +431,7 @@ export default function CalendarPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [unscheduledTodos, setUnscheduledTodos] = useState<Todo[]>([]);
   const [isPanelOpen, setIsPanelOpen] = useState(true);
+  const [unscheduledFilter, setUnscheduledFilter] = useState<'all' | 'recent'>('all');
 
   // Schedule modal state
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
@@ -540,14 +541,21 @@ export default function CalendarPage() {
   const fetchUnscheduled = useCallback(async () => {
     if (!me) return;
     try {
-      const data = await apiFetchJson('/todos?unscheduled=true&limit=50');
+      let data;
+      if (unscheduledFilter === 'recent') {
+        // Fetch recently unscheduled (last 5)
+        data = await apiFetchJson('/todos/recently-unscheduled?limit=5');
+      } else {
+        // Fetch all unscheduled
+        data = await apiFetchJson('/todos?scheduled=false&limit=50');
+      }
       if (Array.isArray(data)) {
         setUnscheduledTodos(data.filter((t: Todo) => !t.startAt));
       }
     } catch (e) {
       if (isUnauthorized(e)) setMe(null);
     }
-  }, [me]);
+  }, [me, unscheduledFilter]);
 
   useEffect(() => {
     if (me) {
@@ -1218,6 +1226,40 @@ export default function CalendarPage() {
 
             {isPanelOpen && (
               <div style={{ padding: 16, maxHeight: 'calc(100vh - 350px)', overflowY: 'auto' }}>
+                {/* Filter toggle */}
+                <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                  <button
+                    onClick={() => setUnscheduledFilter('all')}
+                    style={{
+                      padding: '4px 10px',
+                      fontSize: 11,
+                      borderRadius: 4,
+                      border: unscheduledFilter === 'all' ? 'none' : '1px solid #e2e8f0',
+                      background: unscheduledFilter === 'all' ? '#3b82f6' : 'white',
+                      color: unscheduledFilter === 'all' ? 'white' : '#64748b',
+                      cursor: 'pointer',
+                      fontWeight: unscheduledFilter === 'all' ? 500 : 400,
+                    }}
+                  >
+                    All
+                  </button>
+                  <button
+                    onClick={() => setUnscheduledFilter('recent')}
+                    style={{
+                      padding: '4px 10px',
+                      fontSize: 11,
+                      borderRadius: 4,
+                      border: unscheduledFilter === 'recent' ? 'none' : '1px solid #e2e8f0',
+                      background: unscheduledFilter === 'recent' ? '#3b82f6' : 'white',
+                      color: unscheduledFilter === 'recent' ? 'white' : '#64748b',
+                      cursor: 'pointer',
+                      fontWeight: unscheduledFilter === 'recent' ? 500 : 400,
+                    }}
+                  >
+                    Recent
+                  </button>
+                </div>
+
                 {/* Helper text */}
                 <p style={{ color: '#94a3b8', fontSize: 12, margin: '0 0 12px', lineHeight: 1.4 }}>
                   Drag to schedule or click to schedule
