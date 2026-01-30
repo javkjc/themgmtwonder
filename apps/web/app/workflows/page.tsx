@@ -126,9 +126,26 @@ export default function WorkflowsPage() {
   return (
     <Layout currentPage="workflows" userEmail={me.email} userRole={me.role} isAdmin={me.isAdmin} onLogout={logout}>
       <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, marginBottom: 8, color: '#1e293b' }}>
-          Workflow Management
-        </h1>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, color: '#1e293b' }}>
+            Workflow Management
+          </h1>
+          <button
+            onClick={() => window.location.href = '/workflows/new'}
+            style={{
+              padding: '10px 20px',
+              background: '#3b82f6',
+              color: 'white',
+              border: 'none',
+              borderRadius: 6,
+              fontSize: 14,
+              cursor: 'pointer',
+              fontWeight: 600,
+            }}
+          >
+            + Create Workflow
+          </button>
+        </div>
         <p style={{ color: '#64748b', margin: 0 }}>
           View and manage workflow definitions
         </p>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { use, useEffect, useState } from 'react';
 import { apiFetchJson, isUnauthorized, isForbidden } from '../../lib/api';
 import type { Me } from '../../types';
 import Layout from '../../components/Layout';
@@ -30,7 +30,8 @@ type WorkflowDefinition = {
   steps: WorkflowStep[];
 };
 
-export default function WorkflowDetailPage({ params }: { params: { id: string } }) {
+export default function WorkflowDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -65,7 +66,7 @@ export default function WorkflowDetailPage({ params }: { params: { id: string } 
   const loadWorkflow = async () => {
     setLoadingWorkflow(true);
     try {
-      const data = await apiFetchJson(`/workflows/${params.id}`);
+      const data = await apiFetchJson(`/workflows/${id}`);
       setWorkflow(data as WorkflowDefinition);
     } catch (e: any) {
       if (isForbidden(e)) {
@@ -184,21 +185,38 @@ export default function WorkflowDetailPage({ params }: { params: { id: string } 
   return (
     <Layout currentPage="workflows" userEmail={me.email} userRole={me.role} isAdmin={me.isAdmin} onLogout={logout}>
       <div style={{ marginBottom: 24 }}>
-        <button
-          onClick={() => window.location.href = '/workflows'}
-          style={{
-            padding: '8px 16px',
-            background: 'white',
-            color: '#64748b',
-            border: '1px solid #e2e8f0',
-            borderRadius: 6,
-            fontSize: 14,
-            cursor: 'pointer',
-            marginBottom: 16,
-          }}
-        >
-          ← Back to Workflows
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <button
+            onClick={() => window.location.href = '/workflows'}
+            style={{
+              padding: '8px 16px',
+              background: 'white',
+              color: '#64748b',
+              border: '1px solid #e2e8f0',
+              borderRadius: 6,
+              fontSize: 14,
+              cursor: 'pointer',
+            }}
+          >
+            ← Back to Workflows
+          </button>
+
+          <button
+            onClick={() => window.location.href = `/workflows/${id}/edit`}
+            style={{
+              padding: '8px 16px',
+              background: '#3b82f6',
+              color: 'white',
+              border: 'none',
+              borderRadius: 6,
+              fontSize: 14,
+              cursor: 'pointer',
+              fontWeight: 500,
+            }}
+          >
+            Edit Workflow
+          </button>
+        </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
           <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, color: '#1e293b' }}>

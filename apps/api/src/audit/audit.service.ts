@@ -41,7 +41,9 @@ export type AuditAction =
   | 'ocr.apply.remark'
   | 'ocr.apply.description'
   | 'workflow.start'
-  | 'workflow.step_action';
+  | 'workflow.step_action'
+  | 'workflow.create'
+  | 'workflow.update';
 
 export type AuditModule =
   | 'auth'

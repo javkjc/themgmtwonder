@@ -1,6 +1,7 @@
 import {
   Controller,
   Post,
+  Put,
   Get,
   Param,
   Body,
@@ -10,7 +11,7 @@ import {
 import { JwtAuthGuard, AdminGuard } from '../auth/auth.guard';
 import { WorkflowsService } from './workflows.service';
 import { AuditService } from '../audit/audit.service';
-import { StartWorkflowDto, StepActionDto } from './dto';
+import { StartWorkflowDto, StepActionDto, CreateWorkflowDto, UpdateWorkflowDto } from './dto';
 
 @Controller('workflows')
 @UseGuards(JwtAuthGuard)
@@ -38,6 +39,108 @@ export class WorkflowsController {
   @UseGuards(AdminGuard)
   async getWorkflowById(@Param('id') id: string) {
     return this.workflowsService.getWorkflowById(id);
+  }
+
+  /**
+   * POST /workflows
+   * Admin-only: Create a new workflow definition with steps (draft mode)
+   * Creates workflow as version 1, inactive
+   */
+  @Post()
+  @UseGuards(AdminGuard)
+  async createWorkflow(@Body() dto: CreateWorkflowDto, @Req() req: any) {
+    const userId = req.user.id;
+
+    // Create workflow (returns workflow with steps)
+    const workflow = await this.workflowsService.createWorkflow(dto, userId);
+
+    // Audit log entry
+    await this.auditService.log({
+      userId,
+      action: 'workflow.create',
+      module: 'workflow',
+      resourceType: 'workflow_definition',
+      resourceId: workflow.id,
+      details: {
+        name: workflow.name,
+        description: workflow.description,
+        version: workflow.version,
+        stepCount: workflow.steps.length,
+        before: null, // No prior state - new workflow
+        after: {
+          id: workflow.id,
+          name: workflow.name,
+          description: workflow.description,
+          version: workflow.version,
+          isActive: workflow.isActive,
+          steps: workflow.steps.map((s) => ({
+            stepOrder: s.stepOrder,
+            stepType: s.stepType,
+            name: s.name,
+          })),
+        },
+      },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    return workflow;
+  }
+
+  /**
+   * PUT /workflows/:id
+   * Admin-only: Update workflow definition and steps (draft mode)
+   * Does NOT change version or activation status
+   */
+  @Put(':id')
+  @UseGuards(AdminGuard)
+  async updateWorkflow(
+    @Param('id') id: string,
+    @Body() dto: UpdateWorkflowDto,
+    @Req() req: any,
+  ) {
+    const userId = req.user.id;
+
+    // Capture state before update
+    const workflowBefore = await this.workflowsService.getWorkflowById(id);
+
+    // Update workflow
+    const workflowAfter = await this.workflowsService.updateWorkflow(id, dto, userId);
+
+    // Audit log entry with before/after snapshot
+    await this.auditService.log({
+      userId,
+      action: 'workflow.update',
+      module: 'workflow',
+      resourceType: 'workflow_definition',
+      resourceId: id,
+      details: {
+        before: {
+          name: workflowBefore.name,
+          description: workflowBefore.description,
+          stepCount: workflowBefore.steps.length,
+          steps: workflowBefore.steps.map((s) => ({
+            stepOrder: s.stepOrder,
+            stepType: s.stepType,
+            name: s.name,
+          })),
+        },
+        after: {
+          name: workflowAfter.name,
+          description: workflowAfter.description,
+          stepCount: workflowAfter.steps.length,
+          steps: workflowAfter.steps.map((s) => ({
+            stepOrder: s.stepOrder,
+            stepType: s.stepType,
+            name: s.name,
+          })),
+        },
+      },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    return workflowAfter;
   }
 
   /**

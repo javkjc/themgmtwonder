@@ -259,59 +259,146 @@ Introduce **inert workflow primitives** without execution automation or UI.
 
 ---
 
-## v6 — Workflow Management (Admin UI) (Planned)
+## v6 — Workflow Management (Admin UI) (In Progress)
 
 ### Purpose
-Allow **admins to define and manage workflows**.
+Allow **admins to define, govern, and validate workflows** using a **definition-first flow-builder mental model**, without enabling execution.
+
+Workflows remain **inert graphs of intent**, not automation.
 
 ---
 
-### v6.1 Workflow Definition Management
+### v6.1 Workflow Definition Authoring (Flow Builder — Admin)
 
 **Capabilities**
-- Admin UI to create/edit workflows
-- Step ordering
-- Conditional routing rules
-- Versioning and activation
+- Admin-only workflow editor
+- Canvas-based flow representation:
+  - Start
+  - Steps
+  - Decisions (IF / ELSE)
+  - End
+- Explicit step ordering and branching
+- Structured configuration via inspector panels
+- No raw JSON exposure in UI
+- Draft-only authoring
+- Explicit save only
 
 **Execution Boundaries**
 - Admin-only UI
 - No execution
 - No task mutation
+- No background persistence
 
 ---
 
-### v6.2 Workflow Validation & Preview
+### v6.2 Workflow Validation & Explanation
 
 **Capabilities**
-- Dry-run validation
-- Human-readable explanation
+- Structural validation:
+  - missing steps
+  - invalid ordering
+  - missing assignees
+- Human-readable explanations:
+  - “If amount > 1,500 then route to Manager”
+  - “Assigned to role: Finance Admin”
+- Dry-run preview of possible paths
+- Preview derived from draft or saved definition
+
+**Execution Boundaries**
 - No execution
+- No persistence of preview output
+- No side effects
 
 ---
 
-## v7 — Workflow Participation (User UI) (Planned)
+### v6.3 Reusable Workflow Elements (Admin Library)
 
 ### Purpose
-Allow users to **interact with workflows explicitly**.
+Enable **reusable, governed building blocks** so workflows can be assembled without starting from scratch.
 
 ---
 
-### v7.1 Workflow Inbox
+#### Element Types
 
-**Capabilities**
-- List of pending workflow steps
-- Read-only context
-- Explicit action buttons
+**Step Elements**
+- Approval
+- Review
+- Acknowledge
+
+**Decision Elements**
+- IF / ELSE branching
+- Mandatory default (ELSE) path
 
 ---
 
-### v7.2 Workflow History & Traceability
+#### Element Capabilities
+
+- Admins can create reusable elements with:
+  - Display label
+  - Element type
+  - Default configuration (assignee, conditions)
+  - Editable fields (what workflow authors may override)
+  - Validation constraints
+
+- Elements are versioned and stored as:
+  - elementTemplateId
+  - elementTemplateVersion
+  - schema + defaults
+
+---
+
+#### Usage in Workflows
+
+- Workflow definitions reference elements by:
+  - template ID + version
+- Each placement creates an **instance configuration**
+- Editing an instance does **not** mutate the template
+- Updating a template does **not** retroactively change workflows
+
+---
+
+#### Execution Boundaries
+
+- Admin-managed only
+- No execution
+- No automation
+- Full audit coverage for:
+  - element creation
+  - element update
+  - element deprecation
+
+---
+
+## v7 — Workflow Composition & Participation (User UI) (Planned)
+
+### Purpose
+Allow **non-technical users** to assemble workflows from **pre-approved elements** and interact with workflows explicitly.
+
+---
+
+### v7.1 Workflow Composition (User Builder)
 
 **Capabilities**
-- Full execution timeline
-- Step decisions & remarks
-- Audit-backed visibility
+- Drag-and-drop workflow composition
+- Use only admin-approved reusable elements
+- Canvas + inspector model
+- Plain-language configuration
+- No raw JSON exposure
+
+**Constraints**
+- Users cannot create new element types
+- Users cannot bypass validation
+- Users cannot define execution behavior
+
+---
+
+### v7.2 Workflow Participation
+
+**Capabilities**
+- User inbox for pending workflow steps
+- Explicit approve / reject / acknowledge actions
+- Mandatory remarks
+- Full audit traceability
 
 ---
 

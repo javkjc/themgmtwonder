@@ -58,10 +58,10 @@ export default function TasksTable({
       setModalLoading(true);
       try {
         if (relationshipModal.type === 'parent') {
-          const parent = await apiFetchJson<Todo>(`/todos/${relationshipModal.todo.id}/parent`, { method: 'GET' });
+          const parent = await apiFetchJson(`/todos/${relationshipModal.todo.id}/parent`, { method: 'GET' });
           setModalData(parent);
         } else {
-          const children = await apiFetchJson<Todo[]>(`/todos/${relationshipModal.todo.id}/children`, { method: 'GET' });
+          const children = await apiFetchJson(`/todos/${relationshipModal.todo.id}/children`, { method: 'GET' });
           setModalData(children);
         }
       } catch (error) {

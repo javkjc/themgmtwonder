@@ -13,7 +13,7 @@ import {
   workflowStepExecutions,
   todos,
 } from '../db/schema';
-import { StartWorkflowDto, StepActionDto } from './dto';
+import { StartWorkflowDto, StepActionDto, CreateWorkflowDto, UpdateWorkflowDto } from './dto';
 
 @Injectable()
 export class WorkflowsService {
@@ -65,6 +65,94 @@ export class WorkflowsService {
       ...workflow,
       steps,
     };
+  }
+
+  /**
+   * Create a new workflow definition with steps (draft mode)
+   * Admin-only operation
+   * Does NOT activate or version the workflow - creates as version 1, inactive
+   */
+  async createWorkflow(dto: CreateWorkflowDto, adminUserId: string) {
+    // 1. Create workflow definition (version 1, inactive by default)
+    const [workflow] = await this.dbs.db
+      .insert(workflowDefinitions)
+      .values({
+        name: dto.name,
+        description: dto.description || null,
+        version: 1,
+        isActive: false,
+      })
+      .returning();
+
+    // 2. Create workflow steps
+    if (dto.steps && dto.steps.length > 0) {
+      const stepValues = dto.steps.map((step) => ({
+        workflowDefinitionId: workflow.id,
+        stepOrder: step.stepOrder,
+        stepType: step.stepType,
+        name: step.name,
+        description: step.description || null,
+        assignedTo: step.assignedTo || null,
+        conditions: step.conditions || null,
+      }));
+
+      await this.dbs.db.insert(workflowSteps).values(stepValues);
+    }
+
+    // 3. Return workflow with steps
+    return this.getWorkflowById(workflow.id);
+  }
+
+  /**
+   * Update an existing workflow definition and its steps (draft mode)
+   * Admin-only operation
+   * Replaces all steps with new step definitions
+   * Does NOT change version or activation status
+   */
+  async updateWorkflow(id: string, dto: UpdateWorkflowDto, adminUserId: string) {
+    // 1. Verify workflow exists
+    const [existingWorkflow] = await this.dbs.db
+      .select()
+      .from(workflowDefinitions)
+      .where(eq(workflowDefinitions.id, id))
+      .limit(1);
+
+    if (!existingWorkflow) {
+      throw new NotFoundException(`Workflow definition ${id} not found`);
+    }
+
+    // 2. Update workflow definition metadata
+    await this.dbs.db
+      .update(workflowDefinitions)
+      .set({
+        name: dto.name,
+        description: dto.description || null,
+        updatedAt: new Date(),
+      })
+      .where(eq(workflowDefinitions.id, id));
+
+    // 3. Delete existing steps
+    await this.dbs.db
+      .delete(workflowSteps)
+      .where(eq(workflowSteps.workflowDefinitionId, id));
+
+    // 4. Insert new steps
+    if (dto.steps && dto.steps.length > 0) {
+      const stepValues = dto.steps.map((step) => ({
+        workflowDefinitionId: id,
+        stepOrder: step.stepOrder,
+        stepType: step.stepType,
+        name: step.name,
+        description: step.description || null,
+        assignedTo: step.assignedTo || null,
+        conditions: step.conditions || null,
+      }));
+
+      await this.dbs.db.insert(workflowSteps).values(stepValues);
+    }
+
+    // 5. Return updated workflow with steps
+    return this.getWorkflowById(id);
   }
 
   /**
