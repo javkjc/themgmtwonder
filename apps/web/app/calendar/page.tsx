@@ -523,6 +523,8 @@ export default function CalendarPage() {
       if (Array.isArray(data)) {
         const mapped: CalendarEvent[] = data
           .filter((t: Todo) => t.startAt)
+          // v4 bugfix: Exclude parent tasks (cannot be scheduled)
+          .filter((t: Todo) => !t.childCount || t.childCount === 0)
           .map((t: Todo) => ({
             id: t.id,
             title: t.title,
@@ -550,7 +552,12 @@ export default function CalendarPage() {
         data = await apiFetchJson('/todos?scheduled=false&limit=50');
       }
       if (Array.isArray(data)) {
-        setUnscheduledTodos(data.filter((t: Todo) => !t.startAt));
+        // v4 bugfix: Exclude parent tasks (cannot be scheduled)
+        setUnscheduledTodos(
+          data
+            .filter((t: Todo) => !t.startAt)
+            .filter((t: Todo) => !t.childCount || t.childCount === 0)
+        );
       }
     } catch (e) {
       if (isUnauthorized(e)) setMe(null);

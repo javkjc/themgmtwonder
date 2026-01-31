@@ -13,7 +13,7 @@ import {
   workflowStepExecutions,
   todos,
 } from '../db/schema';
-import { StartWorkflowDto, StepActionDto, CreateWorkflowDto, UpdateWorkflowDto } from './dto';
+import { StartWorkflowDto, StepActionDto, CreateWorkflowDto, UpdateWorkflowDto, CreateVersionDto } from './dto';
 
 @Injectable()
 export class WorkflowsService {
@@ -31,6 +31,7 @@ export class WorkflowsService {
         description: workflowDefinitions.description,
         version: workflowDefinitions.version,
         isActive: workflowDefinitions.isActive,
+        workflowGroupId: workflowDefinitions.workflowGroupId,
         createdAt: workflowDefinitions.createdAt,
         updatedAt: workflowDefinitions.updatedAt,
       })
@@ -81,10 +82,18 @@ export class WorkflowsService {
         description: dto.description || null,
         version: 1,
         isActive: false,
+        // v6: Set workflowGroupId to self (starts its own version group)
+        workflowGroupId: undefined, // Will be backfilled after insert
       })
       .returning();
 
-    // 2. Create workflow steps
+    // 2. Backfill workflowGroupId to self (starts new version group)
+    await this.dbs.db
+      .update(workflowDefinitions)
+      .set({ workflowGroupId: workflow.id })
+      .where(eq(workflowDefinitions.id, workflow.id));
+
+    // 3. Create workflow steps
     if (dto.steps && dto.steps.length > 0) {
       const stepValues = dto.steps.map((step) => ({
         workflowDefinitionId: workflow.id,
@@ -99,7 +108,7 @@ export class WorkflowsService {
       await this.dbs.db.insert(workflowSteps).values(stepValues);
     }
 
-    // 3. Return workflow with steps
+    // 4. Return workflow with steps
     return this.getWorkflowById(workflow.id);
   }
 
@@ -383,5 +392,150 @@ export class WorkflowsService {
     }
 
     return stepExecution;
+  }
+
+  /**
+   * Create a new version of an existing workflow by cloning it.
+   * v6: Explicit version creation - clones workflow definition + steps
+   * Admin-only operation
+   */
+  async createVersion(dto: CreateVersionDto, adminUserId: string) {
+    // 1. Load source workflow with steps
+    const sourceWorkflow = await this.getWorkflowById(dto.sourceWorkflowId);
+
+    // 2. Determine workflowGroupId and next version number
+    const workflowGroupId = sourceWorkflow.workflowGroupId || sourceWorkflow.id;
+
+    // Get highest version number in this group
+    const groupWorkflows = await this.dbs.db
+      .select({ version: workflowDefinitions.version })
+      .from(workflowDefinitions)
+      .where(eq(workflowDefinitions.workflowGroupId, workflowGroupId))
+      .orderBy(desc(workflowDefinitions.version))
+      .limit(1);
+
+    const nextVersion = groupWorkflows.length > 0 ? groupWorkflows[0].version + 1 : 1;
+
+    // 3. Create new workflow definition (inactive by default)
+    const [newWorkflow] = await this.dbs.db
+      .insert(workflowDefinitions)
+      .values({
+        name: sourceWorkflow.name,
+        description: sourceWorkflow.description || null,
+        version: nextVersion,
+        isActive: false, // Always inactive on creation
+        workflowGroupId: workflowGroupId,
+      })
+      .returning();
+
+    // 4. Clone workflow steps
+    if (sourceWorkflow.steps && sourceWorkflow.steps.length > 0) {
+      const stepValues = sourceWorkflow.steps.map((step) => ({
+        workflowDefinitionId: newWorkflow.id,
+        stepOrder: step.stepOrder,
+        stepType: step.stepType,
+        name: step.name,
+        description: step.description || null,
+        assignedTo: step.assignedTo || null,
+        conditions: step.conditions || null,
+      }));
+
+      await this.dbs.db.insert(workflowSteps).values(stepValues);
+    }
+
+    // 5. Return new workflow with steps
+    return this.getWorkflowById(newWorkflow.id);
+  }
+
+  /**
+   * Activate a workflow version.
+   * v6: Enforces invariant - only ONE active version per workflow group.
+   * Admin-only operation
+   */
+  async activateWorkflow(workflowId: string, adminUserId: string) {
+    // 1. Verify workflow exists
+    const workflow = await this.getWorkflowById(workflowId);
+
+    if (workflow.isActive) {
+      throw new BadRequestException('Workflow is already active');
+    }
+
+    const workflowGroupId = workflow.workflowGroupId || workflow.id;
+
+    // 2. Deactivate all other versions in the same group (atomic operation)
+    await this.dbs.db
+      .update(workflowDefinitions)
+      .set({
+        isActive: false,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(workflowDefinitions.workflowGroupId, workflowGroupId),
+          eq(workflowDefinitions.isActive, true),
+        ),
+      );
+
+    // 3. Activate target workflow
+    await this.dbs.db
+      .update(workflowDefinitions)
+      .set({
+        isActive: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(workflowDefinitions.id, workflowId));
+
+    // 4. Return updated workflow
+    return this.getWorkflowById(workflowId);
+  }
+
+  /**
+   * Deactivate a workflow version.
+   * v6: Explicit deactivation - does NOT affect existing executions.
+   * Admin-only operation
+   */
+  async deactivateWorkflow(workflowId: string, adminUserId: string) {
+    // 1. Verify workflow exists
+    const workflow = await this.getWorkflowById(workflowId);
+
+    if (!workflow.isActive) {
+      throw new BadRequestException('Workflow is already inactive');
+    }
+
+    // 2. Deactivate workflow
+    await this.dbs.db
+      .update(workflowDefinitions)
+      .set({
+        isActive: false,
+        updatedAt: new Date(),
+      })
+      .where(eq(workflowDefinitions.id, workflowId));
+
+    // 3. Return updated workflow
+    return this.getWorkflowById(workflowId);
+  }
+
+  /**
+   * List all versions of a workflow group.
+   * v6: Returns all workflow versions grouped together.
+   * Admin-only operation
+   */
+  async listWorkflowVersions(workflowGroupId: string) {
+    const versions = await this.dbs.db
+      .select({
+        id: workflowDefinitions.id,
+        name: workflowDefinitions.name,
+        description: workflowDefinitions.description,
+        version: workflowDefinitions.version,
+        isActive: workflowDefinitions.isActive,
+        createdAt: workflowDefinitions.createdAt,
+        updatedAt: workflowDefinitions.updatedAt,
+        workflowGroupId: workflowDefinitions.workflowGroupId,
+      })
+      .from(workflowDefinitions)
+      .where(eq(workflowDefinitions.workflowGroupId, workflowGroupId))
+      .orderBy(desc(workflowDefinitions.version));
+
+    return versions;
   }
 }

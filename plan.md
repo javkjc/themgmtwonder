@@ -31,9 +31,9 @@ Infrastructure: Dockerized (Web → API → DB → OCR Worker)
 
 - Introduce **admin-only UI** for managing workflow definitions
 - Allow **creation, editing, versioning, and activation** of workflows
-- Introduce **definition-first flow builder mental model**
+- Introduce **definition-first flow-builder mental model**
 - Introduce **reusable workflow elements (admin-governed)**
-- Provide **validation and preview** tooling only
+- Provide **validation and dry-run preview** tooling only
 - No workflow execution from admin UI
 - No task mutation
 - No background automation
@@ -50,15 +50,14 @@ Infrastructure: Dockerized (Web → API → DB → OCR Worker)
 - Undo / correction semantics
 - Intelligence or ML
 - External intake (Telegram)
+- Relationship / Transaction Graph (belongs to v9+)
 - Collaboration semantics
-
-These belong to **future plan phases**.
 
 ---
 
 ### Core Design Rule (Non-Negotiable)
 
-> v6 MUST expose workflows as **human-defined, inspectable, inert graphs**,  
+> v6 MUST expose workflows as **human-defined, inspectable, inert graphs of intent**,  
 > NOT as executable automation and NOT as hidden system behavior.
 
 Admin UI:
@@ -98,7 +97,7 @@ Drag-and-drop is permitted **only as a visual ordering and placement aid**.
 - Audit trail complete for all admin actions
 - Changes are minimal, localized, reversible
 - plan.md updated at start and end of work
-- executionnotes.md appended (append-only, latest at bottom)
+- executionnotes.md appended (append-only)
 - Verification: Manual (owned by user)
 
 ---
@@ -106,13 +105,13 @@ Drag-and-drop is permitted **only as a visual ordering and placement aid**.
 ## 3. Current State (v6 Entry Point)
 
 - v1–v5 complete and locked
-- Workflow definition and execution schemas exist
+- Workflow definition + execution schemas exist
 - Backend supports workflow definition persistence (create/update)
 - Admin workflow list & detail pages exist
 - Admin workflow editor (draft mode) exists
-- No versioning or activation UI exists
-- No reusable element library exists
-- No validation or dry-run tooling exists
+- ❌ No versioning or activation UI
+- ❌ No reusable element library
+- ❌ No validation or dry-run tooling
 - Codebase migration-safe
 
 ---
@@ -128,138 +127,56 @@ Sequential execution. One concern per task.
 
 **Status:** ✅ DONE
 
-**Objective**  
-Provide admin-only, read-only visibility into workflow definitions.
-
-**In Scope**
-- `/workflows` list view:
-  - name
-  - description
-  - version
-  - active status
-  - last updated
-- `/workflows/[id]` detail view:
-  - workflow metadata
-  - ordered steps
-  - conditions (read-only)
-
-**Rules**
-- Admin-only access
-- No mutation capability
-- No execution controls
-- No side effects
-
 ---
 
 ### **10.2 Workflow Definition Editor UI (Draft Mode)**
 
 **Status:** ✅ DONE
 
-**Objective**  
-Provide an **admin-only workflow editor** for authoring and editing workflows in a **draft-only, inert state**.
-
-This task establishes the **primary authoring experience** but does NOT enable activation, execution, or versioning.
-
----
-
-#### Navigation & Routing (Authoritative)
-
-1) **Workflow List**
-   - Route: `/workflows`
-   - Add navigation:
-     - **Create Workflow** → `/workflows/new`
-
-2) **Workflow Detail**
-   - Route: `/workflows/[id]`
-   - Add navigation:
-     - **Edit** → `/workflows/[id]/edit`
-   - Edit control is admin-only visible
-   - No mutation on navigation
-
-3) **Workflow Editor**
-   - Create: `/workflows/new`
-   - Edit: `/workflows/[id]/edit`
-   - Admin-only access
-   - Forced password change gating applies
-
-No other navigation paths are permitted under this task.
-
----
-
-#### Editor Capabilities
-
-**Draft Metadata**
-- Edit workflow name
-- Edit workflow description
-
-**Ordered Step Editor**
-- Add step
-- Remove step
-- Explicitly reorder steps (drag-and-drop or controls)
-- Step properties:
-  - step type (approve / review / acknowledge, etc.)
-  - assignee (role or user reference)
-
-**Draft State Rules**
-- Draft state is client-side only until explicit save
-- No auto-save
-- No background persistence
-- No implicit mutation
-
-**Save Behavior**
-- Explicit **Save Draft**
-- Validation errors block save
-- On success:
-  - Persist definition
-  - Redirect to read-only detail page
-
----
-
-#### Preview Panel (Editor Only)
-
-- Read-only
-- Derived entirely from draft state
-- No persistence
-- No execution
-- No validation side effects
-
----
-
-#### Explicitly Forbidden in 10.2
-
-- Activation / deactivation
-- Version incrementing
-- Execution triggers
-- Conditional routing enforcement
-- Background jobs
-- Auto-save
-- Implicit validation
-
 ---
 
 ### **10.3 Workflow Versioning & Activation Controls**
 
-**Status:** ⬜ TODO
+**Status:** ✅ DONE
 
 **Objective**  
 Allow admins to **explicitly manage workflow lifecycle state** without affecting existing executions.
 
-**In Scope**
-- Explicit version increment
-- Activate / deactivate workflow versions
+---
+
+#### In Scope
+
+**Versioning**
+- Explicit “Create New Version” action
+- New version is cloned from selected version
+- Version number increments monotonically
+- Previous versions become immutable
+
+**Activation**
+- Explicit activate / deactivate actions
 - Enforce invariant:
   - **only one active version per workflow**
+- Deactivation does NOT affect:
+  - existing workflow executions
+  - execution history
 
 **Visibility**
-- Version history list per workflow
-- Active vs inactive clearly indicated
+- Version history list on workflow detail page
+- Clear indication of:
+  - active version
+  - inactive versions
+  - version number
+  - creation timestamp
 
-**Rules**
+---
+
+#### Rules
+
 - Activation is explicit and user-confirmed
-- Deactivation does NOT affect existing executions
 - No implicit version creation
 - No auto-activation
 - No execution triggers
+- No task mutation
 
 ---
 
@@ -268,19 +185,34 @@ Allow admins to **explicitly manage workflow lifecycle state** without affecting
 **Status:** ⬜ TODO
 
 **Objective**  
-Provide **non-executing validation and explanation tooling**.
+Provide **non-executing validation and human-readable explanation tooling**.
 
-**In Scope**
-- Structural validation:
-  - step ordering integrity
+---
+
+#### In Scope
+
+**Validation**
+- Structural checks:
+  - missing steps
+  - invalid ordering
   - missing assignees
   - unsupported step types
-- Human-readable explanations
-- Dry-run path preview
-- Derived from draft or saved definitions
+- Validation may run on:
+  - draft definitions
+  - saved definitions
 
-**Rules**
-- No execution
+**Dry-Run Preview**
+- Human-readable execution explanation
+- Possible paths shown (IF / ELSE)
+- Derived from:
+  - draft state OR
+  - saved definition
+
+---
+
+#### Rules
+
+- No execution records created
 - No persistence of preview output
 - No background evaluation
 - No side effects
@@ -294,18 +226,24 @@ Provide **non-executing validation and explanation tooling**.
 **Objective**  
 Ensure **complete audit coverage** for all admin workflow management actions.
 
-**In Scope**
-- Audit entries for:
-  - workflow creation
-  - workflow editing
-  - version creation
-  - activation
-  - deactivation
+---
 
-**Audit Requirements**
+#### Audit Scope
+
+Audit entries must exist for:
+- Workflow creation
+- Workflow editing
+- Version creation
+- Activation
+- Deactivation
+
+---
+
+#### Audit Requirements
+
 - Append-only audit log
-- Before/after snapshots where applicable
-- Actor attribution
+- Before / after snapshots where applicable
+- Actor attribution (admin user)
 - Timestamped entries
 - No silent changes
 
@@ -316,22 +254,48 @@ Ensure **complete audit coverage** for all admin workflow management actions.
 **Status:** ⬜ TODO
 
 **Objective**  
-Introduce **admin-defined reusable workflow elements** to support no-code workflow composition.
+Introduce **admin-defined reusable workflow elements** to enable no-code composition without sacrificing governance.
 
-**In Scope**
-- Admin-managed element library
-- Step elements (approve / review / acknowledge)
-- Decision elements (IF / ELSE)
-- Default configuration + editable fields
-- Versioned templates
-- Instance-level overrides without mutating templates
+---
 
-**Rules**
+#### In Scope
+
+**Element Types**
+- Step elements:
+  - approve
+  - review
+  - acknowledge
+- Decision elements:
+  - IF / ELSE branching
+  - mandatory default (ELSE) path
+
+**Template Model**
+- Versioned element templates
+- Each template defines:
+  - element type
+  - display label
+  - default configuration
+  - editable fields
+  - validation constraints
+
+**Usage**
+- Workflow definitions reference:
+  - template ID + version
+- Each placement creates an **instance configuration**
+- Editing an instance does NOT mutate the template
+- Updating a template does NOT retroactively change workflows
+
+---
+
+#### Rules
+
 - Admin-only management
 - No execution
 - No automation
-- Full audit coverage
-- Template updates do NOT retroactively change workflows
+- Full audit coverage for:
+  - element creation
+  - element update
+  - element deprecation
 
 ---
 
@@ -370,6 +334,7 @@ Do NOT proceed to:
 - automation
 - intelligence
 - external intake
+- relationship graph
 - collaboration
 
 without a **new plan.md for the next phase (v7)**.

@@ -11,7 +11,7 @@ import {
 import { JwtAuthGuard, AdminGuard } from '../auth/auth.guard';
 import { WorkflowsService } from './workflows.service';
 import { AuditService } from '../audit/audit.service';
-import { StartWorkflowDto, StepActionDto, CreateWorkflowDto, UpdateWorkflowDto } from './dto';
+import { StartWorkflowDto, StepActionDto, CreateWorkflowDto, UpdateWorkflowDto, CreateVersionDto } from './dto';
 
 @Controller('workflows')
 @UseGuards(JwtAuthGuard)
@@ -250,5 +250,146 @@ export class WorkflowsController {
     });
 
     return stepExecution;
+  }
+
+  /**
+   * POST /workflows/versions
+   * Admin-only: Create a new version by cloning an existing workflow
+   */
+  @Post('versions')
+  @UseGuards(AdminGuard)
+  async createVersion(@Body() dto: CreateVersionDto, @Req() req: any) {
+    const userId = req.user.id;
+
+    // Capture source workflow state before cloning
+    const sourceWorkflow = await this.workflowsService.getWorkflowById(dto.sourceWorkflowId);
+
+    // Create new version
+    const newVersion = await this.workflowsService.createVersion(dto, userId);
+
+    // Audit log entry
+    await this.auditService.log({
+      userId,
+      action: 'workflow.create_version',
+      module: 'workflow',
+      resourceType: 'workflow_definition',
+      resourceId: newVersion.id,
+      details: {
+        sourceWorkflowId: dto.sourceWorkflowId,
+        sourceVersion: sourceWorkflow.version,
+        newVersion: newVersion.version,
+        workflowGroupId: newVersion.workflowGroupId,
+        before: {
+          sourceId: sourceWorkflow.id,
+          sourceName: sourceWorkflow.name,
+          sourceVersion: sourceWorkflow.version,
+        },
+        after: {
+          id: newVersion.id,
+          name: newVersion.name,
+          version: newVersion.version,
+          isActive: newVersion.isActive,
+          workflowGroupId: newVersion.workflowGroupId,
+          stepCount: newVersion.steps.length,
+        },
+      },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    return newVersion;
+  }
+
+  /**
+   * POST /workflows/:id/activate
+   * Admin-only: Activate a workflow version (deactivates others in same group)
+   */
+  @Post(':id/activate')
+  @UseGuards(AdminGuard)
+  async activateWorkflow(@Param('id') id: string, @Req() req: any) {
+    const userId = req.user.id;
+
+    // Capture state before activation
+    const workflowBefore = await this.workflowsService.getWorkflowById(id);
+
+    // Activate workflow (deactivates others)
+    const workflowAfter = await this.workflowsService.activateWorkflow(id, userId);
+
+    // Audit log entry
+    await this.auditService.log({
+      userId,
+      action: 'workflow.activate',
+      module: 'workflow',
+      resourceType: 'workflow_definition',
+      resourceId: id,
+      details: {
+        workflowGroupId: workflowAfter.workflowGroupId,
+        version: workflowAfter.version,
+        before: {
+          isActive: workflowBefore.isActive,
+        },
+        after: {
+          isActive: workflowAfter.isActive,
+        },
+      },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    return workflowAfter;
+  }
+
+  /**
+   * POST /workflows/:id/deactivate
+   * Admin-only: Deactivate a workflow version
+   */
+  @Post(':id/deactivate')
+  @UseGuards(AdminGuard)
+  async deactivateWorkflow(@Param('id') id: string, @Req() req: any) {
+    const userId = req.user.id;
+
+    // Capture state before deactivation
+    const workflowBefore = await this.workflowsService.getWorkflowById(id);
+
+    // Deactivate workflow
+    const workflowAfter = await this.workflowsService.deactivateWorkflow(id, userId);
+
+    // Audit log entry
+    await this.auditService.log({
+      userId,
+      action: 'workflow.deactivate',
+      module: 'workflow',
+      resourceType: 'workflow_definition',
+      resourceId: id,
+      details: {
+        workflowGroupId: workflowAfter.workflowGroupId,
+        version: workflowAfter.version,
+        before: {
+          isActive: workflowBefore.isActive,
+        },
+        after: {
+          isActive: workflowAfter.isActive,
+        },
+      },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    return workflowAfter;
+  }
+
+  /**
+   * GET /workflows/:id/versions
+   * Admin-only: List all versions of a workflow group
+   */
+  @Get(':id/versions')
+  @UseGuards(AdminGuard)
+  async listWorkflowVersions(@Param('id') id: string) {
+    // Get the workflow to determine its group
+    const workflow = await this.workflowsService.getWorkflowById(id);
+    const workflowGroupId = workflow.workflowGroupId || workflow.id;
+
+    // Return all versions in the group
+    return this.workflowsService.listWorkflowVersions(workflowGroupId);
   }
 }

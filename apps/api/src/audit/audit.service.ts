@@ -43,7 +43,10 @@ export type AuditAction =
   | 'workflow.start'
   | 'workflow.step_action'
   | 'workflow.create'
-  | 'workflow.update';
+  | 'workflow.update'
+  | 'workflow.create_version'
+  | 'workflow.activate'
+  | 'workflow.deactivate';
 
 export type AuditModule =
   | 'auth'

@@ -120,6 +120,13 @@
       "when": 1769693379393,
       "tag": "0016_legal_colossus",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1769801242765,
+      "tag": "0017_living_radioactive_man",
+      "breakpoints": true
     }
   ]
 }

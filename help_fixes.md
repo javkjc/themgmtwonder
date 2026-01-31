@@ -89,3 +89,28 @@ docker compose exec db psql -U <POSTGRES_USER> -d <POSTGRES_DB> -c "\d attachmen
 
 VERIFY OCR DATA PRESENCE
 docker compose exec db psql -U <POSTGRES_USER> -d <POSTGRES_DB> -c "SELECT id, status, length(extracted_text) AS text_len, created_at FROM attachment_ocr_outputs ORDER BY created_at DESC LIMIT 5;"
+
+================================================================================
+8) DOCKER-SPECIFIC WORKAROUND — 404s AND CACHE ISSUES
+================================================================================
+When encountering 404 errors or cache-related issues in Docker environment
+(e.g., routes not found, pages showing 404, stale builds):
+
+STEP 1: Clear Next.js cache inside the web container
+docker exec todo-web sh -c "rm -rf /app/.next"
+
+STEP 2: Restart the web container
+docker compose restart web
+
+STEP 3: Wait for compilation to complete
+Watch the logs for the "✓ Ready" message:
+docker compose logs -f web
+
+SYMPTOMS THIS FIXES:
+- 404 errors on valid routes (e.g., /calendar, /workflows, /admin)
+- Stale component rendering after code changes
+- Build artifacts not reflecting recent edits
+- Module resolution errors in containerized environment
+
+NOTE: This workaround is for development only. For production, ensure
+proper build process with clean .next directory before deployment.

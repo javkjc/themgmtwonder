@@ -190,6 +190,8 @@ Enable **structural grouping** of tasks without workflows or automation.
 ### Purpose
 Introduce **inert workflow primitives** without execution automation or UI.
 
+Workflows explain **governance**, not reality.
+
 ---
 
 ### v5.1 Workflow Definitions (Data Model)
@@ -268,20 +270,20 @@ Workflows remain **inert graphs of intent**, not automation.
 
 ---
 
-### v6.1 Workflow Definition Authoring (Flow Builder — Admin)
+### v6.1 Workflow Definition Authoring (Admin Flow Builder)
 
 **Capabilities**
 - Admin-only workflow editor
 - Canvas-based flow representation:
-  - Start
-  - Steps
-  - Decisions (IF / ELSE)
-  - End
-- Explicit step ordering and branching
-- Structured configuration via inspector panels
-- No raw JSON exposure in UI
+  - Start node
+  - Action steps
+  - Decision branches (IF / ELSE)
+  - End nodes
+- Explicit ordering and branching
+- Configuration via inspector panels
 - Draft-only authoring
 - Explicit save only
+- No raw JSON exposure
 
 **Execution Boundaries**
 - Admin-only UI
@@ -298,10 +300,8 @@ Workflows remain **inert graphs of intent**, not automation.
   - missing steps
   - invalid ordering
   - missing assignees
-- Human-readable explanations:
-  - “If amount > 1,500 then route to Manager”
-  - “Assigned to role: Finance Admin”
-- Dry-run preview of possible paths
+- Human-readable explanations
+- Dry-run preview of paths
 - Preview derived from draft or saved definition
 
 **Execution Boundaries**
@@ -313,92 +313,43 @@ Workflows remain **inert graphs of intent**, not automation.
 
 ### v6.3 Reusable Workflow Elements (Admin Library)
 
-### Purpose
-Enable **reusable, governed building blocks** so workflows can be assembled without starting from scratch.
+**Purpose**
+Enable **governed, reusable workflow building blocks**.
 
----
+**Capabilities**
+- Admin-defined reusable elements:
+  - approval
+  - review
+  - acknowledge
+  - decision
+- Versioned templates with:
+  - schema
+  - defaults
+  - override rules
+- Instance configuration per workflow
+- Full audit trail for lifecycle changes
 
-#### Element Types
-
-**Step Elements**
-- Approval
-- Review
-- Acknowledge
-
-**Decision Elements**
-- IF / ELSE branching
-- Mandatory default (ELSE) path
-
----
-
-#### Element Capabilities
-
-- Admins can create reusable elements with:
-  - Display label
-  - Element type
-  - Default configuration (assignee, conditions)
-  - Editable fields (what workflow authors may override)
-  - Validation constraints
-
-- Elements are versioned and stored as:
-  - elementTemplateId
-  - elementTemplateVersion
-  - schema + defaults
-
----
-
-#### Usage in Workflows
-
-- Workflow definitions reference elements by:
-  - template ID + version
-- Each placement creates an **instance configuration**
-- Editing an instance does **not** mutate the template
-- Updating a template does **not** retroactively change workflows
-
----
-
-#### Execution Boundaries
-
+**Execution Boundaries**
 - Admin-managed only
 - No execution
 - No automation
-- Full audit coverage for:
-  - element creation
-  - element update
-  - element deprecation
 
 ---
 
 ## v7 — Workflow Composition & Participation (User UI) (Planned)
 
 ### Purpose
-Allow **non-technical users** to assemble workflows from **pre-approved elements** and interact with workflows explicitly.
+Allow users to **interact with workflows explicitly**, without authoring governance logic.
 
 ---
 
-### v7.1 Workflow Composition (User Builder)
+### v7.1 Workflow Participation
 
 **Capabilities**
-- Drag-and-drop workflow composition
-- Use only admin-approved reusable elements
-- Canvas + inspector model
-- Plain-language configuration
-- No raw JSON exposure
-
-**Constraints**
-- Users cannot create new element types
-- Users cannot bypass validation
-- Users cannot define execution behavior
-
----
-
-### v7.2 Workflow Participation
-
-**Capabilities**
-- User inbox for pending workflow steps
-- Explicit approve / reject / acknowledge actions
+- User inbox of pending workflow steps
+- Explicit approve / reject / acknowledge
 - Mandatory remarks
-- Full audit traceability
+- Full execution trace visibility
 
 ---
 
@@ -423,28 +374,148 @@ Capture **external intent** without mutation.
 
 ---
 
-### v8.2 Suggested Actions
+## v9 — Relationship / Transaction Graph (Read-Only Reality View) (Planned)
 
-**Capabilities**
-- Non-binding suggestions
-- Explicit user choice
-- “Do nothing” always available
+### Purpose
+Provide a **derived, visual representation of real-world transactions and obligations** to help humans understand what is happening — without changing ERP authority or enabling automation.
+
+This is a **cognitive layer**, not a workflow engine.
+
+ERP records reality.  
+This module helps humans **see and reason about it**.
 
 ---
 
-## v9 — Undo & Correction Semantics (Future)
+### v9.1 Relationship Graph Core Model
+
+**Concepts**
+- **Nodes** represent real entities:
+  - Customer
+  - Vendor
+  - Contract
+  - Order
+  - Invoice
+  - Shipment
+  - Payment
+  - Task
+  - Workflow Execution
+- **Edges** represent real relationships:
+  - pays
+  - bills
+  - fulfills
+  - ships_to
+  - depends_on
+  - blocks / unblocks
+- Nodes and edges map **directly to authoritative records**.
+
+**Rules**
+- Graph structure is derived
+- Layout is non-authoritative
+- Graph does not execute anything
+
+---
+
+### v9.2 Relationship Graph Visualization (Read-Only)
+
+**Capabilities**
+- Visual graph showing:
+  - entities as nodes
+  - obligations and flows as edges
+- Each edge may display:
+  - amount
+  - quantity
+  - status (pending / completed / blocked)
+  - direction of responsibility
+- Status overlays derived from:
+  - task stages
+  - workflow execution states
+
+**Execution Boundaries**
+- Read-only
+- No persistence
+- No mutation
+
+---
+
+### v9.3 Contextual Inspectors (Read-Only)
+
+**Capabilities**
+- Clicking a node or edge opens an inspector panel
+- Inspector shows:
+  - same fields as ERP forms
+  - rendered in context of the graph
+- No editing in this phase
+
+---
+
+### v9.4 Governance Overlay (Read-Only)
+
+**Capabilities**
+- Visual overlay showing:
+  - linked workflow definitions
+  - current execution step
+  - blocking approvals
+- Explains **why** something is pending, not **what to do**
+
+---
+
+### v9.5 Admin-Governed Structure
+
+**Capabilities**
+- Admin defines:
+  - allowed node types
+  - allowed relationship types
+  - display rules
+- Users cannot invent new semantics
+
+---
+
+## v10 — Graph Editing in Context (Future)
+
+### Purpose
+Allow **explicit, audited edits** to ERP records via the graph.
+
+---
+
+### Capabilities
+- Contextual editing via inspectors
+- Explicit save only
+- Full validation and audit
+- Writes to existing ERP tables
+- No automation
+
+---
+
+## v11 — Draft Graphs & Simulation (Future)
+
+### Purpose
+Enable **what-if reasoning** without committing data.
+
+---
+
+### Capabilities
+- Draft relationship graphs
+- Simulate:
+  - cashflow
+  - margin
+  - dependency chains
+- Explicit commit converts draft → authoritative records
+
+---
+
+## v12 — Undo & Correction Semantics (Future)
 
 Undo restores **validity**, not history.
 
 ---
 
-## v10 — Assistive Planning & Intelligence (Future)
+## v13 — Assistive Planning & Intelligence (Future)
 
 Advisory only. No execution authority.
 
 ---
 
-## v11 — Collaboration Semantics (Future)
+## v14 — Collaboration Semantics (Future)
 
 Presence-aware only. No shared control.
 

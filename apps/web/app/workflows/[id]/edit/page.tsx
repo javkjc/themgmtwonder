@@ -6,6 +6,14 @@ import type { Me } from '../../../types';
 import Layout from '../../../components/Layout';
 import ForcePasswordChange from '../../../components/ForcePasswordChange';
 import { useToast } from '../../../components/ToastProvider';
+import {
+  validateWorkflow,
+  generateWorkflowExplanation,
+  generateDryRunPreview,
+  getValidationSummary,
+  type ValidationResult,
+  type DryRunResult,
+} from '../../../lib/workflow-validation';
 
 type DraftStep = {
   stepOrder: number;
@@ -50,6 +58,11 @@ export default function WorkflowEditPage({ params }: { params: Promise<{ id: str
   const [workflowDescription, setWorkflowDescription] = useState('');
   const [steps, setSteps] = useState<DraftStep[]>([]);
 
+  // Validation state (computed from draft state - no persistence)
+  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
+  const [dryRunResult, setDryRunResult] = useState<DryRunResult | null>(null);
+  const [showValidation, setShowValidation] = useState(true);
+
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -72,11 +85,39 @@ export default function WorkflowEditPage({ params }: { params: Promise<{ id: str
     }
   }, [me]);
 
+  // Recompute validation whenever draft changes (pure function, no side effects)
+  useEffect(() => {
+    // Convert draft steps to validation format
+    const validationSteps = steps.map(s => ({
+      stepOrder: s.stepOrder,
+      stepType: s.stepType,
+      name: s.name,
+      description: s.description,
+      assignedTo: s.assignedTo,
+      conditions: s.conditions,
+    }));
+
+    // Run validation (pure function - no side effects)
+    const validation = validateWorkflow(workflowName, validationSteps);
+    setValidationResult(validation);
+
+    // Generate dry-run preview (pure function - no execution)
+    const dryRun = generateDryRunPreview(workflowName, validationSteps);
+    setDryRunResult(dryRun);
+  }, [workflowName, steps]);
+
   const loadWorkflow = async () => {
     setLoadingWorkflow(true);
     try {
       const data = await apiFetchJson(`/workflows/${id}`);
       const workflow = data as WorkflowDefinition;
+
+      // v6: Check if workflow is active - block editing if so
+      if (workflow.isActive) {
+        showToast('Active workflows cannot be edited. Deactivate the workflow first.', 'error');
+        setTimeout(() => { window.location.href = `/workflows/${id}`; }, 2000);
+        return;
+      }
 
       // Load into draft state
       setWorkflowName(workflow.name);
@@ -188,6 +229,15 @@ export default function WorkflowEditPage({ params }: { params: Promise<{ id: str
   };
 
   const validateDraft = (): string | null => {
+    // Use validation result if available
+    if (validationResult && !validationResult.isValid) {
+      // Return first error message
+      if (validationResult.errors.length > 0) {
+        return validationResult.errors[0].message;
+      }
+    }
+
+    // Fallback validation
     if (!workflowName.trim()) {
       return 'Workflow name is required';
     }
@@ -629,116 +679,190 @@ export default function WorkflowEditPage({ params }: { params: Promise<{ id: str
           </div>
         </div>
 
-        {/* Right Panel: Preview */}
+        {/* Right Panel: Validation & Preview */}
         <div>
+          {/* Validation Status */}
           <div style={{
             background: 'white',
             borderRadius: 12,
             boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
             padding: 24,
+            marginBottom: 16,
             position: 'sticky',
             top: 24,
           }}>
-            <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, marginBottom: 16, color: '#1e293b' }}>
-              Preview
-            </h2>
-
-            <div style={{ fontSize: 13, color: '#64748b', marginBottom: 24 }}>
-              Read-only preview of workflow flow
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: '#1e293b' }}>
+                Validation & Preview
+              </h2>
+              <button
+                onClick={() => setShowValidation(!showValidation)}
+                style={{
+                  padding: '4px 10px',
+                  background: '#f1f5f9',
+                  color: '#64748b',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: 4,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                }}
+              >
+                {showValidation ? 'Hide' : 'Show'}
+              </button>
             </div>
 
-            {steps.length === 0 ? (
-              <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
-                No steps to preview
-              </div>
-            ) : (
-              <div>
-                {/* Start Node */}
-                <div style={{ marginBottom: 16, textAlign: 'center' }}>
-                  <div style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    padding: '6px 12px',
-                    background: '#dbeafe',
-                    color: '#1e40af',
-                    borderRadius: 6,
-                    fontSize: 12,
-                    fontWeight: 600,
-                    border: '2px solid #3b82f6',
-                  }}>
-                    {workflowName || 'Untitled Workflow'}
-                  </div>
+            {/* Validation Summary */}
+            {validationResult && (
+              <div style={{
+                padding: 12,
+                borderRadius: 6,
+                marginBottom: 16,
+                background: validationResult.isValid ? '#f0fdf4' : '#fef2f2',
+                border: `1px solid ${validationResult.isValid ? '#bbf7d0' : '#fecaca'}`,
+              }}>
+                <div style={{
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: validationResult.isValid ? '#166534' : '#991b1b',
+                }}>
+                  {getValidationSummary(validationResult)}
                 </div>
+              </div>
+            )}
 
-                {/* Steps */}
-                {steps.map((step, index) => (
-                  <div key={index} style={{ marginBottom: 16 }}>
-                    {/* Connector */}
-                    <div style={{
-                      width: 2,
-                      height: 24,
-                      background: '#cbd5e1',
-                      margin: '0 auto',
-                    }} />
-
-                    {/* Step Node */}
-                    <div style={{
-                      padding: 12,
-                      background: step.name ? '#f0f9ff' : '#f8fafc',
-                      border: `2px solid ${step.name ? '#0ea5e9' : '#e2e8f0'}`,
-                      borderRadius: 8,
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                        <div style={{
-                          width: 20,
-                          height: 20,
-                          borderRadius: '50%',
-                          background: '#0ea5e9',
-                          color: 'white',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: 11,
-                          fontWeight: 600,
-                        }}>
-                          {step.stepOrder}
+            {showValidation && (
+              <>
+                {/* Validation Errors */}
+                {validationResult && validationResult.errors.length > 0 && (
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b', marginBottom: 8 }}>
+                      Errors
+                    </div>
+                    <div style={{ fontSize: 13 }}>
+                      {validationResult.errors.map((error, index) => (
+                        <div
+                          key={index}
+                          style={{
+                            padding: '8px 12px',
+                            marginBottom: 6,
+                            background: '#fef2f2',
+                            border: '1px solid #fecaca',
+                            borderRadius: 4,
+                            color: '#991b1b',
+                          }}
+                        >
+                          {error.message}
                         </div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
-                          {step.name || 'Unnamed Step'}
-                        </div>
-                      </div>
-                      <div style={{ fontSize: 11, color: '#64748b', marginLeft: 28 }}>
-                        {step.stepType}
-                      </div>
+                      ))}
                     </div>
                   </div>
-                ))}
+                )}
 
-                {/* Connector to END */}
-                <div style={{
-                  width: 2,
-                  height: 24,
-                  background: '#cbd5e1',
-                  margin: '0 auto',
-                }} />
-
-                {/* End Node */}
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    padding: '6px 12px',
-                    background: '#f1f5f9',
-                    color: '#64748b',
-                    borderRadius: 6,
-                    fontSize: 12,
-                    fontWeight: 600,
-                    border: '2px solid #cbd5e1',
-                  }}>
-                    END
+                {/* Validation Warnings */}
+                {validationResult && validationResult.warnings.length > 0 && (
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b', marginBottom: 8 }}>
+                      Warnings
+                    </div>
+                    <div style={{ fontSize: 13 }}>
+                      {validationResult.warnings.map((warning, index) => (
+                        <div
+                          key={index}
+                          style={{
+                            padding: '8px 12px',
+                            marginBottom: 6,
+                            background: '#fffbeb',
+                            border: '1px solid #fde68a',
+                            borderRadius: 4,
+                            color: '#92400e',
+                          }}
+                        >
+                          {warning.message}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              </div>
+                )}
+
+                {/* Human-Readable Explanation */}
+                {dryRunResult && (
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b', marginBottom: 8 }}>
+                      Workflow Explanation
+                    </div>
+                    <div style={{
+                      padding: 12,
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: 6,
+                      fontSize: 13,
+                      color: '#475569',
+                      lineHeight: 1.6,
+                    }}>
+                      {dryRunResult.explanation}
+                    </div>
+                  </div>
+                )}
+
+                {/* Dry-Run Preview */}
+                {dryRunResult && dryRunResult.paths.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b', marginBottom: 8 }}>
+                      Dry-Run Preview
+                    </div>
+                    <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>
+                      Possible execution paths (informational only)
+                    </div>
+                    {dryRunResult.paths.map((path, pathIndex) => (
+                      <div
+                        key={path.pathId}
+                        style={{
+                          marginBottom: pathIndex < dryRunResult.paths.length - 1 ? 16 : 0,
+                          padding: 12,
+                          background: '#f0f9ff',
+                          border: '1px solid #bae6fd',
+                          borderRadius: 6,
+                        }}
+                      >
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#0369a1', marginBottom: 8 }}>
+                          {path.description}
+                        </div>
+                        <div style={{ fontSize: 12 }}>
+                          {path.steps.map((step, stepIndex) => (
+                            <div
+                              key={stepIndex}
+                              style={{
+                                marginBottom: stepIndex < path.steps.length - 1 ? 8 : 0,
+                                paddingLeft: 12,
+                                borderLeft: '2px solid #0ea5e9',
+                              }}
+                            >
+                              <div style={{ color: '#0f172a', fontWeight: 500 }}>
+                                {step.stepOrder}. {step.stepName}
+                              </div>
+                              <div style={{ color: '#64748b', fontSize: 11 }}>
+                                {step.stepType} • {step.assignedTo}
+                              </div>
+                              {step.reason && (
+                                <div style={{ color: '#0369a1', fontSize: 11, fontStyle: 'italic', marginTop: 2 }}>
+                                  {step.reason}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* No validation data yet */}
+                {!validationResult && (
+                  <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+                    Add workflow details to see validation
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

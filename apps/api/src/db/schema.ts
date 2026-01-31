@@ -251,13 +251,20 @@ export const workflowDefinitions = pgTable(
     name: text('name').notNull(),
     description: text('description'),
     version: integer('version').default(1).notNull(),
-    isActive: boolean('is_active').default(true).notNull(),
+    isActive: boolean('is_active').default(false).notNull(), // v6: default to false
+    // v6: workflowGroupId groups versions together; each version has unique ID
+    workflowGroupId: uuid('workflow_group_id'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (t) => ({
     nameIdx: index('workflow_definitions_name_idx').on(t.name),
     activeIdx: index('workflow_definitions_active_idx').on(t.isActive),
+    groupIdx: index('workflow_definitions_group_idx').on(t.workflowGroupId),
+    groupVersionIdx: index('workflow_definitions_group_version_idx').on(
+      t.workflowGroupId,
+      t.version,
+    ),
   }),
 );
 

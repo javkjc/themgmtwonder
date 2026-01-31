@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { apiFetchJson, isUnauthorized, isForbidden } from '../lib/api';
 import type { Me } from '../types';
 import Layout from '../components/Layout';
@@ -13,8 +13,17 @@ type WorkflowDefinition = {
   description: string | null;
   version: number;
   isActive: boolean;
+  workflowGroupId: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+type WorkflowGroup = {
+  groupId: string;
+  displayName: string;
+  isActive: boolean;
+  latestUpdatedAt: string;
+  versions: WorkflowDefinition[];
 };
 
 export default function WorkflowsPage() {
@@ -26,6 +35,7 @@ export default function WorkflowsPage() {
 
   const [workflows, setWorkflows] = useState<WorkflowDefinition[]>([]);
   const [loadingWorkflows, setLoadingWorkflows] = useState(false);
+  const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -65,6 +75,66 @@ export default function WorkflowsPage() {
       setLoadingWorkflows(false);
     }
   };
+
+  // Group workflows by workflowGroupId
+  const groupWorkflows = (workflows: WorkflowDefinition[]): WorkflowGroup[] => {
+    const groupMap = new Map<string, WorkflowDefinition[]>();
+
+    // Group by workflowGroupId (or id if workflowGroupId is null)
+    workflows.forEach((workflow) => {
+      const groupId = workflow.workflowGroupId || workflow.id;
+      if (!groupMap.has(groupId)) {
+        groupMap.set(groupId, []);
+      }
+      groupMap.get(groupId)!.push(workflow);
+    });
+
+    // Convert to WorkflowGroup array
+    const groups: WorkflowGroup[] = Array.from(groupMap.entries()).map(([groupId, versions]) => {
+      // Sort versions by version number descending (latest first)
+      versions.sort((a, b) => b.version - a.version);
+
+      // Determine group display name from latest/active version
+      const activeVersion = versions.find(v => v.isActive);
+      const latestVersion = versions[0];
+      const displayVersion = activeVersion || latestVersion;
+
+      // Determine if any version in group is active
+      const isActive = versions.some(v => v.isActive);
+
+      // Get latest updatedAt for sorting groups
+      const latestUpdatedAt = versions.reduce((latest, v) => {
+        return new Date(v.updatedAt) > new Date(latest) ? v.updatedAt : latest;
+      }, versions[0].updatedAt);
+
+      return {
+        groupId,
+        displayName: displayVersion.name,
+        isActive,
+        latestUpdatedAt,
+        versions,
+      };
+    });
+
+    // Sort groups by latest updatedAt descending
+    groups.sort((a, b) => new Date(b.latestUpdatedAt).getTime() - new Date(a.latestUpdatedAt).getTime());
+
+    return groups;
+  };
+
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroupIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(groupId)) {
+        newSet.delete(groupId);
+      } else {
+        newSet.add(groupId);
+      }
+      return newSet;
+    });
+  };
+
+  const workflowGroups = groupWorkflows(workflows);
 
   const logout = async () => {
     try {
@@ -182,50 +252,142 @@ export default function WorkflowsPage() {
                 </td>
               </tr>
             ) : (
-              workflows.map((workflow) => (
-                <tr key={workflow.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                  <td style={{ padding: '12px 16px', fontSize: 14, fontWeight: 500 }}>
-                    {workflow.name}
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: '#64748b' }}>
-                    {workflow.description || '-'}
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, textAlign: 'center' }}>
-                    v{workflow.version}
-                  </td>
-                  <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                    <span style={{
-                      padding: '4px 8px',
-                      borderRadius: 4,
-                      fontSize: 12,
-                      fontWeight: 500,
-                      background: workflow.isActive ? '#dcfce7' : '#f1f5f9',
-                      color: workflow.isActive ? '#166534' : '#64748b',
-                    }}>
-                      {workflow.isActive ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: '#64748b' }}>
-                    {new Date(workflow.updatedAt).toLocaleString()}
-                  </td>
-                  <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                    <button
-                      onClick={() => window.location.href = `/workflows/${workflow.id}`}
-                      style={{
-                        padding: '6px 12px',
-                        background: '#f0f9ff',
-                        color: '#0369a1',
-                        border: '1px solid #bae6fd',
-                        borderRadius: 4,
-                        fontSize: 12,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      View Details
-                    </button>
-                  </td>
-                </tr>
-              ))
+              workflowGroups.map((group) => {
+                const isExpanded = expandedGroupIds.has(group.groupId);
+                const hasMultipleVersions = group.versions.length > 1;
+
+                return (
+                  <React.Fragment key={group.groupId}>
+                    {/* Group header row */}
+                    <tr style={{ borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                      <td style={{ padding: '12px 16px', fontSize: 14, fontWeight: 600 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          {hasMultipleVersions && (
+                            <button
+                              onClick={() => toggleGroup(group.groupId)}
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: 0,
+                                display: 'flex',
+                                alignItems: 'center',
+                                color: '#64748b',
+                              }}
+                            >
+                              <span style={{ fontSize: 16 }}>{isExpanded ? '▼' : '▶'}</span>
+                            </button>
+                          )}
+                          <span>{group.displayName}</span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: 14, color: '#64748b' }}>
+                        {hasMultipleVersions ? `${group.versions.length} versions` : '-'}
+                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: 14, textAlign: 'center' }}>
+                        -
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                        <span style={{
+                          padding: '4px 8px',
+                          borderRadius: 4,
+                          fontSize: 12,
+                          fontWeight: 500,
+                          background: group.isActive ? '#dcfce7' : '#f1f5f9',
+                          color: group.isActive ? '#166534' : '#64748b',
+                        }}>
+                          {group.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: 14, color: '#64748b' }}>
+                        {new Date(group.latestUpdatedAt).toLocaleString()}
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                        {!hasMultipleVersions && (
+                          <button
+                            onClick={() => window.location.href = `/workflows/${group.versions[0].id}`}
+                            style={{
+                              padding: '6px 12px',
+                              background: '#f0f9ff',
+                              color: '#0369a1',
+                              border: '1px solid #bae6fd',
+                              borderRadius: 4,
+                              fontSize: 12,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            View
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+
+                    {/* Version rows (shown when expanded) */}
+                    {hasMultipleVersions && isExpanded && group.versions.map((workflow) => (
+                      <tr key={workflow.id} style={{ borderBottom: '1px solid #e2e8f0', background: 'white' }}>
+                        <td style={{ padding: '12px 16px 12px 48px', fontSize: 14, fontWeight: 400, color: '#64748b' }}>
+                          {workflow.name}
+                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: 14, color: '#64748b' }}>
+                          {workflow.description || '-'}
+                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: 14, textAlign: 'center', fontWeight: 500 }}>
+                          v{workflow.version}
+                        </td>
+                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                          <span style={{
+                            padding: '4px 8px',
+                            borderRadius: 4,
+                            fontSize: 12,
+                            fontWeight: 500,
+                            background: workflow.isActive ? '#dcfce7' : '#f1f5f9',
+                            color: workflow.isActive ? '#166534' : '#64748b',
+                          }}>
+                            {workflow.isActive ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: 14, color: '#64748b' }}>
+                          {new Date(workflow.updatedAt).toLocaleString()}
+                        </td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                            <button
+                              onClick={() => window.location.href = `/workflows/${workflow.id}`}
+                              style={{
+                                padding: '6px 12px',
+                                background: '#f0f9ff',
+                                color: '#0369a1',
+                                border: '1px solid #bae6fd',
+                                borderRadius: 4,
+                                fontSize: 12,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              View
+                            </button>
+                            {!workflow.isActive && (
+                              <button
+                                onClick={() => window.location.href = `/workflows/${workflow.id}/edit`}
+                                style={{
+                                  padding: '6px 12px',
+                                  background: '#fefce8',
+                                  color: '#854d0e',
+                                  border: '1px solid #fde047',
+                                  borderRadius: 4,
+                                  fontSize: 12,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Edit
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                );
+              })
             )}
           </tbody>
         </table>
