@@ -6,7 +6,15 @@ import GlobalSearch from './GlobalSearch';
 
 type LayoutProps = {
   children: ReactNode;
-  currentPage: 'home' | 'calendar' | 'profile' | 'customizations' | 'admin' | 'activity' | 'workflows';
+  currentPage:
+    | 'home'
+    | 'calendar'
+    | 'profile'
+    | 'customizations'
+    | 'admin'
+    | 'activity'
+    | 'workflows'
+    | 'workflowInbox';
   userEmail?: string;
   userRole?: string;
   isAdmin?: boolean;
@@ -95,6 +103,26 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
           >
             <span style={{ fontSize: 18 }}>📋</span>
             {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>My Tasks</span>}
+          </Link>
+
+          <Link
+            href="/workflows/inbox"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: isCollapsed ? '12px 0' : '12px 20px',
+              justifyContent: isCollapsed ? 'center' : 'flex-start',
+              textDecoration: 'none',
+              color: currentPage === 'workflowInbox' ? 'var(--sidebar-text)' : 'var(--sidebar-text-muted)',
+              background: currentPage === 'workflowInbox' ? 'var(--sidebar-link-active)' : 'transparent',
+              borderLeft: currentPage === 'workflowInbox' ? '3px solid var(--sidebar-link-border)' : '3px solid transparent',
+              transition: 'all 0.2s',
+            }}
+            title="Workflow Inbox"
+          >
+            <span style={{ fontSize: 18 }}>IN</span>
+            {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>Workflow Inbox</span>}
           </Link>
 
           <Link

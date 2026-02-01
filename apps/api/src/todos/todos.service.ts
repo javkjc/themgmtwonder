@@ -183,6 +183,12 @@ export class TodosService {
           'Cannot create child of child task (max depth: 2 levels)',
         );
       }
+      // NEW: parent tasks cannot be scheduled
+      if (parent.startAt !== null) {
+        throw new ConflictException(
+          'Parent tasks cannot be scheduled. Unschedule the parent first.',
+        );
+      }
     }
 
     // If scheduling fields provided, validate and check overlap
@@ -326,6 +332,12 @@ export class TodosService {
         if (parent.parentId) {
           throw new BadRequestException(
             'Cannot attach to child task (max depth: 2 levels)',
+          );
+        }
+        // NEW: parent tasks cannot be scheduled
+        if (parent.startAt !== null) {
+          throw new ConflictException(
+            'Parent tasks cannot be scheduled. Unschedule the parent first.',
           );
         }
         // v4 constraint: cannot set parent on a task that is already a parent
@@ -617,6 +629,13 @@ export class TodosService {
       if (parent.parentId) {
         throw new BadRequestException(
           'Parent task is already a child (max depth: 2 levels)',
+        );
+      }
+
+      // NEW: parent tasks cannot be scheduled
+      if (parent.startAt !== null) {
+        throw new ConflictException(
+          'Parent tasks cannot be scheduled. Unschedule the parent first.',
         );
       }
 

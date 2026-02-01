@@ -61,7 +61,9 @@
       "Bash(cmd /c \"set PW_DEBUG=1 && node scripts/pw-auth-standard.mjs\")",
       "Bash($env:PW_DEBUG=\"1\")",
       "Bash(PW_DEBUG=1 node scripts/pw-auth-standard.mjs:*)",
-      "Bash(npm run pw:auth:standard:*)"
+      "Bash(npm run pw:auth:standard:*)",
+      "Bash(npm run db:studio:*)",
+      "Bash(npm run db:push:*)"
     ]
   }
 }

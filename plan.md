@@ -1,4 +1,4 @@
-﻿# PLAN — v6 Execution Contract (Workflow Management — Admin UI)
+﻿# PLAN — v7 Execution Contract (Workflow Participation — Minimal User Operations)
 
 CLAUDE / CODEX:
 Read sections 1–5 only.  
@@ -6,10 +6,10 @@ Execute **Next Actions** sequentially.
 One concern per task.  
 Stop immediately when all tasks are marked ✅ DONE.
 
-This plan governs **v6 Workflow Management (Admin UI) ONLY**.  
-No work beyond v6 is permitted under this plan.
+This plan governs **v7 Workflow Participation (Minimal User Operations) ONLY**.  
+No work beyond v7 is permitted under this plan.
 
-v1–v5 are **complete and locked** and must not be modified unless explicitly stated.
+v1–v6 are **complete and locked** and must not be modified unless explicitly stated.
 
 ---
 
@@ -25,76 +25,66 @@ Infrastructure: Dockerized (Web → API → DB → OCR Worker)
 
 ---
 
-## 2. v6 Scope Lock & Principles
+## 2. v7 Scope Lock & Principles
 
-### Scope Lock (v6)
+### Purpose (v7)
 
-- Introduce **admin-only UI** for managing workflow definitions
-- Allow **creation, editing, versioning, and activation** of workflows
-- Introduce **definition-first flow-builder mental model**
-- Introduce **reusable workflow elements (admin-governed)**
-- Provide **validation and dry-run preview** tooling only
-- No workflow execution from admin UI
-- No task mutation
-- No background automation
-- No permission model redesign
-- No workflow participation UI (belongs to v7)
+Establish the **minimum operational surface** that allows users to:
+- see workflow work assigned to them
+- take explicit, auditable actions
+- inspect execution history
 
-### Explicitly Out of Scope for v6
+This phase deliberately avoids UX expansion, automation, or intelligence.
 
-- Workflow execution UI
-- User inbox or participation
-- Task state mutation
-- Automatic triggers or routing
-- Background jobs, timers, schedulers
-- Undo / correction semantics
-- Intelligence or ML
-- External intake (Telegram)
-- Relationship / Transaction Graph (belongs to v9+)
+---
+
+### Scope Lock (v7)
+
+**In Scope**
+- User inbox of pending workflow steps
+- Read-only workflow execution detail view
+- Explicit step actions:
+  - approve
+  - reject
+  - acknowledge
+- Mandatory remarks for all step actions
+- Full execution trace visibility (read-only)
+
+**Explicitly Out of Scope**
+- Workflow authoring or editing
+- Workflow versioning or activation
+- Automation or background progression
+- Timers, SLAs, reminders, notifications
+- Task mutation coupling
+- Graph views (v8+)
+- Undo / correction semantics (v11+)
+- Intelligence or advisory features
 - Collaboration semantics
+- External intake (integrations)
 
 ---
 
-### Core Design Rule (Non-Negotiable)
+### Core Design Rules (Non-Negotiable)
 
-> v6 MUST expose workflows as **human-defined, inspectable, inert graphs of intent**,  
-> NOT as executable automation and NOT as hidden system behavior.
+- No workflow step advances without an explicit user action.
+- UI must not imply background execution or automation.
+- Mandatory remarks are enforced **server-side**.
+- Derived UI is informational only; backend records are authoritative.
+- Every operational action must be auditable.
 
-Admin UI:
-- manages **definitions only**
-- never executes workflows
-- never mutates tasks
-- never implies automation
-
----
-
-### Drag & Drop Semantics (Authoritative)
-
-Drag-and-drop is permitted **only as a visual ordering and placement aid**.
-
-**Allowed**
-- Reordering steps within a linear sequence
-- Reordering branches within an explicit decision (IF / ELSE)
-- Dragging reusable elements into valid insertion points
-
-**Forbidden**
-- Free-form wiring between nodes
-- Creating logic or branches via drag gestures
-- Implicit semantic changes on drag
-- Auto-save or background persistence on drag
-- Any drag action that alters execution behavior without explicit confirmation
-
-> **Rule:** Drag-and-drop may change *order or placement*, never *semantics*.
+**Known Limitation (v7):**
+Execution detail endpoint (`GET /workflows/executions/:executionId/detail`) is accessible to all authenticated users. Access control scoped to assigned users, triggerers, or resource owners is deferred to future enhancement.
 
 ---
 
 ### Definition of Done (All Tasks)
 
-- Admin UI behavior verified manually by user
-- No regressions to v5 behavior
-- No workflow execution triggered via UI
-- Validation and preview are non-mutating and non-persistent
-- Audit trail complete for all admin actions
+- User participation flow verified manually by user
+- No regressions to v5/v6 workflow behavior
+- No background automation introduced
+- Permission enforcement verified end-to-end
+- Mandatory remark enforcement verified server-side
+- Audit trail verified for all v7 actions
 - Changes are minimal, localized, reversible
 - plan.md updated at start and end of work
 - executionnotes.md appended (append-only)
@@ -102,254 +92,226 @@ Drag-and-drop is permitted **only as a visual ordering and placement aid**.
 
 ---
 
-## 3. Current State (v6 Entry Point)
+## 3. Current State (v7 Entry Point)
 
-- v1–v5 complete and locked
-- Workflow definition + execution schemas exist
-- Backend supports workflow definition persistence (create/update)
-- Admin workflow list & detail pages exist
-- Admin workflow editor (draft mode) exists
-- ❌ No versioning or activation UI
-- ❌ No reusable element library
-- ❌ No validation or dry-run tooling
-- Codebase migration-safe
+- v1–v6 complete and locked
+- Workflow definitions and executions exist
+- Backend supports step actions and execution records
+- Admin UI exists for workflow management
+- ❌ No user inbox UI
+- ❌ No execution trace UI
+- ❌ No user-facing participation pages
 
 ---
 
 ## 4. Next Actions (Execution Queue)
 
-MODE: Workflow Management — Admin UI (v6 only)  
+MODE: Workflow Participation — Minimal User Operations (v7 only)  
 Sequential execution. One concern per task.
 
 ---
 
-### **10.1 Admin Workflow List & Detail Pages (Read-Only)**
-
-**Status:** ✅ DONE
-
----
-
-### **10.2 Workflow Definition Editor UI (Draft Mode)**
-
-**Status:** ✅ DONE
-
----
-
-### **10.3 Workflow Versioning & Activation Controls**
-
-**Status:** ✅ DONE
-
-**Objective**  
-Allow admins to **explicitly manage workflow lifecycle state** without affecting existing executions.
-
----
-
-#### In Scope
-
-**Versioning**
-- Explicit “Create New Version” action
-- New version is cloned from selected version
-- Version number increments monotonically
-- Previous versions become immutable
-
-**Activation**
-- Explicit activate / deactivate actions
-- Enforce invariant:
-  - **only one active version per workflow**
-- Deactivation does NOT affect:
-  - existing workflow executions
-  - execution history
-
-**Visibility**
-- Version history list on workflow detail page
-- Clear indication of:
-  - active version
-  - inactive versions
-  - version number
-  - creation timestamp
-
----
-
-#### Rules
-
-- Activation is explicit and user-confirmed
-- No implicit version creation
-- No auto-activation
-- No execution triggers
-- No task mutation
-
----
-
-### **10.4 Workflow Validation & Dry-Run Preview**
+### **11.1 Backend Contract Confirmation (Read-Only Audit)**
 
 **Status:** ✅ DONE
 
 **Objective**
-Provide **non-executing validation and human-readable explanation tooling**.
+Confirm and document existing backend capabilities required for v7.
+
+**Actions**
+- Identify endpoints for:
+  - listing pending workflow steps for current user
+  - retrieving workflow execution + step history
+  - performing step actions (approve / reject / acknowledge)
+- Confirm:
+  - permission enforcement
+  - mandatory remark enforcement
+  - audit logging behavior
+
+**Rules**
+- Read-only analysis
+- No code changes
+- If gaps exist, document them clearly for 11.2
 
 ---
 
-#### In Scope
-
-**Validation**
-- Structural checks:
-  - missing steps
-  - invalid ordering
-  - missing assignees
-  - unsupported step types
-- Validation may run on:
-  - draft definitions
-  - saved definitions
-
-**Dry-Run Preview**
-- Human-readable execution explanation
-- Possible paths shown (IF / ELSE)
-- Derived from:
-  - draft state OR
-  - saved definition
-
----
-
-#### Rules
-
-- No execution records created
-- No persistence of preview output
-- No background evaluation
-- No side effects
-
----
-
-**Completion Summary**
-Implemented via [apps/web/app/lib/workflow-validation.ts](apps/web/app/lib/workflow-validation.ts) with pure validation functions (`validateWorkflow`, `generateWorkflowExplanation`, `generateDryRunPreview`). Integrated into workflow editor at [apps/web/app/workflows/[id]/edit/page.tsx](apps/web/app/workflows/[id]/edit/page.tsx) with real-time validation and preview display. All validation is non-executing, non-persisting, and side-effect free.
-
----
-
-### **10.5 Admin Audit Coverage Verification**
+### **11.2 Minimal Backend Additions (Only If Gaps Exist)**
 
 **Status:** ✅ DONE
 
 **Objective**
-Ensure **complete audit coverage** for all admin workflow management actions.
+Add the **minimum** backend surface required to support v7 UI.
+
+**Completed**
+- ✅ "My pending steps" endpoint: `GET /workflows/my-pending-steps`
+- ✅ Execution detail endpoint (read-only): `GET /workflows/executions/:executionId/detail`
+- ✅ Step assignment enforcement: server-side authorization check in `executeStepAction()`
+- ✅ No schema changes
+- ✅ No new dependencies
+- ✅ Follows existing auth, validation, and audit patterns
+
+**Summary**
+- Added `getMyPendingSteps()` and `getExecutionDetail()` service methods
+- Added two user-facing controller endpoints (JwtAuthGuard only, no AdminGuard)
+- Added assignment enforcement: only assigned user may act on steps (ForbiddenException if violated)
+- All changes localized to workflows service and controller
+- Mandatory remark enforcement and audit logging unchanged
+- See [executionnotes.md](executionnotes.md) for implementation details
 
 ---
 
-#### Audit Scope
-
-Audit entries must exist for:
-- Workflow creation
-- Workflow editing
-- Version creation
-- Activation
-- Deactivation
-
----
-
-#### Audit Requirements
-
-- Append-only audit log
-- Before / after snapshots where applicable
-- Actor attribution (admin user)
-- Timestamped entries
-- No silent changes
-
----
-
-**Completion Summary**
-Audit coverage verified complete. All workflow management operations in [apps/api/src/workflows/workflows.controller.ts](apps/api/src/workflows/workflows.controller.ts) include audit logging via [apps/api/src/audit/audit.service.ts](apps/api/src/audit/audit.service.ts). Coverage confirmed for: workflow.create (lines 58-85), workflow.update (lines 111-141), workflow.create_version (lines 271-298), workflow.activate (lines 319-337), workflow.deactivate (lines 358-376). All entries include actor attribution, timestamps, before/after snapshots, IP address, and user agent. Audit log is append-only.
-
----
-
-### **10.6 Reusable Workflow Elements (Admin Library)**
+### **11.3 User Inbox — Pending Workflow Steps**
 
 **Status:** ✅ DONE
 
-**Objective**  
-Introduce **admin-defined reusable workflow elements** to enable no-code composition without sacrificing governance.
+**Objective**
+Provide a user-facing inbox listing pending workflow steps.
+
+**UI Requirements**
+- List of pending items assigned to current user
+- Each item shows:
+  - workflow / execution identifier
+  - step type
+  - assignment timestamp
+- Each item links to execution detail page
+
+**Rules**
+- No background polling required
+- Manual refresh acceptable
+- No auto-navigation or implicit actions
 
 ---
 
-#### In Scope
+### **11.4 Workflow Execution Detail (Read-Only Trace)**
 
-**Element Types**
-- Step elements:
-  - approve
-  - review
-  - acknowledge
-- Decision elements:
-  - IF / ELSE branching
-  - mandatory default (ELSE) path
+**Status:** ✅ DONE
 
-**Template Model**
-- Versioned element templates
-- Each template defines:
-  - element type
-  - display label
-  - default configuration
-  - editable fields
-  - validation constraints
+**Objective**
+Provide a read-only execution detail page.
 
-**Usage**
-- Workflow definitions reference:
-  - template ID + version
-- Each placement creates an **instance configuration**
-- Editing an instance does NOT mutate the template
-- Updating a template does NOT retroactively change workflows
+**UI Requirements**
+- Execution metadata (workflow name, status)
+- Ordered step history showing:
+  - step type
+  - action taken
+  - actor
+  - remark
+  - timestamp
+- Clear indication of current pending step (if any)
+
+**Rules**
+- Informational only
+- No mutation from this section
 
 ---
 
-#### Rules
+### **11.5 Workflow Step Action Panel**
 
-- Admin-only management
-- No execution
-- No automation
-- Full audit coverage for:
-  - element creation
-  - element update
-  - element deprecation
+**Status:** ✅ DONE
+
+**Objective**
+Allow the assigned user to perform an explicit step action.
+
+**UI Requirements**
+- Action buttons appropriate to step type
+- Mandatory remark input
+- Explicit confirmation before submit
+- Clear success / error feedback
+
+**Rules**
+- No submission without remark
+- No optimistic UI progression
+- Backend confirmation required before UI state updates
+
+---
+
+### **11.6 Audit & Permission Verification (v7 Coverage)**
+
+**Status:** ✅ DONE
+
+**Summary**
+- Added header status messaging, automation reminders, and accessible loading/error affordances in `apps/web/app/workflows/inbox/page.tsx` and `apps/web/app/workflows/executions/[executionId]/page.tsx` to reinforce the no-automation promise without expanding scope.
+
+**Objective**
+Verify correctness and safety of v7 operations.
+
+**Checklist**
+- Only assigned users can act on steps
+- Mandatory remark enforced server-side
+- Audit entries exist for:
+  - step actions
+- Execution trace matches audit and execution records
+- No admin-only endpoints exposed to user UI
+
+**Rules**
+- No RBAC redesign
+- Document findings in executionnotes.md
+
+---
+
+### **11.7 Minimal UX Hardening (Non-Feature)**
+
+**Status:** ✅ DONE
+
+**Objective**
+Prevent user confusion without expanding scope.
+
+**In Scope**
+- Loading states
+- Disabled submit during mutation
+- Clear error messages
+- Clear “no automation” affordances
+
+**Rules**
+- No redesign
+- No new UI frameworks
+- No scope expansion
 
 ---
 
 ## 5. Guardrails (Inherited)
 
 ### Runtime Preconditions
-- Docker services must be running
+- Docker services running
 - Database migrations applied
 - If missing → **STOP**
 
 ### Forbidden
-- ❌ Workflow execution from admin UI
-- ❌ Task mutation
-- ❌ Background automation
-- ❌ Implicit validation side effects
-- ❌ Dependency changes unless specified
+- ❌ Background automation or schedulers
+- ❌ Implicit step progression
+- ❌ Workflow authoring changes
+- ❌ Graph views or editing
+- ❌ Undo / correction logic
+- ❌ Intelligence features
+- ❌ External integrations
 
 ### Required Patterns
-- ✅ Explicit admin intent
-- ✅ Draft vs active separation
-- ✅ Inert workflow definitions
+- ✅ Explicit user intent
+- ✅ Server-side enforcement
+- ✅ Mandatory remarks
 - ✅ Audit-first design
 - ✅ Page-level orchestration
 
 ---
 
-## STOP CONDITION (v6)
+## STOP CONDITION (v7)
 
 Stop immediately when:
-- Tasks **10.1–10.6** are all marked ✅ DONE
+- Tasks **11.1–11.7** are all marked ✅ DONE
 - No undocumented blockers remain
 
 Do NOT proceed to:
-- workflow participation UI
-- execution UI
-- automation
-- intelligence
-- external intake
-- relationship graph
-- collaboration
+- graph views (v8)
+- graph editing (v9)
+- drafts / simulation (v10)
+- undo semantics (v11)
+- intelligence (v12)
+- integrations (v13)
+- collaboration (v14)
 
-without a **new plan.md for the next phase (v7)**.
+without a **new plan.md**.
 
 ---
 
-Last Updated: 2026-01-31
-Status: v6 Workflow Management (Admin UI) — ⬜ IN PROGRESS
+Last Updated: 2026-02-01
+Status: v7 Workflow Participation — tasks 11.1–11.7 complete

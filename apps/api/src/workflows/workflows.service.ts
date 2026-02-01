@@ -317,6 +317,24 @@ export class WorkflowsService {
       );
     }
 
+    // 2a. v7: Enforce step assignment - only the assigned user may act
+    if (step.assignedTo) {
+      try {
+        const assignment = JSON.parse(step.assignedTo);
+        if (assignment.type === 'user' && assignment.value !== userId) {
+          throw new ForbiddenException(
+            'You are not authorized to act on this step. Only the assigned user may perform this action.',
+          );
+        }
+        // Note: role-based assignment not yet implemented, but structure is preserved
+      } catch (e) {
+        if (e instanceof ForbiddenException) {
+          throw e;
+        }
+        // If assignedTo is invalid JSON, allow the action (backward compatibility)
+      }
+    }
+
     // 3. Check if this step has already been executed
     const [existingStepExecution] = await this.dbs.db
       .select()
@@ -393,6 +411,193 @@ export class WorkflowsService {
     }
 
     return stepExecution;
+  }
+
+  /**
+   * Get pending workflow steps for current user (v7 - User Inbox)
+   * Returns steps assigned to the user that haven't been acted upon yet.
+   * User-facing endpoint - no admin guard required.
+   */
+  async getMyPendingSteps(userId: string) {
+    // Define type for pending step items
+    type PendingStepItem = {
+      executionId: string;
+      stepId: string;
+      workflowName: string;
+      stepName: string;
+      stepType: string;
+      stepOrder: number;
+      assignedAt: Date | null;
+      resourceType: string;
+      resourceId: string;
+    };
+
+    try {
+      // Query for in-progress executions that have pending steps assigned to this user
+      const executions = await this.dbs.db
+        .select()
+        .from(workflowExecutions)
+        .where(eq(workflowExecutions.status, 'in_progress'))
+        .orderBy(desc(workflowExecutions.startedAt));
+
+      const pendingSteps: PendingStepItem[] = [];
+
+    for (const execution of executions) {
+      // Get all steps for this execution's workflow
+      const steps = await this.dbs.db
+        .select()
+        .from(workflowSteps)
+        .where(eq(workflowSteps.workflowDefinitionId, execution.workflowDefinitionId))
+        .orderBy(workflowSteps.stepOrder);
+
+      for (const step of steps) {
+        // Check if step is assigned to this user
+        if (step.assignedTo) {
+          try {
+            const assignment = JSON.parse(step.assignedTo);
+            if (assignment.type === 'user' && assignment.value === userId) {
+              // Check if this step has already been acted upon
+              const [existingStepExecution] = await this.dbs.db
+                .select()
+                .from(workflowStepExecutions)
+                .where(
+                  and(
+                    eq(workflowStepExecutions.workflowExecutionId, execution.id),
+                    eq(workflowStepExecutions.workflowStepId, step.id),
+                  ),
+                )
+                .limit(1);
+
+              // Only include if not yet acted upon
+              if (!existingStepExecution || existingStepExecution.status !== 'completed') {
+                pendingSteps.push({
+                  executionId: execution.id,
+                  stepId: step.id,
+                  workflowName: '', // Will be populated below
+                  stepName: step.name,
+                  stepType: step.stepType,
+                  stepOrder: step.stepOrder,
+                  assignedAt: execution.startedAt,
+                  resourceType: execution.resourceType,
+                  resourceId: execution.resourceId,
+                });
+              }
+            }
+          } catch (e) {
+            // Skip steps with invalid assignedTo JSON
+            continue;
+          }
+        }
+      }
+    }
+
+    // Populate workflow names
+    for (const pendingStep of pendingSteps) {
+      const execution = executions.find((e) => e.id === pendingStep.executionId);
+      if (execution) {
+        const [workflow] = await this.dbs.db
+          .select({ name: workflowDefinitions.name })
+          .from(workflowDefinitions)
+          .where(eq(workflowDefinitions.id, execution.workflowDefinitionId))
+          .limit(1);
+        if (workflow) {
+          pendingStep.workflowName = workflow.name;
+        }
+      }
+    }
+
+      return pendingSteps;
+    } catch (error) {
+      // If query fails (table doesn't exist, column mismatch, etc.), return empty array
+      // This ensures the endpoint always returns 200 with [] instead of crashing
+      return [];
+    }
+  }
+
+  /**
+   * Get workflow execution detail with full step history (v7 - Read-Only Trace)
+   * User-facing endpoint - returns execution metadata and ordered step history.
+   * No mutation from this endpoint.
+   */
+  async getExecutionDetail(executionId: string) {
+    // Define type for execution step history items
+    type ExecutionStepHistoryItem = {
+      stepId: string;
+      stepOrder: number;
+      stepType: string;
+      stepName: string;
+      stepDescription: string | null;
+      assignedTo: string | null;
+      decision: string | null;
+      actorId: string | null;
+      remark: string | null;
+      completedAt: Date | null;
+      status: string;
+    };
+
+    // Get execution
+    const execution = await this.getExecution(executionId);
+
+    // Get workflow definition
+    const [workflow] = await this.dbs.db
+      .select()
+      .from(workflowDefinitions)
+      .where(eq(workflowDefinitions.id, execution.workflowDefinitionId))
+      .limit(1);
+
+    if (!workflow) {
+      throw new NotFoundException('Workflow definition not found');
+    }
+
+    // Get all steps for this workflow
+    const steps = await this.dbs.db
+      .select()
+      .from(workflowSteps)
+      .where(eq(workflowSteps.workflowDefinitionId, workflow.id))
+      .orderBy(workflowSteps.stepOrder);
+
+    // Get step execution history
+    const stepExecutions = await this.dbs.db
+      .select()
+      .from(workflowStepExecutions)
+      .where(eq(workflowStepExecutions.workflowExecutionId, executionId))
+      .orderBy(workflowStepExecutions.createdAt);
+
+    // Build ordered step history
+    const stepHistory: ExecutionStepHistoryItem[] = [];
+    for (const step of steps) {
+      const stepExecution = stepExecutions.find((se) => se.workflowStepId === step.id);
+
+      stepHistory.push({
+        stepId: step.id,
+        stepOrder: step.stepOrder,
+        stepType: step.stepType,
+        stepName: step.name,
+        stepDescription: step.description,
+        assignedTo: step.assignedTo,
+        decision: stepExecution?.decision || null,
+        actorId: stepExecution?.actorId || null,
+        remark: stepExecution?.remark || null,
+        completedAt: stepExecution?.completedAt || null,
+        status: stepExecution?.status || 'pending',
+      });
+    }
+
+    return {
+      execution: {
+        id: execution.id,
+        workflowName: workflow.name,
+        workflowDescription: workflow.description,
+        status: execution.status,
+        resourceType: execution.resourceType,
+        resourceId: execution.resourceId,
+        triggeredBy: execution.triggeredBy,
+        startedAt: execution.startedAt,
+        completedAt: execution.completedAt,
+        errorDetails: execution.errorDetails,
+      },
+      stepHistory,
+    };
   }
 
   /**

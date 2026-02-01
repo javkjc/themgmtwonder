@@ -19,95 +19,23 @@ All features below preserve the following **non-negotiable invariants**:
 
 ## v1–v2 — Core Task & Calendar System (Complete)
 
-### Purpose
-Establish a correct, auditable single-user task and calendar system.
+**What this is**
+- Task as the single authoritative unit of work
+- Calendar as a derived, non-authoritative view
+- Explicit scheduling with full audit coverage
 
-### Capabilities
-- Task CRUD as authoritative work unit
-- Calendar as derived scheduling view
-- Explicit schedule / reschedule / unschedule
-- Attachments and remarks
-- Full audit logging
-- Ownership & permission enforcement
-
-### Execution Boundaries
-- Explicit user actions only
-- No automation
-- No background processing
-
-### Status
+**Status**
 ✅ Complete
 
 ---
 
 ## v3 — Task State & Document Intelligence Foundations (Complete)
 
-### Purpose
-Introduce **foundational primitives** required for future workflows and intelligence **without enabling them**.
-
----
-
-### v3.1 Explicit Task Stages
-
-**Capabilities**
-- Single explicit stage per task
-- Stage changes require confirmation
-- Stage transitions fully audited
-- Stable system-defined stage keys
-
-**Execution Boundaries**
-- Backend + UI
-- No workflows
-- No automation
-
-**Status**
-✅ Complete
-
----
-
-### v3.2 Stage-Aware Context
-
-**Capabilities**
-- Remarks capture stage-at-creation
-- Attachments capture stage-at-creation
-- Informational only
-
-**Status**
-✅ Complete
-
----
-
-### v3.3 Derived Task Views
-
-**Capabilities**
-- Derived, read-only task lists
-- Scheduled / unscheduled filtering
-- Calendar unscheduled panels
-
-**Execution Boundaries**
-- UI-only derivation
-- No state mutation
-
-**Status**
-✅ Complete
-
----
-
-### v3.4 Document Intelligence — OCR (Deterministic)
-
-**Capabilities**
-- Derived OCR storage per attachment
-- Image + PDF OCR
-- Explicit user-triggered execution
-- Read-only viewer
-- Explicit apply to remark / description
-- Full audit trail
-
-**Execution Boundaries**
-- Backend + UI
-- No auto OCR
-- No interpretation
-- No search coupling
+**What this is**
+- Explicit task stages as stable primitives
+- Stage-aware remarks and attachments
+- Deterministic, user-triggered OCR as derived data
+- Raw OCR text and extraction stored immutably as non-authoritative outputs
 
 **Status**
 ✅ Complete
@@ -116,69 +44,10 @@ Introduce **foundational primitives** required for future workflows and intellig
 
 ## v4 — Structural Task Relationships (Parent / Child) (Complete)
 
-### Purpose
-Enable **structural grouping** of tasks without workflows or automation.
-
----
-
-### v4.1 Parent–Child Data Model
-
-**Capabilities**
-- Independent / Parent / Child roles
-- Max depth: 2 levels
-- One parent per child
-
-**Execution Boundaries**
-- Backend schema + constraints only
-
-**Status**
-✅ Complete
-
----
-
-### v4.2 Structural Constraints
-
-**Capabilities**
-- Parent cannot be scheduled
-- Parent cannot close with open children
-- Child cannot reopen if parent is closed
-
-**Status**
-✅ Complete
-
----
-
-### v4.3 Association & Disassociation
-
-**Capabilities**
-- Explicit attach / detach
-- Mandatory remark
-- Before/after audit snapshots
-
-**Status**
-✅ Complete
-
----
-
-### v4.4 Read-Only Relationship Visibility
-
-**Capabilities**
-- Relationship section in task detail
-- Parent / children navigation
-- Relationship column in task list
-- Read-only modals
-
-**Status**
-✅ Complete
-
----
-
-### v4.5 Delete Semantics
-
-**Capabilities**
-- Parent deletion blocked if children exist
-- Child deletion detaches before delete
-- Explicit audit entries
+**What this is**
+- Structural grouping without workflows or automation
+- Hard constraints enforced at the data model level
+- Read-only visibility of relationships
 
 **Status**
 ✅ Complete
@@ -187,337 +56,146 @@ Enable **structural grouping** of tasks without workflows or automation.
 
 ## v5 — Workflow Foundations (Backend Only) (Complete)
 
-### Purpose
-Introduce **inert workflow primitives** without execution automation or UI.
-
-Workflows explain **governance**, not reality.
-
----
-
-### v5.1 Workflow Definitions (Data Model)
-
-**Capabilities**
-- Workflow definitions
-- Versioned, admin-owned
-- Declarative steps and conditions
-- No execution logic
-
-**Execution Boundaries**
-- Backend only
-- Inert data
+**What this is**
+- Inert workflow definitions and execution records
+- Explicit, auditable workflow start and step actions
+- No UI, no automation, no task coupling
 
 **Status**
 ✅ Complete
 
 ---
 
-### v5.2 Workflow Execution Records
+## v6 — Workflow Management (Admin UI) (Complete)
 
-**Capabilities**
-- Workflow execution records
-- Step execution history
-- Status tracking
-- Target via resourceType/resourceId
-
-**Status**
-✅ Complete
-
----
-
-### v5.3 Explicit Workflow Start
-
-**Capabilities**
-- User-triggered workflow start
-- Ownership validation
-- Audit logging
+**What this is**
+- Admin-only workflow authoring and versioning
+- Definition-first, non-executing flow builder
+- Validation, dry-run preview, reusable governed elements
 
 **Status**
 ✅ Complete
 
 ---
 
-### v5.4 Workflow Step Actions
+## v7 — Workflow Participation (Minimal User Operations) (Planned)
 
-**Capabilities**
-- Explicit approve / reject / acknowledge
-- Mandatory remark
-- Stop-on-error semantics
-- No auto-progression
+**What this is**
+- User inbox for pending workflow steps
+- Explicit approve / reject / acknowledge actions
+- Full execution trace visibility with audit integrity
 
-**Status**
-✅ Complete
-
----
-
-### v5.5 Workflow Isolation Audit
-
-**Capabilities**
-- No coupling to tasks
-- No service cross-dependencies
-- Audit sufficiency verified
-
-**Status**
-✅ Complete
+**Design Intent**
+This version is intentionally **thin**.  
+It establishes the **minimum operational floor** required for downstream reasoning and governance layers.
 
 ---
 
-## v6 — Workflow Management (Admin UI) (In Progress)
+## v8 — Evidence Review & Derived Data Verification (Visual) (Planned)
 
-### Purpose
-Allow **admins to define, govern, and validate workflows** using a **definition-first flow-builder mental model**, without enabling execution.
+**What this is**
+- Visual, side-by-side inspection of source documents and extracted OCR data
+- Field-to-source linkage via highlights / bounding boxes
+- Per-field confidence indicators and unresolved-field tracking
+- Explicit user-corrected extraction revisions with full audit trail
+- Preservation of original OCR output and prior revisions
 
-Workflows remain **inert graphs of intent**, not automation.
+**What this is not**
+- No authoritative data mutation
+- No automatic correction or learning
+- No workflow coupling
 
----
-
-### v6.1 Workflow Definition Authoring (Admin Flow Builder)
-
-**Capabilities**
-- Admin-only workflow editor
-- Canvas-based flow representation:
-  - Start node
-  - Action steps
-  - Decision branches (IF / ELSE)
-  - End nodes
-- Explicit ordering and branching
-- Configuration via inspector panels
-- Draft-only authoring
-- Explicit save only
-- No raw JSON exposure
-
-**Execution Boundaries**
-- Admin-only UI
-- No execution
-- No task mutation
-- No background persistence
+**Design Intent**
+Derived data must be **inspectable, explainable, and correctable by humans**  
+*before* it is used to explain reality, simulate outcomes, or advise decisions.
 
 ---
 
-### v6.2 Workflow Validation & Explanation
+## v9 — Reality View: Relationship & Obligation Graph (Read-Only) (Planned)
 
-**Capabilities**
-- Structural validation:
-  - missing steps
-  - invalid ordering
-  - missing assignees
-- Human-readable explanations
-- Dry-run preview of paths
-- Preview derived from draft or saved definition
+**What this is**
+- Derived visual graph of real-world entities, obligations, and relationships
+- Explanation of blocking conditions, dependencies, and current status
+- Traceability back to evidence, workflows, and source records
+- Zero execution or mutation authority
 
-**Execution Boundaries**
-- No execution
-- No persistence of preview output
-- No side effects
+**Design Intent**
+Humans should be able to **see reality** before they are given correction power.
 
 ---
 
-### v6.3 Reusable Workflow Elements (Admin Library)
+## v10 — Graph-Governed Editing (Explicit Mutation) (Planned)
 
-**Purpose**
-Enable **governed, reusable workflow building blocks**.
+**What this is**
+- Explicit, audited edits initiated from graph inspectors
+- Writes to existing authoritative domain tables only
+- Strong validation and confirmation requirements
+- No automation, no implicit side effects
 
-**Capabilities**
-- Admin-defined reusable elements:
-  - approval
-  - review
-  - acknowledge
-  - decision
-- Versioned templates with:
-  - schema
-  - defaults
-  - override rules
-- Instance configuration per workflow
-- Full audit trail for lifecycle changes
-
-**Execution Boundaries**
-- Admin-managed only
-- No execution
-- No automation
+**Design Intent**
+Introduce **correction power** only after reality is visible and understandable.
 
 ---
 
-## v7 — Workflow Composition & Participation (User UI) (Planned)
+## v11 — Drafts & Simulation (What-If Reasoning) (Planned)
 
-### Purpose
-Allow users to **interact with workflows explicitly**, without authoring governance logic.
-
----
-
-### v7.1 Workflow Participation
-
-**Capabilities**
-- User inbox of pending workflow steps
-- Explicit approve / reject / acknowledge
-- Mandatory remarks
-- Full execution trace visibility
-
----
-
-## v8 — External Intake (Telegram) (Planned)
-
-### Purpose
-Capture **external intent** without mutation.
-
----
-
-### v8.1 Telegram Capture
-
-**Capabilities**
-- Receive images and text
-- Store as attachments
-- OCR optional and explicit
-
-**Execution Boundaries**
-- Capture-only
-- No task mutation
-- No scheduling
-
----
-
-## v9 — Relationship / Transaction Graph (Read-Only Reality View) (Planned)
-
-### Purpose
-Provide a **derived, visual representation of real-world transactions and obligations** to help humans understand what is happening — without changing ERP authority or enabling automation.
-
-This is a **cognitive layer**, not a workflow engine.
-
-ERP records reality.  
-This module helps humans **see and reason about it**.
-
----
-
-### v9.1 Relationship Graph Core Model
-
-**Concepts**
-- **Nodes** represent real entities:
-  - Customer
-  - Vendor
-  - Contract
-  - Order
-  - Invoice
-  - Shipment
-  - Payment
-  - Task
-  - Workflow Execution
-- **Edges** represent real relationships:
-  - pays
-  - bills
-  - fulfills
-  - ships_to
-  - depends_on
-  - blocks / unblocks
-- Nodes and edges map **directly to authoritative records**.
-
-**Rules**
-- Graph structure is derived
-- Layout is non-authoritative
-- Graph does not execute anything
-
----
-
-### v9.2 Relationship Graph Visualization (Read-Only)
-
-**Capabilities**
-- Visual graph showing:
-  - entities as nodes
-  - obligations and flows as edges
-- Each edge may display:
-  - amount
-  - quantity
-  - status (pending / completed / blocked)
-  - direction of responsibility
-- Status overlays derived from:
-  - task stages
-  - workflow execution states
-
-**Execution Boundaries**
-- Read-only
-- No persistence
-- No mutation
-
----
-
-### v9.3 Contextual Inspectors (Read-Only)
-
-**Capabilities**
-- Clicking a node or edge opens an inspector panel
-- Inspector shows:
-  - same fields as ERP forms
-  - rendered in context of the graph
-- No editing in this phase
-
----
-
-### v9.4 Governance Overlay (Read-Only)
-
-**Capabilities**
-- Visual overlay showing:
-  - linked workflow definitions
-  - current execution step
-  - blocking approvals
-- Explains **why** something is pending, not **what to do**
-
----
-
-### v9.5 Admin-Governed Structure
-
-**Capabilities**
-- Admin defines:
-  - allowed node types
-  - allowed relationship types
-  - display rules
-- Users cannot invent new semantics
-
----
-
-## v10 — Graph Editing in Context (Future)
-
-### Purpose
-Allow **explicit, audited edits** to ERP records via the graph.
-
----
-
-### Capabilities
-- Contextual editing via inspectors
-- Explicit save only
-- Full validation and audit
-- Writes to existing ERP tables
-- No automation
-
----
-
-## v11 — Draft Graphs & Simulation (Future)
-
-### Purpose
-Enable **what-if reasoning** without committing data.
-
----
-
-### Capabilities
-- Draft relationship graphs
-- Simulate:
-  - cashflow
-  - margin
-  - dependency chains
+**What this is**
+- Draft graphs fully detached from authoritative data
+- Simulation of outcomes (cashflow, dependencies, impact)
+- Visual comparison between draft and authoritative reality
 - Explicit commit converts draft → authoritative records
 
----
-
-## v12 — Undo & Correction Semantics (Future)
-
-Undo restores **validity**, not history.
+**Design Intent**
+Enable **thinking before acting** without contaminating reality.
 
 ---
 
-## v13 — Assistive Planning & Intelligence (Future)
+## v12 — Undo & Correction Semantics (Planned)
 
-Advisory only. No execution authority.
+**What this is**
+- Undo restores system validity, not historical state
+- Corrections are explicit, forward-moving, and auditable
+- No silent rollback or time travel
+
+**Design Intent**
+Provide safety guarantees **after** correction power exists.
 
 ---
 
-## v14 — Collaboration Semantics (Future)
+## v13 — Assistive Planning & Intelligence (Advisory Only) (Planned)
 
-Presence-aware only. No shared control.
+**What this is**
+- Advisory insights over authoritative and draft graphs
+- Risk indicators, prioritisation, and recommendations
+- All outputs are derived, explainable, and non-executing
+- Human remains the decision-maker
+
+**Design Intent**
+Intelligence is earned **after** governance, visibility, and correction are solid.
+
+---
+
+## v14 — External Channels & Integrations (Planned)
+
+**What this is**
+- External capture surfaces (Telegram, email, API, mobile)
+- Capture-only by default
+- Optional explicit handoff into governed workflows
+
+**Design Intent**
+Integrations are **surfaces**, not core capabilities.
+
+---
+
+## v15 — Collaboration Semantics (Planned)
+
+**What this is**
+- Presence-aware visibility and shared context
+- No shared mutation authority
+- Governance remains admin-defined
+
+**Design Intent**
+Collaboration is a **multiplier**, not a foundation.
 
 ---
 

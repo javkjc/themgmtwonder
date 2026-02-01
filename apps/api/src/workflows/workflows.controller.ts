@@ -32,6 +32,28 @@ export class WorkflowsController {
   }
 
   /**
+   * GET /workflows/my-pending-steps
+   * v7: User-facing endpoint to retrieve pending workflow steps assigned to current user.
+   * Returns steps that have not yet been acted upon.
+   */
+  @Get('my-pending-steps')
+  async getMyPendingSteps(@Req() req: any) {
+    const userId = req.user.id;
+    return this.workflowsService.getMyPendingSteps(userId);
+  }
+
+  /**
+   * GET /workflows/executions/:executionId/detail
+   * v7: User-facing read-only endpoint to retrieve execution detail with step history.
+   * Returns execution metadata and ordered step history.
+   * No mutation from this endpoint.
+   */
+  @Get('executions/:executionId/detail')
+  async getExecutionDetail(@Param('executionId') executionId: string) {
+    return this.workflowsService.getExecutionDetail(executionId);
+  }
+
+  /**
    * GET /workflows/:id
    * Admin-only: Get workflow definition with steps
    */
