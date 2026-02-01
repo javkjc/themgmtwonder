@@ -19,3 +19,10 @@ Thumbs.db
 # editor
 .vscode/
 .idea/
+
+# Playwright
+/auth/
+/.auth/
+/playwright-report/
+/test-results/
+/trace.zip

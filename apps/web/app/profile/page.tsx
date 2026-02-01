@@ -323,6 +323,7 @@ export default function ProfilePage() {
           <button
             onClick={handleChangePassword}
             disabled={changingPassword || passwordSuccess || !currentPassword || !newPassword || !confirmPassword}
+            data-testid="change-password-submit"
             style={{
               padding: '10px 20px',
               background: (changingPassword || passwordSuccess || !currentPassword || !newPassword || !confirmPassword)

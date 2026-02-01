@@ -151,6 +151,7 @@ export default function ScheduleModal({
           width: '90%',
         }}
         onClick={(e) => e.stopPropagation()}
+        data-testid="schedule-modal"
       >
         <h2 style={{ marginTop: 0 }}>Schedule Task</h2>
 
@@ -200,6 +201,7 @@ export default function ScheduleModal({
               type="datetime-local"
               value={startAt}
               onChange={(e) => setStartAt(e.target.value)}
+              data-testid="schedule-startAt"
               style={{
                 width: '100%',
                 padding: '8px 12px',
@@ -231,6 +233,7 @@ export default function ScheduleModal({
                   setDurationMin(String(defaultDurationMin));
                 }
               }}
+              data-testid="schedule-duration"
               style={{
                 width: '100%',
                 padding: '8px 12px',
@@ -283,6 +286,7 @@ export default function ScheduleModal({
             <button
               onClick={onClose}
               disabled={saving}
+              data-testid="schedule-cancel"
               style={{
                 padding: '8px 16px',
                 borderRadius: 4,
@@ -297,6 +301,7 @@ export default function ScheduleModal({
             <button
               onClick={handleSave}
               disabled={saving || !startAt || !durationMin}
+              data-testid="schedule-confirm"
               style={{
                 padding: '8px 16px',
                 borderRadius: 4,

@@ -1,82 +1,40 @@
-# Playwright Test Plan
-Each case states the persona, primary route(s), seed steps, explicit interaction steps, the expected state, which invariants it exercises, and a flake-risk callout.
+# Playwright Test Plan (implementation-ready)
 
-## Smoke tier
-### T-SMOKE-01 — create + complete an unscheduled task
-- **Persona:** Standard user (task owner) authenticated via `/auth/register` + `/auth/login` (`apps/api/src/auth/auth.controller.ts`).
-- **Route(s):** `/` (task dashboard, `apps/web/app/page.tsx`).
-- **Preconditions:** new email registered, CSRF cookie captured per `apps/api/src/common/csrf.ts`/`apps/web/app/lib/api.ts`, no prior tasks.
-- **Steps:** log in, open the create task modal, enter a title/description, submit (triggers `POST /todos`), wait for todo list refresh, mark it done (triggers `PATCH /todos/:id`).
-- **Expected results:** new task row appears (server returns row from `TodosController.create`), toggling done updates `todos.done` and reloads list, and the audit log holds `todo.create` + `todo.update` entries (`AuditService.log`).
-- **Invariant(s) validated:** explicit intent for mutation, backend as single source of truth (`TodosController`/`todos.service.ts`), every state change is audited (`AuditService`).
-- **Flake risk:** low.
+## Suites & Cases
 
-## Regression tier
-### T-REG-01 — schedule/reschedule while honoring overlap guards
-- **Persona:** Standard user from above.
-- **Route(s):** `/calendar` (`apps/web/app/calendar/page.tsx`), using `ScheduleModal` for explicit time selection.
-- **Preconditions:** task exists (unscheduled), calendar view loaded with `GET /todos` filtering by date range (`TodosController.list`).
-- **Steps:** select a slot via `ScheduleModal`, set duration within `[minDurationMin, maxDurationMin]` (`apps/api/src/common/constants.ts`), save (`PATCH /todos/:id/schedule`), then attempt to reschedule to overlapping time and read the 409 `ConflictException` from `TodosService.schedule`.
-- **Expected results:** first save returns updated todo, calendar refresh includes new event; second save surfaces the `conflict` toast because server rejects the overlap, matching `TodosService` overlap check.
-- **Invariant(s) validated:** explicit user-driven scheduling, no silent overlap, backend rejects conflicting slot (`ConflictException`), UI shows toasts from `calendar/page.tsx`.
-- **Flake risk:** medium (calendar rendering/async fetches).
+### Smoke
+- **SMK-01 Login + CSRF seed (standard)** — Persona: standard; Route `/`; Preconditions: none; Steps: open `/`, fill auth-email/password, click auth-submit (LoginForm); Assertions: redirects to task list, `auth.me` exists (via `/auth/me` response), `todo_csrf` cookie present; Backend check: `GET /auth/me` JSON includes userId/email/role. Flake: low; Selectors: auth-email, auth-password, auth-submit.
+- **SMK-02 Create task via modal** — Persona: standard; Route `/`; Preconditions: logged-in storageState; Steps: click create-task-button, fill title, submit; Assertions: new row appears in tasks-table, persists after reload; Backend: `GET /todos` contains title. Risk: CSRF; Selectors: create-task-button, task-row.
+- **SMK-03 Schedule task via modal (no drag)** — Persona: standard; Preconditions: task exists; Steps: open task schedule from row (task-schedule), set date/time in ScheduleModal, save; Assertions: scheduled badge/time renders, reload persists; Backend: `GET /todos/:id` startAt set. Flake: time math; use ISO time. Selectors: task-schedule, schedule-save (to add), schedule-modal fields.
+- **SMK-04 Customizations save working hours** — Persona: standard; Route `/customizations`; Steps: adjust working hours inputs, click working-hours-save; Assertions: success toast, reload shows saved values; Backend: `GET /settings` returns new hours. Selectors: working-hours-save.
+- **SMK-05 Activity log loads** — Persona: standard; Route `/activity`; Preconditions: create one task to generate audit; Steps: open route; Assertions: audit row present, pagination works; Backend: `/audit` returns same ids. Selectors: list text (no testids).
+- **SMK-06 Admin users list** — Persona: admin; Route `/admin`; Steps: open page, search (admin-search-input/button), verify table renders; Backend: `/admin/users` returns matching count. Selectors: admin-search-input/button.
+- **SMK-07 Workflows list view** — Persona: admin; Route `/workflows`; Steps: load page; Assertions: table rows render (or empty state), buttons present; Backend: `GET /workflows` status 200. Selectors: workflow-view, workflows-create.
+- **SMK-08 Force-password overlay absent** — Persona: both; Preconditions: storageState after password change; Steps: open `/`; Assertions: ForcePasswordChange component not rendered; Backend: `/auth/me` mustChangePassword=false.
 
-## Permission tier
-### T-PERM-01 — non-admin blocked from admin APIs/views
-- **Persona:** Standard user.
-- **Route(s):** `/admin` (`apps/web/app/admin/page.tsx`), `GET /admin/users`.
-- **Preconditions:** logged-in standard account from T-SMOKE-01.
-- **Steps:** navigate to `/admin`, expect front-end redirect to `/` (page checks `me.isAdmin`). Separately call `GET /admin/users` from Playwright request helper, assert 403/`AdminGuard` response (`apps/api/src/admin/admin.controller.ts`).
-- **Expected results:** UI never renders admin panel (redirect logic), API call fails with 403 `AdminGuard` error message.
-- **Invariant(s) validated:** privilege boundary via `isAdmin` flag (`AdminGuard`), explicit denial; non-admins cannot mutate admin data.
-- **Flake risk:** none.
+### Regression
+- **REG-01 Bulk mark done** — Persona: standard; Create 2 tasks; Steps: select rows, click bulk done; Assertions: both show done, reload persists; Backend: `/todos/bulk/done` 200 and `/todos` done=true.
+- **REG-02 Calendar drag schedule** — Persona: standard; Preconditions: unscheduled task; Steps: drag drag-task-card onto calendar-grid slot; Assertions: event appears; Backend: `/todos/:id` startAt updated. Flake: high; Mitigation: pause for drag settle.
+- **REG-03 OCR apply remark** — Persona: standard; Preconditions: task with attachment and OCR output (trigger via task-ocr-run, wait, else mock?); Steps: click task-ocr-apply-remark; Assertions: remark added and visible; Backend: `/remarks/todo/:id` includes OCR text. Risk: worker availability.
+- **REG-04 Admin reset password** — Persona: admin; Steps: open `/admin`, open reset modal for another user, confirm; Assertions: temp password displayed, target user mustChangePassword=true via `/admin/users`; Backend: `/admin/users/:id/reset-password` audit entry exists (`/audit` action=admin.reset_password).
+- **REG-05 Workflow create + edit draft** — Persona: admin; Routes `/workflows/new` then `/workflows/[id]/edit`; Steps: add steps with workflow-add-step, save draft; Assertions: redirected to detail, steps count matches; Backend: `POST /workflows` created, `PUT /workflows/:id` updates.
+- **REG-06 Workflow activation toggle** — Persona: admin; Steps: on `/workflows/[id]` click workflow-activate then workflow-deactivate; Assertions: status badges change, versions list updates; Backend: `POST /workflows/:id/activate` and `/deactivate` responses toggle isActive.
+- **REG-07 Element template versioning** — Persona: admin; Route `/workflows/elements/[id]`; Steps: click element-create-version, assert new version in list; Backend: `POST /workflows/elements/templates/:id/version` returns new id, GET versions length increases.
+- **REG-08 Categories seed defaults** — Persona: standard; Route `/customizations`; Steps: click seed-defaults; Assertions: default categories render; Backend: `/categories` includes seeded names. CSRF required.
+- **REG-09 Change password via profile** — Persona: standard; Steps: fill change form, submit; Assertions: success banner, logout occurs; Backend: `/auth/change-password` clears auth cookie, next `/auth/me` 401.
 
-## Audit tier
-### T-AUDIT-01 — admin sees audit log entries for a user action
-- **Persona:** Admin user (bootstrap/default or via `/admin/users/:id/toggle-admin`).
-- **Route(s):** `/activity` (`apps/web/app/activity/page.tsx`), `GET /audit` (`AuditController.list`).
-- **Preconditions:** admin logged in, ensure there is a recent audited action (e.g., standard user created task or admin killed job).
-- **Steps:** refresh `/activity`, filter (optional), verify the latest entry matches the recent action and contains timestamps/`details` per `AuditService.list`; confirm request hits `GET /audit` allowed only for admin.
-- **Expected results:** audit list shows new row with `action`/`module`/`resourceId` from `AuditService.log`; UI uses `ActionBadge` (`apps/web/app/activity/page.tsx`).
-- **Invariant(s) validated:** audit-first principle (every mutation writes to `audit_logs`), admin-only visibility (`AdminGuard`).
-- **Flake risk:** low.
+### Permissions
+- **PERM-01 Non-admin blocked from Admin page** — Persona: standard; Route `/admin`; Expect redirect to `/` or access denied toast (isForbidden); Backend: `/admin/users` returns 403.
+- **PERM-02 Non-admin blocked from Workflows** — Persona: standard; Route `/workflows`; Expect redirect + toast; Backend: `/workflows` 403.
+- **PERM-03 AdminGuard present on workflows CRUD** — Persona: admin; Hit `/workflows` success; then repeat call without admin storageState expect 403; ensures guard verified.
 
-## OCR tier
-### T-OCR-01 — upload attachment, trigger OCR, inspect/apply text
-- **Persona:** Standard user.
-- **Route(s):** `/task/[id]` attachment panel, `POST /attachments/todo/:todoId`, `/attachments/:id/ocr`, `/attachments/:id/ocr/apply`.
-- **Preconditions:** task exists, file ready to upload (<20MB), OCR worker container reachable (`OCR_WORKER_BASE_URL`).
-- **Steps:** upload file (`attachments.upload`), trigger OCR (`POST /attachments/:id/ocr`), poll `GET /attachments/:id/ocr`, open viewer, copy text, click “Add as remark” (sends `ApplyOcrDto.target = 'remark'`), confirm remark recorded in UI via `RemarksService.create` and audit log entries (`remark.create`, `ocr.apply.remark`).
-- **Expected results:** viewer shows the `derived` output records, copy button copies text, remark count increases, audit logs capture both remark creation and OCR apply.
-- **Invariant(s) validated:** OCR is user-triggered, derived text only applied when complete, short remarks limited to 150 chars (`CreateRemarkDto`).
-- **Flake risk:** high (OCR worker dependency + eventual consistency of output creation).
+### Audit Integrity
+- **AUD-01 Task create logged** — Persona: standard; Create task; Assert `/audit` contains action `todo.create` with resourceId task.id (use `useAuditLogs` data).
+- **AUD-02 Admin role change logged** — Persona: admin; Toggle admin for user; Assert `/audit` entry `user.role.grant|revoke` with resourceId userId.
+- **AUD-03 OCR apply logged** — Persona: standard; Apply OCR; Assert `/audit/resource/:id` includes `ocr.apply.*` entries.
 
-## Calendar tier
-### T-CAL-02 — drag unscheduled task to calendar and unschedule via drop zone
-- **Persona:** Standard user.
-- **Route(s):** `/calendar` + unscheduled panel (`apps/web/app/calendar/page.tsx`).
-- **Preconditions:** at least one unscheduled task from `/todos?scheduled=false` and calendar view open.
-- **Steps:** drag an unscheduled card into the calendar grid, drop onto a time slot (invokes `handleSchedule` ? `PATCH /todos/:id/schedule`), then drag the resulting event into the unschedule zone (`handleUnschedule`/`TodosController.schedule` with `startAt: null`).
-- **Expected results:** first drop schedules task (see calendar event and backend record), second drop unschedules the task (calendar entry removed, `unscheduledAt` set by backend). `ScheduleModal` and drag overlay ensure user explicitly chooses slot.
-- **Invariant(s) validated:** explicit drag-and-drop intent, backend enforces schedule/unschedule logic (`TodosService.schedule`), calendar drop zones and unschedule overlay deliver user feedback from `calendar/page.tsx`.
-- **Flake risk:** high (drag interactions and pointer coordinates can fluctuate).
+### High-Risk / Special
+- **HR-01 Schedule conflict handling** — Persona: standard; Create two tasks, schedule overlapping same slot via API, expect second 409; UI shows error toast; Backend: response 409 from `/todos/:id/schedule`.
+- **HR-02 Workflows execute step action (backend only)** — Persona: standard; Precondition: active workflow + execution created via `POST /workflows/:id/execute` (no UI); call `POST /workflows/executions/:executionId/steps/:stepId/action`; Assert status change; Note: endpoints lack CsrfGuard, still send header for consistency.
 
-## Relationships tier
-### T-REL-01 — attach/detach parent/child while honoring constraints
-- **Persona:** Standard user.
-- **Route(s):** `/` task table (`apps/web/app/components/TasksTable.tsx`), `/task/[id]` relationship modal.
-- **Preconditions:** two active tasks exist; one designated parentable (no parent yet).
-- **Steps:** open relationship modal from the child row, call `POST /todos/:childId/associate` with `parentId`; ensure backend returns snapshots (per `TodosService.associateTask`). Attempt to close parent with open child should fail (`BadRequestException` in `todos.service.ts`). Afterwards disassociate (`POST /todos/:childId/disassociate`) and delete child, verifying audit entries `todo.associate`, `todo.disassociate`, `todo.delete_child`.
-- **Expected results:** child’s parent appears in relationship modal, parent’s child count increments/decrements, invalid actions (closing parent with open child) show API error.
-- **Invariant(s) validated:** parent/child constraints (max depth 2, can't close parent with open children) from `todos.service.ts`, audit entries, explicit remarks for association/disassociation.
-- **Flake risk:** low.
-
-## Workflow API tier
-### T-WF-01 — start workflow execution and act on a step
-- **Persona:** Standard user owning the target `todo`.
-- **Route(s):** API-only: `POST /workflows/:id/execute`, `POST /workflows/executions/:executionId/steps/:stepId/action` (`apps/api/src/workflows`).
-- **Preconditions:** a workflow definition exists, the user owns the target task (per `WorkflowsService.validateResourceOwnership`).
-- **Steps:** call `POST /workflows/:id/execute` with `{ resourceType: 'todo', resourceId }`, then identify the pending step (`workflowSteps` entries) and `POST` to the action URL with `{ decision: 'approve', remark: 'Test' }`.
-- **Expected results:** execution record is created (`workflowExecutions` row with `status = 'pending'`), step action returns `workflowStepExecutions` row, statuses update to `in_progress`/`completed`, and audit logs record both `workflow.start` and `workflow.step_action` (`AuditService.log`).
-- **Invariant(s) validated:** workflows run explicitly on user intent, resource ownership enforced, audit-first history with before/after snapshots (`WorkflowsController`).
-- **Flake risk:** low (API deterministic).
+For each case list required selectors from proposed plan; ensure CSRF header set for all non-GET where CsrfGuard is applied.

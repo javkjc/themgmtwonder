@@ -48,10 +48,12 @@ export default function NotificationToast({ notifications, onDismiss }: Notifica
         gap: 12,
         maxWidth: 400,
       }}
+      data-testid="toast"
     >
       {visibleNotifications.map((notification) => (
         <div
           key={notification.id}
+          data-testid={notification.type === 'success' ? 'toast-success' : notification.type === 'error' ? 'toast-error' : 'toast'}
           style={{
             background: 'white',
             borderRadius: 8,

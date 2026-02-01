@@ -1,0 +1,12 @@
+{
+  "scripts": {
+    "pw:auth:standard": "node scripts/pw-auth-standard.mjs",
+    "pw:auth:admin": "node scripts/pw-auth-admin.mjs",
+    "pw:test": "npx playwright test",
+    "pw:test:headed": "npx playwright test --headed",
+    "pw:report": "npx playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.1"
+  }
+}

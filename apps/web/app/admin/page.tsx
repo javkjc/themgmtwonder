@@ -226,6 +226,7 @@ export default function AdminPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
             placeholder="Search by email..."
+            data-testid="admin-search-input"
             style={{
               flex: 1,
               padding: '10px 14px',
@@ -238,6 +239,7 @@ export default function AdminPage() {
           <button
             onClick={handleSearch}
             disabled={loadingUsers}
+            data-testid="admin-search-button"
             style={{
               padding: '10px 20px',
               background: '#3b82f6',
@@ -316,6 +318,7 @@ export default function AdminPage() {
                       <button
                         onClick={() => handleToggleAdmin(user.id, user.isAdmin)}
                         disabled={user.id === me.userId && user.isAdmin}
+                        data-testid={`admin-toggle-admin-${user.id}`}
                         style={{
                           padding: '6px 12px',
                           background: user.isAdmin ? '#fef2f2' : '#f0fdf4',
@@ -333,6 +336,7 @@ export default function AdminPage() {
                       {user.id !== me.userId && (
                         <button
                           onClick={() => setResetModal({ user })}
+                          data-testid={`admin-reset-password-${user.id}`}
                           style={{
                             padding: '6px 12px',
                             background: '#fef2f2',

@@ -188,6 +188,7 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
 
               <Link
                 href="/admin"
+                data-testid="admin-nav"
                 style={{
                   display: 'flex',
                   alignItems: 'center',

@@ -60,6 +60,7 @@ export default function ConfirmModal({
         zIndex: 10000,
       }}
       onClick={onCancel}
+      data-testid="confirm-modal"
     >
       <div
         style={{
@@ -99,6 +100,7 @@ export default function ConfirmModal({
         <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
           <button
             onClick={onCancel}
+            data-testid="confirm-no"
             style={{
               padding: '10px 20px',
               borderRadius: 6,
@@ -114,6 +116,7 @@ export default function ConfirmModal({
           </button>
           <button
             onClick={onConfirm}
+            data-testid="confirm-yes"
             style={{
               padding: '10px 20px',
               borderRadius: 6,

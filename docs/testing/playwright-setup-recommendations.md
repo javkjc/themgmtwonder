@@ -1,49 +1,19 @@
 # Playwright Setup Recommendations
 
-## Folder layout
-Suggest co-locating Playwright specs and fixtures under a single `tests/playwright` tree so tiers mirror the required plan:
-```
-tests/playwright/
-+-- smoke/
-+-- regression/
-+-- permissions/
-+-- audit/
-+-- ocr/
-+-- calendar/
-+-- relationships/
-+-- workflow-api/
-+-- fixtures/
-¦   +-- storageState/
-+-- selectors.ts
-```
-Keep each tier focused on the test cases defined above, reuse `selectors.ts` constants, and version snapshots under a `fixtures` directory.
-
-## StorageState strategy per persona
-- Capture `storageState.standard.json` by logging in via `POST /auth/login` (cookies set by `apps/api/src/auth/auth.controller.ts`) and extracting the httpOnly `todo_auth` cookie plus the non-HTTP `todo_csrf` cookie required by `apps/api/src/common/csrf.ts`/`apps/web/app/lib/api.ts` for every non-GET request.
-- Capture `storageState.admin.json` the same way using the bootstrap/admin credential (`admin@example.com`/`admin123` or overrides from `ADMIN_EMAIL`/`ADMIN_PASSWORD`).
-- Reuse Playwright’s `storageState` option in `test.use({ storageState: 'fixtures/storageState/standard.json' })` when hitting `/`, `/calendar`, `/task/[id]`, and other standard user flows; use the admin file when navigating `/admin`, `/activity`, `/customizations`, or calling `/admin/*`, `/settings` PUT, `/audit`.
-- Remember to provide the CSRF header (`x-csrf-token`) during programmatic API calls (see `CSRF_HEADER_NAME` in `apps/web/app/lib/api.ts`).
-
-## Data reset options discovered in repo
-- Schema migrations: run `cd apps/api && npm run drizzle:migrate` (`drizzle-kit` command defined in `apps/api/package.json`) to rebuild the schema from scratch.
-- Backups: the repo includes `todo_db_backup.sql` and `todo_db_backup.dump` at the root; restore via `psql -f todo_db_backup.sql` or `pg_restore --single-transaction todo_db_backup.dump` against the Postgres container (`postgres://todo:todo123@db:5432/todo_db`).
-- To reset state between suites, `docker compose down -v` plus `docker compose up --build` (see `codemapcc.md` Run/Dev Commands) restarts all services with a clean volume.
-
-## How to run locally
-- Start the stack via Docker Compose (web/API/DB/OCR worker): `docker compose up --build` (`codemapcc.md` Run/Dev Commands). This exposes the API on `http://localhost:3000` and the frontend on `http://localhost:3001`.
-- Alternatively, run services separately for faster iteration:
-  1. `cd apps/api && npm install && npm run start:dev` (NestJS dev server on port 3000, uses `app.module.ts`).
-  2. `cd apps/web && npm install && npm run dev` (Next.js dev server, port 3000 by default; front-end expects `NEXT_PUBLIC_API_BASE_URL` pointing to the API).
-- OCR worker: `docker compose` also builds `apps/ocr-worker`, which must be reachable via `OCR_WORKER_BASE_URL` when triggering `/attachments/:id/ocr`.
-
-## Required environment variables (found in repo)
-| Variable | Purpose | Notes |
-| --- | --- | --- |
-| `NODE_ENV` | Server mode | must be `development` or `production` (`.env`). |
-| `API_PORT` | API listens on this port (`apps/api/src/main.ts`). | Defaults to 3000. |
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` / `DATABASE_URL` | Postgres connection used by Nest/Drizzle (`apps/api/src/db`). | Defaults to `todo`/`todo123`/`todo_db`. |
-| `JWT_SECRET` | Signs auth tokens (`apps/api/src/auth/auth.service.ts`). | Tests should not rely on the default in prod. |
-| `COOKIE_NAME` / `COOKIE_SECURE` / `COOKIE_SAMESITE` | Controls how the JWT cookie is issued (`apps/api/src/auth/auth.controller.ts`). |
-| `OCR_WORKER_BASE_URL` | Worker endpoint hit from `AttachmentsController.triggerOcr`. | Default is `http://ocr-worker:4000`, so tests hitting OCR must mock or spin up the worker. |
-| `NEXT_PUBLIC_API_BASE_URL` | Front-end fetch base URL (`apps/web/app/lib/api.ts`). | Set to `http://localhost:3000` when running Playwright against the dev server. |
-| `NEXT_PUBLIC_CSRF_COOKIE_NAME` / `NEXT_PUBLIC_CSRF_HEADER_NAME` (optional) | Should match `todo_csrf`/`x-csrf-token` if you override defaults (`apps/web/app/lib/api.ts`). |
+- **baseURL**: use `http://localhost:3001` (web container exposes 3001?Next 3000) per `docker-compose.yml` web service. API base is `http://localhost:3000` (`NEXT_PUBLIC_API_BASE_URL` default in `apps/web/app/lib/api.ts` and `.env`). Set `use.baseURL` accordingly.
+- **Project layout**: `playwright.config.ts`; `tests/smoke/*.spec.ts`, `tests/regression/*.spec.ts`, `tests/permissions/*.spec.ts`, `tests/workflows/*.spec.ts`; shared `fixtures/` for storageState + helpers; `pages/` for Page Object wrappers if desired.
+- **Env to export when running locally**: `.env` already defines `API_PORT`, `COOKIE_NAME=todo_auth`, `COOKIE_SAMESITE=lax`, `COOKIE_SECURE=false`, `OCR_WORKER_BASE_URL`. Ensure `NEXT_PUBLIC_API_BASE_URL` is set in web env when running outside docker (default http://localhost:3000).
+- **Storage state**:
+  - Save to `fixtures/state/user.json` and `fixtures/state/admin.json`.
+  - Flow: `POST /auth/login` (no CSRF required) -> `GET /auth/me` to mint CSRF cookie if missing (`apps/api/src/auth/auth.controller.ts` me()). Persist cookies. For admin, perform `POST /auth/change-password` with header `x-csrf-token` from `todo_csrf` cookie if `mustChangePassword` true (`jwt.strategy.ts` claims; `bootstrap.service.ts` seeds admin with mustChangePassword true). Verify by `GET /auth/me` (`isAdmin:true`, `mustChangePassword:false`).
+  - Refresh: if cookies expire (401), rerun login + me to regenerate state.
+- **API request context CSRF helper**: extract `todo_csrf` cookie from storageState, set header `x-csrf-token` on non-GET requests to controllers guarded by CsrfGuard (todos/categories/settings/attachments/remarks/admin/audit). Workflows endpoints currently lack CsrfGuard but still require auth cookie.
+- **Data reset strategy**:
+  - Seed categories defaults: `POST /categories/seed-defaults` (auth+CSRF) — `apps/api/src/categories/categories.controller.ts` / `apps/web/app/customizations/page.tsx`.
+  - Manual DB repair: follow `help_fixes.md` for schema patching/Next cache clearing (root doc); use only when DB desynced.
+  - Task data cleanup: use `/todos/bulk/delete` via API for teardown (`apps/web/app/hooks/useTodos.ts`).
+- **Local run commands**:
+  - Full stack: `docker compose up --build` (uses `.env`, runs api on 3000, web on 3001, db on internal net, ocr-worker on 4000).
+  - Frontend dev: `cd apps/web && npm run dev` (Next on 3000; adjust baseURL to 3000 when bypassing docker proxy).
+  - API dev: `cd apps/api && npm run start:dev` (Nest on API_PORT from env, CORS origin http://localhost:3001 per `apps/api/src/main.ts`).
+- **Artifacts**: keep Playwright HTML/video trace per failure in `artifacts/` folder; enable `trace: 'on-first-retry'` for stability.

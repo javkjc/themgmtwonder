@@ -88,12 +88,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           flexDirection: 'column',
           gap: 8,
         }}
+        data-testid="toast"
       >
         {toasts.map((toast) => (
           <div
             key={toast.id}
             onClick={() => removeToast(toast.id)}
             style={getToastStyle(toast.type)}
+            data-testid={toast.type === 'success' ? 'toast-success' : toast.type === 'error' ? 'toast-error' : 'toast'}
           >
             <span style={{ fontSize: 16 }}>{getIcon(toast.type)}</span>
             <span>{toast.message}</span>

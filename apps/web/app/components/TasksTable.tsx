@@ -194,6 +194,7 @@ export default function TasksTable({
             {todos.map((t) => (
               <tr
                 key={t.id}
+                data-testid={`task-row-${t.id}`}
                 style={{
                   borderBottom: '1px solid #f1f5f9',
                   transition: 'background 0.15s, box-shadow 0.15s, transform 0.15s',
@@ -220,6 +221,7 @@ export default function TasksTable({
                 <td style={{ padding: '16px', textAlign: 'center' }}>
                   <button
                     onClick={() => onPin(t.id, !t.isPinned)}
+                    data-testid={`task-pin-${t.id}`}
                     style={{
                       background: 'none',
                       border: 'none',
@@ -272,6 +274,7 @@ export default function TasksTable({
                     type="checkbox"
                     checked={t.done}
                     onChange={() => onToggle(t)}
+                    data-testid={`task-toggle-${t.id}`}
                     style={{ cursor: 'pointer', width: 16, height: 16 }}
                   />
                 </td>
@@ -413,6 +416,7 @@ export default function TasksTable({
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                         <Link
                           href={`/task/${t.id}`}
+                          data-testid={`task-open-${t.id}`}
                           style={{
                             fontSize: 14,
                             fontWeight: 500,
@@ -639,6 +643,7 @@ export default function TasksTable({
                       </button>
                       <button
                         onClick={() => onSchedule(t.id, t.startAt, t.durationMin)}
+                        data-testid={`task-schedule-${t.id}`}
                         style={{
                           padding: '6px 10px',
                           fontSize: 12,
@@ -671,6 +676,7 @@ export default function TasksTable({
                       )}
                       <button
                         onClick={() => onDelete(t.id, t.title)}
+                        data-testid={`task-delete-${t.id}`}
                         style={{
                           padding: '6px 10px',
                           fontSize: 12,

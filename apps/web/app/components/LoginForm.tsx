@@ -218,6 +218,7 @@ export default function LoginForm({
                 </label>
                 <input
                   type="email"
+                  data-testid="auth-email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Enter your email"
@@ -248,6 +249,7 @@ export default function LoginForm({
                 </label>
                 <input
                   type="password"
+                  data-testid="auth-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
@@ -269,6 +271,7 @@ export default function LoginForm({
               <button
                 onClick={handleSubmit}
                 disabled={loading}
+                data-testid="auth-submit"
                 style={{
                   width: '100%',
                   padding: '12px 16px',
@@ -300,6 +303,7 @@ export default function LoginForm({
                 <button
                   type="button"
                   onClick={toggleAuthMode}
+                  data-testid="auth-toggle-mode"
                   style={{
                     background: 'none',
                     border: 'none',

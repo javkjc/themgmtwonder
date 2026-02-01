@@ -46,7 +46,11 @@ export type AuditAction =
   | 'workflow.update'
   | 'workflow.create_version'
   | 'workflow.activate'
-  | 'workflow.deactivate';
+  | 'workflow.deactivate'
+  | 'workflow.element_template.create'
+  | 'workflow.element_template.create_version'
+  | 'workflow.element_template.update'
+  | 'workflow.element_template.deprecate';
 
 export type AuditModule =
   | 'auth'

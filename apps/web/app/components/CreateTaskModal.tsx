@@ -146,6 +146,7 @@ export default function CreateTaskModal({ isOpen, onClose, onCreate, userId }: C
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Enter task title"
+              data-testid="task-title-input"
               style={{
                 width: '100%',
                 padding: '10px 12px',
@@ -347,6 +348,7 @@ export default function CreateTaskModal({ isOpen, onClose, onCreate, userId }: C
             <button
               onClick={handleCreate}
               disabled={saving}
+              data-testid="task-save"
               style={{
                 padding: '10px 18px',
                 borderRadius: 8,

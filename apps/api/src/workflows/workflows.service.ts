@@ -11,9 +11,10 @@ import {
   workflowExecutions,
   workflowSteps,
   workflowStepExecutions,
+  workflowElementTemplates,
   todos,
 } from '../db/schema';
-import { StartWorkflowDto, StepActionDto, CreateWorkflowDto, UpdateWorkflowDto, CreateVersionDto } from './dto';
+import { StartWorkflowDto, StepActionDto, CreateWorkflowDto, UpdateWorkflowDto, CreateVersionDto, CreateElementTemplateDto, UpdateElementTemplateDto, DeprecateElementTemplateDto } from './dto';
 
 @Injectable()
 export class WorkflowsService {
@@ -535,6 +536,190 @@ export class WorkflowsService {
       .from(workflowDefinitions)
       .where(eq(workflowDefinitions.workflowGroupId, workflowGroupId))
       .orderBy(desc(workflowDefinitions.version));
+
+    return versions;
+  }
+
+  /**
+   * List all element templates (active and deprecated).
+   * v6: Admin-only read operation for element library.
+   */
+  async listElementTemplates() {
+    const templates = await this.dbs.db
+      .select()
+      .from(workflowElementTemplates)
+      .orderBy(desc(workflowElementTemplates.updatedAt));
+
+    return templates;
+  }
+
+  /**
+   * Get element template by ID.
+   * v6: Admin-only read operation.
+   */
+  async getElementTemplateById(id: string) {
+    const [template] = await this.dbs.db
+      .select()
+      .from(workflowElementTemplates)
+      .where(eq(workflowElementTemplates.id, id))
+      .limit(1);
+
+    if (!template) {
+      throw new NotFoundException(`Element template ${id} not found`);
+    }
+
+    return template;
+  }
+
+  /**
+   * Create a new element template.
+   * v6: Admin-only operation. Creates version 1 of a new template.
+   */
+  async createElementTemplate(dto: CreateElementTemplateDto, adminUserId: string) {
+    // 1. Create element template (version 1)
+    const [template] = await this.dbs.db
+      .insert(workflowElementTemplates)
+      .values({
+        elementType: dto.elementType,
+        displayLabel: dto.displayLabel,
+        stepType: dto.stepType || null,
+        defaultConfig: dto.defaultConfig || null,
+        editableFields: dto.editableFields || null,
+        validationConstraints: dto.validationConstraints || null,
+        templateVersion: 1,
+        isDeprecated: false,
+        createdBy: adminUserId,
+        templateGroupId: undefined, // Will be backfilled
+      })
+      .returning();
+
+    // 2. Backfill templateGroupId to self (starts new version group)
+    await this.dbs.db
+      .update(workflowElementTemplates)
+      .set({ templateGroupId: template.id })
+      .where(eq(workflowElementTemplates.id, template.id));
+
+    // 3. Return template with updated groupId
+    return this.getElementTemplateById(template.id);
+  }
+
+  /**
+   * Create a new version of an element template.
+   * v6: Clones template with incremented version number.
+   * Admin-only operation.
+   */
+  async createElementTemplateVersion(sourceTemplateId: string, adminUserId: string) {
+    // 1. Load source template
+    const sourceTemplate = await this.getElementTemplateById(sourceTemplateId);
+
+    // 2. Determine templateGroupId and next version number
+    const templateGroupId = sourceTemplate.templateGroupId || sourceTemplate.id;
+
+    // Get highest version number in this group
+    const groupTemplates = await this.dbs.db
+      .select({ templateVersion: workflowElementTemplates.templateVersion })
+      .from(workflowElementTemplates)
+      .where(eq(workflowElementTemplates.templateGroupId, templateGroupId))
+      .orderBy(desc(workflowElementTemplates.templateVersion))
+      .limit(1);
+
+    const nextVersion = groupTemplates.length > 0 ? groupTemplates[0].templateVersion + 1 : 1;
+
+    // 3. Create new template version
+    const [newTemplate] = await this.dbs.db
+      .insert(workflowElementTemplates)
+      .values({
+        elementType: sourceTemplate.elementType,
+        displayLabel: sourceTemplate.displayLabel,
+        stepType: sourceTemplate.stepType,
+        defaultConfig: sourceTemplate.defaultConfig,
+        editableFields: sourceTemplate.editableFields,
+        validationConstraints: sourceTemplate.validationConstraints,
+        templateVersion: nextVersion,
+        templateGroupId: templateGroupId,
+        isDeprecated: false,
+        createdBy: adminUserId,
+      })
+      .returning();
+
+    return newTemplate;
+  }
+
+  /**
+   * Update an element template (creates new version).
+   * v6: Updating a template creates a NEW version, does NOT mutate existing.
+   * Admin-only operation.
+   */
+  async updateElementTemplate(id: string, dto: UpdateElementTemplateDto, adminUserId: string) {
+    // 1. Load source template
+    const sourceTemplate = await this.getElementTemplateById(id);
+
+    // 2. Create new version with updates
+    const templateGroupId = sourceTemplate.templateGroupId || sourceTemplate.id;
+
+    // Get highest version number in this group
+    const groupTemplates = await this.dbs.db
+      .select({ templateVersion: workflowElementTemplates.templateVersion })
+      .from(workflowElementTemplates)
+      .where(eq(workflowElementTemplates.templateGroupId, templateGroupId))
+      .orderBy(desc(workflowElementTemplates.templateVersion))
+      .limit(1);
+
+    const nextVersion = groupTemplates.length > 0 ? groupTemplates[0].templateVersion + 1 : 1;
+
+    // 3. Create new template version with updated fields
+    const [newTemplate] = await this.dbs.db
+      .insert(workflowElementTemplates)
+      .values({
+        elementType: sourceTemplate.elementType, // Cannot change type
+        displayLabel: dto.displayLabel ?? sourceTemplate.displayLabel,
+        stepType: dto.stepType ?? sourceTemplate.stepType,
+        defaultConfig: dto.defaultConfig ?? sourceTemplate.defaultConfig,
+        editableFields: dto.editableFields ?? sourceTemplate.editableFields,
+        validationConstraints: dto.validationConstraints ?? sourceTemplate.validationConstraints,
+        templateVersion: nextVersion,
+        templateGroupId: templateGroupId,
+        isDeprecated: false,
+        createdBy: adminUserId,
+      })
+      .returning();
+
+    return newTemplate;
+  }
+
+  /**
+   * Deprecate an element template.
+   * v6: Templates are never deleted, only deprecated.
+   * Admin-only operation.
+   */
+  async deprecateElementTemplate(id: string, dto: DeprecateElementTemplateDto, adminUserId: string) {
+    // 1. Verify template exists
+    await this.getElementTemplateById(id);
+
+    // 2. Update deprecation flag
+    await this.dbs.db
+      .update(workflowElementTemplates)
+      .set({
+        isDeprecated: dto.isDeprecated,
+        updatedAt: new Date(),
+      })
+      .where(eq(workflowElementTemplates.id, id));
+
+    // 3. Return updated template
+    return this.getElementTemplateById(id);
+  }
+
+  /**
+   * List all versions of an element template group.
+   * v6: Returns all template versions grouped together.
+   * Admin-only operation.
+   */
+  async listElementTemplateVersions(templateGroupId: string) {
+    const versions = await this.dbs.db
+      .select()
+      .from(workflowElementTemplates)
+      .where(eq(workflowElementTemplates.templateGroupId, templateGroupId))
+      .orderBy(desc(workflowElementTemplates.templateVersion));
 
     return versions;
   }

@@ -55,7 +55,13 @@
       "Bash(docker compose logs:*)",
       "Bash(docker compose stop:*)",
       "Bash(docker compose start:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(set PW_DEBUG=1)",
+      "Bash(node scripts/pw-auth-standard.mjs:*)",
+      "Bash(cmd /c \"set PW_DEBUG=1 && node scripts/pw-auth-standard.mjs\")",
+      "Bash($env:PW_DEBUG=\"1\")",
+      "Bash(PW_DEBUG=1 node scripts/pw-auth-standard.mjs:*)",
+      "Bash(npm run pw:auth:standard:*)"
     ]
   }
 }

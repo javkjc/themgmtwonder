@@ -337,6 +337,7 @@ export default function Home() {
             <button
               type="button"
               onClick={() => createModal.open()}
+              data-testid="task-create-open"
               style={{
                 padding: '10px 18px',
                 background: '#2563eb',

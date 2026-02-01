@@ -11,7 +11,7 @@ import {
 import { JwtAuthGuard, AdminGuard } from '../auth/auth.guard';
 import { WorkflowsService } from './workflows.service';
 import { AuditService } from '../audit/audit.service';
-import { StartWorkflowDto, StepActionDto, CreateWorkflowDto, UpdateWorkflowDto, CreateVersionDto } from './dto';
+import { StartWorkflowDto, StepActionDto, CreateWorkflowDto, UpdateWorkflowDto, CreateVersionDto, CreateElementTemplateDto, UpdateElementTemplateDto, DeprecateElementTemplateDto } from './dto';
 
 @Controller('workflows')
 @UseGuards(JwtAuthGuard)
@@ -391,5 +391,209 @@ export class WorkflowsController {
 
     // Return all versions in the group
     return this.workflowsService.listWorkflowVersions(workflowGroupId);
+  }
+
+  /**
+   * GET /workflows/elements/templates
+   * Admin-only: List all element templates
+   */
+  @Get('elements/templates')
+  @UseGuards(AdminGuard)
+  async listElementTemplates() {
+    return this.workflowsService.listElementTemplates();
+  }
+
+  /**
+   * GET /workflows/elements/templates/:id
+   * Admin-only: Get element template by ID
+   */
+  @Get('elements/templates/:id')
+  @UseGuards(AdminGuard)
+  async getElementTemplateById(@Param('id') id: string) {
+    return this.workflowsService.getElementTemplateById(id);
+  }
+
+  /**
+   * POST /workflows/elements/templates
+   * Admin-only: Create a new element template
+   */
+  @Post('elements/templates')
+  @UseGuards(AdminGuard)
+  async createElementTemplate(@Body() dto: CreateElementTemplateDto, @Req() req: any) {
+    const userId = req.user.id;
+
+    // Create element template
+    const template = await this.workflowsService.createElementTemplate(dto, userId);
+
+    // Audit log entry
+    await this.auditService.log({
+      userId,
+      action: 'workflow.element_template.create',
+      module: 'workflow',
+      resourceType: 'workflow_element_template',
+      resourceId: template.id,
+      details: {
+        before: null,
+        after: {
+          id: template.id,
+          elementType: template.elementType,
+          displayLabel: template.displayLabel,
+          stepType: template.stepType,
+          templateVersion: template.templateVersion,
+          templateGroupId: template.templateGroupId,
+        },
+      },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    return template;
+  }
+
+  /**
+   * POST /workflows/elements/templates/:id/version
+   * Admin-only: Create a new version of an element template
+   */
+  @Post('elements/templates/:id/version')
+  @UseGuards(AdminGuard)
+  async createElementTemplateVersion(@Param('id') id: string, @Req() req: any) {
+    const userId = req.user.id;
+
+    // Capture source template
+    const sourceTemplate = await this.workflowsService.getElementTemplateById(id);
+
+    // Create new version
+    const newVersion = await this.workflowsService.createElementTemplateVersion(id, userId);
+
+    // Audit log entry
+    await this.auditService.log({
+      userId,
+      action: 'workflow.element_template.create_version',
+      module: 'workflow',
+      resourceType: 'workflow_element_template',
+      resourceId: newVersion.id,
+      details: {
+        sourceTemplateId: id,
+        sourceVersion: sourceTemplate.templateVersion,
+        newVersion: newVersion.templateVersion,
+        templateGroupId: newVersion.templateGroupId,
+        before: {
+          sourceId: sourceTemplate.id,
+          sourceVersion: sourceTemplate.templateVersion,
+        },
+        after: {
+          id: newVersion.id,
+          templateVersion: newVersion.templateVersion,
+          displayLabel: newVersion.displayLabel,
+        },
+      },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    return newVersion;
+  }
+
+  /**
+   * PUT /workflows/elements/templates/:id
+   * Admin-only: Update element template (creates new version)
+   */
+  @Put('elements/templates/:id')
+  @UseGuards(AdminGuard)
+  async updateElementTemplate(
+    @Param('id') id: string,
+    @Body() dto: UpdateElementTemplateDto,
+    @Req() req: any,
+  ) {
+    const userId = req.user.id;
+
+    // Capture state before update
+    const templateBefore = await this.workflowsService.getElementTemplateById(id);
+
+    // Update template (creates new version)
+    const templateAfter = await this.workflowsService.updateElementTemplate(id, dto, userId);
+
+    // Audit log entry
+    await this.auditService.log({
+      userId,
+      action: 'workflow.element_template.update',
+      module: 'workflow',
+      resourceType: 'workflow_element_template',
+      resourceId: templateAfter.id,
+      details: {
+        sourceTemplateId: id,
+        before: {
+          displayLabel: templateBefore.displayLabel,
+          stepType: templateBefore.stepType,
+          templateVersion: templateBefore.templateVersion,
+        },
+        after: {
+          id: templateAfter.id,
+          displayLabel: templateAfter.displayLabel,
+          stepType: templateAfter.stepType,
+          templateVersion: templateAfter.templateVersion,
+        },
+      },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    return templateAfter;
+  }
+
+  /**
+   * POST /workflows/elements/templates/:id/deprecate
+   * Admin-only: Deprecate an element template
+   */
+  @Post('elements/templates/:id/deprecate')
+  @UseGuards(AdminGuard)
+  async deprecateElementTemplate(
+    @Param('id') id: string,
+    @Body() dto: DeprecateElementTemplateDto,
+    @Req() req: any,
+  ) {
+    const userId = req.user.id;
+
+    // Capture state before deprecation
+    const templateBefore = await this.workflowsService.getElementTemplateById(id);
+
+    // Deprecate template
+    const templateAfter = await this.workflowsService.deprecateElementTemplate(id, dto, userId);
+
+    // Audit log entry
+    await this.auditService.log({
+      userId,
+      action: 'workflow.element_template.deprecate',
+      module: 'workflow',
+      resourceType: 'workflow_element_template',
+      resourceId: id,
+      details: {
+        before: {
+          isDeprecated: templateBefore.isDeprecated,
+        },
+        after: {
+          isDeprecated: templateAfter.isDeprecated,
+        },
+      },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    return templateAfter;
+  }
+
+  /**
+   * GET /workflows/elements/templates/:id/versions
+   * Admin-only: List all versions of an element template group
+   */
+  @Get('elements/templates/:id/versions')
+  @UseGuards(AdminGuard)
+  async listElementTemplateVersions(@Param('id') id: string) {
+    // Get the template to determine its group
+    const template = await this.workflowsService.getElementTemplateById(id);
+    const templateGroupId = template.templateGroupId || template.id;
+
+    // Return all versions in the group
+    return this.workflowsService.listElementTemplateVersions(templateGroupId);
   }
 }

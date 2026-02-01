@@ -200,21 +200,38 @@ export default function WorkflowsPage() {
           <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, color: '#1e293b' }}>
             Workflow Management
           </h1>
-          <button
-            onClick={() => window.location.href = '/workflows/new'}
-            style={{
-              padding: '10px 20px',
-              background: '#3b82f6',
-              color: 'white',
-              border: 'none',
-              borderRadius: 6,
-              fontSize: 14,
-              cursor: 'pointer',
-              fontWeight: 600,
-            }}
-          >
-            + Create Workflow
-          </button>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <button
+              onClick={() => window.location.href = '/workflows/elements'}
+              style={{
+                padding: '10px 20px',
+                background: 'white',
+                color: '#3b82f6',
+                border: '1px solid #3b82f6',
+                borderRadius: 6,
+                fontSize: 14,
+                cursor: 'pointer',
+                fontWeight: 600,
+              }}
+            >
+              Element Library
+            </button>
+            <button
+              onClick={() => window.location.href = '/workflows/new'}
+              style={{
+                padding: '10px 20px',
+                background: '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: 6,
+                fontSize: 14,
+                cursor: 'pointer',
+                fontWeight: 600,
+              }}
+            >
+              + Create Workflow
+            </button>
+          </div>
         </div>
         <p style={{ color: '#64748b', margin: 0 }}>
           View and manage workflow definitions

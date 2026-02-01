@@ -284,6 +284,15 @@ export const workflowSteps = pgTable(
     assignedTo: text('assigned_to'),
     // Declarative conditions evaluated at execution start only (stored as JSON)
     conditions: text('conditions'),
+    // v6: Optional reference to element template (nullable for backward compatibility)
+    elementTemplateId: uuid('element_template_id').references(
+      () => workflowElementTemplates.id,
+      { onDelete: 'restrict' },
+    ),
+    // v6: Template version locked at time of instance creation
+    elementTemplateVersion: integer('element_template_version'),
+    // v6: Instance-specific configuration (JSON string, overrides template defaults)
+    instanceConfig: text('instance_config'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (t) => ({
@@ -293,6 +302,9 @@ export const workflowSteps = pgTable(
     workflowDefOrderIdx: index('workflow_steps_workflow_def_order_idx').on(
       t.workflowDefinitionId,
       t.stepOrder,
+    ),
+    elementTemplateIdIdx: index('workflow_steps_element_template_id_idx').on(
+      t.elementTemplateId,
     ),
   }),
 );
@@ -379,6 +391,58 @@ export const workflowStepExecutions = pgTable(
     actorIdIdx: index('workflow_step_executions_actor_id_idx').on(t.actorId),
     createdAtIdx: index('workflow_step_executions_created_at_idx').on(
       t.createdAt,
+    ),
+  }),
+);
+
+// Workflow element templates (v6 - reusable workflow building blocks)
+// These are admin-defined templates, NOT executable logic
+// They serve as governed building blocks for workflow composition
+export const workflowElementTemplates = pgTable(
+  'workflow_element_templates',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    // Template versioning: each template can have multiple versions
+    templateVersion: integer('template_version').default(1).notNull(),
+    // Group ID ties all versions of a template together
+    templateGroupId: uuid('template_group_id'),
+    // Element type: 'step' or 'decision'
+    elementType: text('element_type').notNull(), // 'step' | 'decision'
+    // Display label shown in admin UI
+    displayLabel: text('display_label').notNull(),
+    // For step elements: approve, review, acknowledge
+    // For decision elements: if_else
+    stepType: text('step_type'), // nullable for decision elements
+    // Default configuration (JSON string)
+    // For steps: {assignedTo, description, etc.}
+    // For decisions: {branches: [{label, condition}]}
+    defaultConfig: text('default_config'),
+    // Fields that can be edited when instance is created (JSON array of field names)
+    editableFields: text('editable_fields'),
+    // Validation constraints (JSON string)
+    validationConstraints: text('validation_constraints'),
+    // Deprecation flag (templates are never deleted, only deprecated)
+    isDeprecated: boolean('is_deprecated').default(false).notNull(),
+    // Admin who created this template
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    elementTypeIdx: index('workflow_element_templates_element_type_idx').on(
+      t.elementType,
+    ),
+    groupIdx: index('workflow_element_templates_group_idx').on(
+      t.templateGroupId,
+    ),
+    groupVersionIdx: index('workflow_element_templates_group_version_idx').on(
+      t.templateGroupId,
+      t.templateVersion,
+    ),
+    deprecatedIdx: index('workflow_element_templates_deprecated_idx').on(
+      t.isDeprecated,
     ),
   }),
 );

@@ -3631,3 +3631,299 @@ Modified [apps/web/app/calendar/page.tsx](apps/web/app/calendar/page.tsx) to fil
 - [apps/web/app/calendar/page.tsx](apps/web/app/calendar/page.tsx#L524-L527,L553-L558)
 
 **Status**: ✅ Complete
+
+---
+
+## v6 Reconciliation: Tasks 10.4 & 10.5 Status Update
+
+**Date**: 2026-01-31
+
+**Objective**: Reconcile plan.md against actual codebase state for Tasks 10.4 and 10.5.
+
+---
+
+### Task 10.4: Workflow Validation & Dry-Run Preview
+
+**Status**: ✅ DONE (previously implemented, now documented in plan.md)
+
+**Verification Method**: Code inspection
+
+**Implementation Confirmed**:
+
+1. **Validation Library**: [apps/web/app/lib/workflow-validation.ts](apps/web/app/lib/workflow-validation.ts)
+   - `validateWorkflow()`: Structural validation (missing steps, invalid ordering, missing assignees, unsupported step types)
+   - `generateWorkflowExplanation()`: Human-readable workflow description
+   - `generateDryRunPreview()`: Possible execution paths (IF/ELSE branching)
+   - All functions are pure (no side effects, no persistence, no execution)
+
+2. **UI Integration**: [apps/web/app/workflows/[id]/edit/page.tsx](apps/web/app/workflows/[id]/edit/page.tsx)
+   - Real-time validation on draft state changes (lines 89-107)
+   - Validation panel with errors/warnings display (lines 684-867)
+   - Dry-run preview with path visualization (lines 807-857)
+   - No persistence of validation results (computed on-the-fly)
+
+**Constraints Verified**:
+- No execution records created ✓
+- No persistence of preview output ✓
+- No background evaluation ✓
+- No side effects ✓
+
+---
+
+### Task 10.5: Admin Audit Coverage Verification
+
+**Status**: ✅ DONE (audit coverage complete)
+
+**Verification Method**: Code inspection of controller and service layers
+
+**Audit Service**: [apps/api/src/audit/audit.service.ts](apps/api/src/audit/audit.service.ts)
+- Audit actions defined: `workflow.create`, `workflow.update`, `workflow.create_version`, `workflow.activate`, `workflow.deactivate` (lines 43-49)
+- Append-only log (no update/delete methods exist)
+
+**Audit Coverage Confirmed** in [apps/api/src/workflows/workflows.controller.ts](apps/api/src/workflows/workflows.controller.ts):
+
+1. **Workflow Creation** (lines 58-85)
+   - Action: `workflow.create`
+   - Before: null (new workflow)
+   - After: full workflow definition + steps
+   - Actor: req.user.id
+   - Metadata: IP address, user agent
+
+2. **Workflow Editing** (lines 111-141)
+   - Action: `workflow.update`
+   - Before: original workflow state (captured before update)
+   - After: updated workflow state
+   - Actor: req.user.id
+   - Metadata: IP address, user agent
+
+3. **Version Creation** (lines 271-298)
+   - Action: `workflow.create_version`
+   - Before: source workflow metadata
+   - After: new version metadata
+   - Actor: req.user.id
+   - Metadata: IP address, user agent
+
+4. **Activation** (lines 319-337)
+   - Action: `workflow.activate`
+   - Before: `isActive: false`
+   - After: `isActive: true`
+   - Actor: req.user.id
+   - Metadata: IP address, user agent
+
+5. **Deactivation** (lines 358-376)
+   - Action: `workflow.deactivate`
+   - Before: `isActive: true`
+   - After: `isActive: false`
+   - Actor: req.user.id
+   - Metadata: IP address, user agent
+
+**Audit Requirements Verified**:
+- Append-only audit log ✓ (no update/delete in AuditService)
+- Before/after snapshots ✓ (all operations capture state changes)
+- Actor attribution ✓ (userId from req.user.id)
+- Timestamped entries ✓ (automatic via auditLogs.createdAt)
+- No silent changes ✓ (all operations log before execution)
+
+---
+
+### Files Updated
+
+**plan.md**:
+- Task 10.4: marked ✅ DONE, added completion summary
+- Task 10.5: marked ✅ DONE, added completion summary
+- Last Updated timestamp: 2026-01-31
+
+**executionnotes.md**:
+- This entry appended
+
+---
+
+### No Code Changes
+
+No implementation work was required. Tasks 10.4 and 10.5 were already complete in the codebase but not reflected in plan.md.
+
+---
+
+**Status**: ✅ Reconciliation Complete
+
+
+## 2026-01-31 - Task 10.6: Reusable Workflow Elements (Admin Library)
+
+**Objective:** Introduce admin-defined reusable workflow elements as governed templates for safe no-code composition.
+
+---
+
+### Scope
+
+**Element Types Introduced:**
+- Step elements: approve, review, acknowledge
+- Decision elements: IF / ELSE (with mandatory default path)
+
+**Template Model:**
+- Versioned and immutable element templates
+- Each template defines: element type, display label, default config, editable fields, validation constraints
+- Templates are admin-created and admin-managed
+- Templates can be deprecated but never deleted
+
+**Usage Semantics:**
+- Workflows reference templates via templateId + templateVersion
+- Each placement creates an instance configuration
+- Instance edits do NOT mutate the template
+- Template updates do NOT retroactively change workflows
+
+---
+
+### Implementation Summary
+
+**Backend Changes:**
+
+1. **Database Schema** ([apps/api/src/db/schema.ts](apps/api/src/db/schema.ts))
+   - Added `workflowElementTemplates` table with full versioning support
+   - Added template reference fields to `workflowSteps` table:
+     - `elementTemplateId` (optional, for backward compatibility)
+     - `elementTemplateVersion` (locked at instance creation)
+     - `instanceConfig` (instance-specific overrides)
+   - Migration: [apps/api/drizzle/0020_workflow_element_templates.sql](apps/api/drizzle/0020_workflow_element_templates.sql)
+
+2. **DTOs** ([apps/api/src/workflows/dto/](apps/api/src/workflows/dto/))
+   - `CreateElementTemplateDto`: Create new template
+   - `UpdateElementTemplateDto`: Update template (creates new version)
+   - `DeprecateElementTemplateDto`: Deprecate/reactivate template
+
+3. **Service Layer** ([apps/api/src/workflows/workflows.service.ts](apps/api/src/workflows/workflows.service.ts))
+   - `listElementTemplates()`: List all templates
+   - `getElementTemplateById(id)`: Get template by ID
+   - `createElementTemplate(dto, adminUserId)`: Create template v1
+   - `createElementTemplateVersion(sourceId, adminUserId)`: Clone to new version
+   - `updateElementTemplate(id, dto, adminUserId)`: Update (creates new version)
+   - `deprecateElementTemplate(id, dto, adminUserId)`: Toggle deprecation
+   - `listElementTemplateVersions(groupId)`: List all versions of a template group
+
+4. **Controller** ([apps/api/src/workflows/workflows.controller.ts](apps/api/src/workflows/workflows.controller.ts))
+   - `GET /workflows/elements/templates`: List all templates
+   - `GET /workflows/elements/templates/:id`: Get template by ID
+   - `POST /workflows/elements/templates`: Create new template
+   - `POST /workflows/elements/templates/:id/version`: Create new version
+   - `PUT /workflows/elements/templates/:id`: Update template (creates new version)
+   - `POST /workflows/elements/templates/:id/deprecate`: Deprecate/reactivate
+   - `GET /workflows/elements/templates/:id/versions`: List version history
+
+**Frontend Changes:**
+
+1. **Element Library List** ([apps/web/app/workflows/elements/page.tsx](apps/web/app/workflows/elements/page.tsx))
+   - Admin-only page listing all element templates
+   - Groups templates by templateGroupId, showing latest version
+   - Visual indicators for element type (step/decision) and deprecation status
+   - Modal for creating new element templates
+   - Navigation link added to workflows list page
+
+2. **Element Detail Page** ([apps/web/app/workflows/elements/[id]/page.tsx](apps/web/app/workflows/elements/[id]/page.tsx))
+   - Display template details and configuration
+   - View version history with navigation
+   - Create new version action
+   - Deprecate/reactivate action
+   - Visual display of JSON configuration fields
+
+3. **Workflow List Integration** ([apps/web/app/workflows/page.tsx](apps/web/app/workflows/page.tsx))
+   - Added "Element Library" button for quick access
+
+---
+
+### Audit Coverage
+
+All element template operations include full audit logging via [apps/api/src/workflows/workflows.controller.ts](apps/api/src/workflows/workflows.controller.ts):
+
+- **Element Creation** (lines 425-460): `workflow.element_template.create`
+- **Version Creation** (lines 467-506): `workflow.element_template.create_version`
+- **Element Update** (lines 513-552): `workflow.element_template.update`
+- **Deprecation** (lines 559-592): `workflow.element_template.deprecate`
+
+All entries include:
+- Actor attribution (admin user ID)
+- Before/after snapshots
+- Timestamp (automatic)
+- IP address and user agent
+- Append-only log semantics
+
+---
+
+### Governance Rules Enforced
+
+1. **Template vs Instance Boundaries:**
+   - Templates are immutable once referenced by workflows
+   - Updating a template creates a NEW version
+   - Workflows reference specific template versions
+   - Instance configuration is local to workflow, never mutates template
+
+2. **Versioning Semantics:**
+   - Templates start at version 1
+   - Updates create monotonically incrementing versions
+   - Version history is preserved and navigable
+   - Old versions remain accessible but don't auto-update workflows
+
+3. **Deprecation (Not Deletion):**
+   - Templates are never deleted
+   - Deprecated templates remain visible with deprecation indicator
+   - Deprecation is reversible
+
+4. **Admin-Only Management:**
+   - All element template operations require admin privileges
+   - Enforced via `@UseGuards(AdminGuard)` on all endpoints
+
+---
+
+### What Was Intentionally NOT Implemented
+
+Per strict v6 scope requirements:
+
+1. ❌ **Execution Behavior**: Elements are definition-time templates only, no execution logic
+2. ❌ **Automation**: No automatic workflow triggers or background processing
+3. ❌ **Drag-and-Drop Wiring**: Workflow editor integration is minimal (link only)
+4. ❌ **Instance Creation UI**: Workflow editor does not yet support inserting element instances
+5. ❌ **Validation Engine**: Template validation constraints are stored but not enforced
+6. ❌ **Decision Logic Evaluation**: Decision elements are templates only, no branching execution
+
+These features belong to future phases and would violate the v6 "inert definitions only" principle.
+
+---
+
+### Files Created
+
+**Backend:**
+- [apps/api/drizzle/0020_workflow_element_templates.sql](apps/api/drizzle/0020_workflow_element_templates.sql)
+- [apps/api/src/workflows/dto/create-element-template.dto.ts](apps/api/src/workflows/dto/create-element-template.dto.ts)
+- [apps/api/src/workflows/dto/update-element-template.dto.ts](apps/api/src/workflows/dto/update-element-template.dto.ts)
+- [apps/api/src/workflows/dto/deprecate-element-template.dto.ts](apps/api/src/workflows/dto/deprecate-element-template.dto.ts)
+
+**Frontend:**
+- [apps/web/app/workflows/elements/page.tsx](apps/web/app/workflows/elements/page.tsx)
+- [apps/web/app/workflows/elements/[id]/page.tsx](apps/web/app/workflows/elements/[id]/page.tsx)
+
+### Files Modified
+
+**Backend:**
+- [apps/api/src/db/schema.ts](apps/api/src/db/schema.ts): Added element template schema
+- [apps/api/src/workflows/workflows.service.ts](apps/api/src/workflows/workflows.service.ts): Added element template methods
+- [apps/api/src/workflows/workflows.controller.ts](apps/api/src/workflows/workflows.controller.ts): Added element template endpoints
+- [apps/api/src/workflows/dto/index.ts](apps/api/src/workflows/dto/index.ts): Export new DTOs
+
+**Frontend:**
+- [apps/web/app/workflows/page.tsx](apps/web/app/workflows/page.tsx): Added Element Library button
+
+**Documentation:**
+- [plan.md](plan.md): Marked Task 10.6 as ✅ DONE
+- [executionnotes.md](executionnotes.md): This entry
+
+---
+
+### Migration Applied
+
+Database migration `0020_workflow_element_templates.sql` applied successfully:
+- Created `workflow_element_templates` table
+- Added element template reference columns to `workflow_steps` table
+- Created all necessary indexes
+- Migration executed via: `docker exec -i todo-db psql -U todo -d todo_db`
+
+---
+
+**Status**: ✅ Task 10.6 Complete

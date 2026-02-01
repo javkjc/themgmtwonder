@@ -182,9 +182,9 @@ Allow admins to **explicitly manage workflow lifecycle state** without affecting
 
 ### **10.4 Workflow Validation & Dry-Run Preview**
 
-**Status:** ⬜ TODO
+**Status:** ✅ DONE
 
-**Objective**  
+**Objective**
 Provide **non-executing validation and human-readable explanation tooling**.
 
 ---
@@ -219,11 +219,16 @@ Provide **non-executing validation and human-readable explanation tooling**.
 
 ---
 
+**Completion Summary**
+Implemented via [apps/web/app/lib/workflow-validation.ts](apps/web/app/lib/workflow-validation.ts) with pure validation functions (`validateWorkflow`, `generateWorkflowExplanation`, `generateDryRunPreview`). Integrated into workflow editor at [apps/web/app/workflows/[id]/edit/page.tsx](apps/web/app/workflows/[id]/edit/page.tsx) with real-time validation and preview display. All validation is non-executing, non-persisting, and side-effect free.
+
+---
+
 ### **10.5 Admin Audit Coverage Verification**
 
-**Status:** ⬜ TODO
+**Status:** ✅ DONE
 
-**Objective**  
+**Objective**
 Ensure **complete audit coverage** for all admin workflow management actions.
 
 ---
@@ -249,9 +254,14 @@ Audit entries must exist for:
 
 ---
 
+**Completion Summary**
+Audit coverage verified complete. All workflow management operations in [apps/api/src/workflows/workflows.controller.ts](apps/api/src/workflows/workflows.controller.ts) include audit logging via [apps/api/src/audit/audit.service.ts](apps/api/src/audit/audit.service.ts). Coverage confirmed for: workflow.create (lines 58-85), workflow.update (lines 111-141), workflow.create_version (lines 271-298), workflow.activate (lines 319-337), workflow.deactivate (lines 358-376). All entries include actor attribution, timestamps, before/after snapshots, IP address, and user agent. Audit log is append-only.
+
+---
+
 ### **10.6 Reusable Workflow Elements (Admin Library)**
 
-**Status:** ⬜ TODO
+**Status:** ✅ DONE
 
 **Objective**  
 Introduce **admin-defined reusable workflow elements** to enable no-code composition without sacrificing governance.
@@ -341,5 +351,5 @@ without a **new plan.md for the next phase (v7)**.
 
 ---
 
-Last Updated: 2026-01-30  
+Last Updated: 2026-01-31
 Status: v6 Workflow Management (Admin UI) — ⬜ IN PROGRESS

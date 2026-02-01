@@ -1084,6 +1084,7 @@ export default function TaskDetailsPage() {
                     type="text"
                     value={editTitle}
                     onChange={(e) => setEditTitle(e.target.value)}
+                    data-testid="task-title-input"
                     style={{
                       width: '100%',
                       padding: '10px 12px',
@@ -1210,6 +1211,7 @@ export default function TaskDetailsPage() {
                   <button
                     type="submit"
                     disabled={saving}
+                    data-testid="task-save"
                     style={{
                       padding: '8px 16px',
                       borderRadius: 6,
@@ -1286,6 +1288,7 @@ export default function TaskDetailsPage() {
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                     <button
                       onClick={() => setIsEditing(true)}
+                      data-testid="task-edit-open"
                       style={{
                         padding: '8px 12px',
                         borderRadius: 6,
@@ -1393,6 +1396,7 @@ export default function TaskDetailsPage() {
                       id="stage-selector"
                       value={selectedStage}
                       onChange={(e) => setSelectedStage(e.target.value as TaskStageKey)}
+                      data-testid="stage-selector"
                       style={{
                         padding: '6px 10px',
                         borderRadius: 6,
@@ -1416,6 +1420,7 @@ export default function TaskDetailsPage() {
                         !task ||
                         selectedStage === currentStageKey
                       }
+                      data-testid="stage-confirm"
                       style={{
                         padding: '6px 12px',
                         borderRadius: 6,
@@ -1549,6 +1554,7 @@ export default function TaskDetailsPage() {
                   <button
                     onClick={handleUploadClick}
                     disabled={!selectedFile || uploading}
+                    data-testid="attachment-upload"
                     style={{
                       width: '100%',
                       padding: '10px 16px',
@@ -1598,6 +1604,7 @@ export default function TaskDetailsPage() {
                         return (
                           <div
                             key={attachment.id}
+                            data-testid={`attachment-row-${attachment.id}`}
                             style={{
                               display: 'flex',
                               flexDirection: 'column',
@@ -1918,6 +1925,7 @@ export default function TaskDetailsPage() {
                     maxLength={150}
                     rows={2}
                     placeholder="Add a remark..."
+                    data-testid="remark-input"
                     style={{
                       width: '100%',
                       padding: '10px 12px',
@@ -1939,6 +1947,7 @@ export default function TaskDetailsPage() {
                     <button
                       onClick={handleAddRemark}
                       disabled={addingRemark || !newRemarkContent.trim()}
+                      data-testid="remark-submit"
                       style={{
                         padding: '8px 16px',
                         borderRadius: 6,
