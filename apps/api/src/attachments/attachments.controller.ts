@@ -134,6 +134,32 @@ export class AttachmentsController {
     return this.ocrService.listByAttachment(req.user.userId, id);
   }
 
+  @Get(':id/ocr/redo-eligibility')
+  async checkOcrRedoEligibility(
+    @Req() req: any,
+    @Param('id') attachmentId: string,
+  ) {
+    await this.ocrService.verifyUserOwnsAttachment(
+      req.user.userId,
+      attachmentId,
+    );
+
+    return this.ocrService.checkRedoEligibility(attachmentId);
+  }
+
+  @Get(':id/ocr/current')
+  async getCurrentOcr(
+    @Req() req: any,
+    @Param('id') attachmentId: string,
+  ) {
+    await this.ocrService.verifyUserOwnsAttachment(
+      req.user.userId,
+      attachmentId,
+    );
+
+    return this.ocrService.getCurrentConfirmedOcr(attachmentId);
+  }
+
   // Delete attachment
   @Delete(':id')
   async delete(@Req() req: any, @Param('id') id: string) {
@@ -163,6 +189,46 @@ export class AttachmentsController {
       mimeType: attachment.mimeType,
       filename: attachment.filename,
     };
+
+    const redoCheck = await this.ocrService.checkRedoEligibility(id);
+
+    if (!redoCheck.allowed) {
+      await this.audit.log({
+        userId,
+        action: 'OCR_REDO_BLOCKED',
+        module: 'attachment',
+        resourceType: 'attachment',
+        resourceId: id,
+        details: {
+          ...requestDetails,
+          reason: redoCheck.reason,
+          currentOcrId: redoCheck.currentOcr?.id ?? null,
+          utilizationType: redoCheck.currentOcr?.utilizationType ?? null,
+        },
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+
+      throw new BadRequestException(
+        redoCheck.reason ?? 'OCR redo is not allowed',
+      );
+    }
+
+    if (redoCheck.currentOcr) {
+      await this.audit.log({
+        userId,
+        action: 'OCR_REDO_ALLOWED',
+        module: 'attachment',
+        resourceType: 'attachment',
+        resourceId: id,
+        details: {
+          previousOcrId: redoCheck.currentOcr.id,
+          previousOcrStatus: redoCheck.currentOcr.status,
+        },
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+    }
 
     await this.audit.log({
       userId,

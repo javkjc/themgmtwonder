@@ -63,7 +63,8 @@
       "Bash(PW_DEBUG=1 node scripts/pw-auth-standard.mjs:*)",
       "Bash(npm run pw:auth:standard:*)",
       "Bash(npm run db:studio:*)",
-      "Bash(npm run db:push:*)"
+      "Bash(npm run db:push:*)",
+      "Bash(npm test:*)"
     ]
   }
 }

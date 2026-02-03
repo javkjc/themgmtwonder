@@ -37,6 +37,8 @@ export type AuditAction =
   | 'attachment.delete'
   | 'OCR_REQUESTED'
   | 'OCR_SUCCEEDED'
+  | 'OCR_DRAFT_CREATED'
+  | 'OCR_CONFIRMED'
   | 'OCR_FAILED'
   | 'ocr.apply.remark'
   | 'ocr.apply.description'
@@ -50,7 +52,11 @@ export type AuditAction =
   | 'workflow.element_template.create'
   | 'workflow.element_template.create_version'
   | 'workflow.element_template.update'
-  | 'workflow.element_template.deprecate';
+  | 'workflow.element_template.deprecate'
+  | 'ocr.field_corrected'
+  | 'OCR_ARCHIVED'
+  | 'OCR_REDO_BLOCKED'
+  | 'OCR_REDO_ALLOWED';
 
 export type AuditModule =
   | 'auth'

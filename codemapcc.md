@@ -73,6 +73,9 @@
   - Uses: Layout, ScheduleModal, NotificationToast; hooks useDurationSettings, useCategories, useScheduledEvents, useSettings; lib dateTime
   - Mutations at: handleSave(), handleSchedule(), handleUnschedule(), handleToggleDone(), handleDelete(), handleUpload(), handleDeleteAttachment(), handleAddRemark(), handleDeleteRemark(), fetchRemarks(), fetchHistory(), fetchTask()
   - Toast calls at: page.tsx addNotification (save/schedule/unschedule/update/delete/upload/delete attachment/add remark/delete remark)
+  - Attachments/OCR: attachments panel uploads to POST /attachments/todo/:todoId, downloads via `${API_BASE_URL}/attachments/:id/download`, triggers OCR with POST /attachments/:id/ocr, fetches outputs via GET /attachments/:id/ocr, displays attachment_ocr_outputs text with copy/apply actions; apply uses POST /attachments/:id/ocr/apply to add remark or append description; status badges now show lifecycle state when extracted text exists and warn for failed processing with available text; no PDF viewer or bounding boxes
+- ROUTE: /attachments/:id/ocr-review
+  - Status: TODO (v8) (no page or route implemented)
 - ROUTE: /settings
   - Path: apps/web/app/settings (folder empty)
   - Purpose: UNKNOWN (no page implemented)
@@ -167,9 +170,38 @@
     - GET /attachments/todo/:todoId ? listByTodo() ? AttachmentsService.listByTodo()
     - POST /attachments/todo/:todoId ? upload() ? AttachmentsService.upload()
     - GET /attachments/:id/download ? download() ? AttachmentsService.getById()
+    - GET /attachments/:id/ocr ? listOcr() ? OcrService.listByAttachment()
+    - GET /attachments/:id/ocr/redo-eligibility ? checkOcrRedoEligibility() ? OcrService.checkRedoEligibility()
+    - GET /attachments/:id/ocr/current ? getCurrentOcr() ? OcrService.getCurrentConfirmedOcr()
+    - POST /attachments/:id/ocr ? triggerOcr() ? OcrService.extractFromWorker()/createDerivedOutput()
+    - POST /attachments/:id/ocr/apply ? applyOcr() ? RemarksService.create() or TodosService.update() (via ApplyOcrDto target)
     - DELETE /attachments/:id ? delete() ? AttachmentsService.delete()
-  - DTOs: none (uses multer FileInterceptor)
-  - Guards/errors: JwtAuthGuard class-wide; NotFoundException for missing todo/attachment; ForbiddenException when todo not owned; download 404 if file missing
+  - DTOs: ApplyOcrDto for apply route; none for others (uses multer FileInterceptor)
+  - Guards/errors: JwtAuthGuard class-wide; NotFoundException for missing todo/attachment/output; ForbiddenException when todo not owned; BadRequestException on mismatched/failed OCR output or oversized remarks; download 404 if file missing
+  - Storage/paths: AttachmentsService writes buffers to `uploads/` under process.cwd() with storedFilename UUID+ext; download streams stored file; upload size capped at 20MB; duplicate filenames (case-insensitive, trimmed) blocked per todo
+- Service: OcrService (imported by AttachmentsController and the new OcrController)
+  - Path: apps/api/src/ocr/ocr.service.ts
+  - Responsibilities: resolve OCR_WORKER_BASE_URL and POST /ocr to worker with attachment bytes (90s timeout); insert derived records into attachment_ocr_outputs with metadata/status; list outputs per attachment with ownership checks; fetch output+attachment for apply flows; stores extractedText string only (no raw OCR JSON persisted); confirmOcrResult transitions draft outputs to confirmed, prevents re-edits, and emits `OCR_CONFIRMED`
+  - Lifecycle: worker completions now write `processing_status='completed'` and lifecycle `status='draft'`, `getCurrentConfirmedOcr()` surfaces the latest confirmed output (archived records excluded), and confirmOcrResult locks drafts into `status='confirmed'`
+  - Redo guard: `checkRedoEligibility()` enforces Category A/B blocking, requires Category C outputs to be archived before redo, and drives `OCR_REDO_BLOCKED`/`OCR_REDO_ALLOWED` audit events ahead of worker reruns.
+  - Derived data helpers:
+    - `OcrParsingService` (`apps/api/src/ocr/ocr-parsing.service.ts`) parses `attachment_ocr_outputs.extractedText` and persists structured `ocr_results`, but will only run when `attachment_ocr_outputs.status === 'confirmed'` to keep derived data tied to confirmed OCR.
+    - `OcrCorrectionsService` (`apps/api/src/ocr/ocr-corrections.service.ts`) loads the parent `attachment_ocr_outputs` row via `ocr_results.attachmentOcrOutputId`, enforces ownership, and rejects corrections until that parent record is confirmed.
+    - `OcrService.getOcrResultsWithCorrections` (`apps/api/src/ocr/ocr.service.ts`) calls `getCurrentConfirmedOcr(attachmentId)` so the aggregation returns raw/parsed data and corrections only for the confirmed OCR output; missing confirmation yields `rawOcr: null` and empty `parsedFields`.
+  - Added markOcrUtilized service method to persist `utilizedAt`/`utilizationType`/`utilizationMetadata` on confirmed outputs while emitting `OCR_UTILIZED_*` audit events for Categories A/B/C utilization.
+  - Added archiveOcrResult for Option-C archiving so confirmed `data_export` outputs owned by the requester are marked `status='archived'`, timestamped, and fire `OCR_ARCHIVED` while remaining hidden from current confirmed reads.
+- Controller: OcrController
+  - Path: apps/api/src/ocr/ocr.controller.ts
+  - Base route: none (methods declare their own `/ocr`, `/attachments`, `/ocr-results` paths)
+  - Endpoints:
+    - POST /ocr/:ocrId/confirm ? confirmOcr() ? OcrService.confirmOcrResult()
+    - POST /ocr/:ocrId/archive ? archiveOcr() ? OcrService.archiveOcrResult()
+    - POST /attachments/:attachmentId/ocr/parse ? parseAttachmentOcr() ? verifyUserOwnsAttachment() + OcrParsingService.parseOcrOutput()
+    - GET /attachments/:attachmentId/ocr/results ? getAttachmentOcrResults() ? OcrService.getOcrResultsWithCorrections()
+    - POST /ocr-results/:ocrResultId/corrections ? createOcrCorrection() ? CreateOcrCorrectionDto + OcrCorrectionsService.createCorrection()
+    - GET /ocr-results/:ocrResultId/corrections ? getOcrCorrectionHistory() ? ensureCorrectionOwnership() + OcrCorrectionsService.getCorrectionHistory()
+  - DTOs: apps/api/src/ocr/dto/{confirm-ocr.dto.ts,archive-ocr.dto.ts,create-ocr-correction.dto.ts}
+  - Guards/errors: JwtAuthGuard + CsrfGuard; NotFound for missing attachment/ocr or ocr result; Forbidden when requester does not own the chain; parse/ correction flows rely on confirmed OCR enforced by service layer
 - Controller: RemarksController
   - Path: apps/api/src/remarks/remarks.controller.ts
   - Base route: /remarks
@@ -188,13 +220,17 @@ Overlap logic:
 - 409 Conflict thrown at: apps/api/src/auth/auth.service.ts register() (email in use); apps/api/src/categories/categories.service.ts create()/update() duplicates; apps/api/src/todos/todos.service.ts createScheduled() overlap check; apps/api/src/todos/todos.service.ts schedule() overlap check
 
 ## 4) Data Model Map (Drizzle)
-- Schema files: apps/api/src/db/schema.ts; migrations apps/api/drizzle/*.sql
+- Schema files: apps/api/src/db/schema.ts; migrations apps/api/drizzle/*.sql, apps/api/src/db/migrations/*.sql
 - Tables:
   - users ? id (uuid pk), email unique, passwordHash, mustChangePassword (bool), role (text), createdAt
   - todos ? id (uuid pk), userId fk users.id, title, description, done, createdAt, updatedAt, startAt (nullable), durationMin (int), category (text nullable), unscheduledAt
   - user_settings ? id (uuid pk), userId unique fk users.id, workingHours (json string), workingDays (json array), createdAt, updatedAt
   - categories ? id (uuid pk), userId fk users.id, name, color, sortOrder, createdAt
   - attachments ? id (uuid pk), todoId fk todos.id, userId fk users.id, filename, storedFilename, mimeType, size, createdAt
+  - attachment_ocr_outputs ? id (uuid pk), attachmentId fk attachments.id cascade, extractedText (text), metadata (text, JSON string), processing_status (text), status (enum: draft/confirmed/archived), confirmed_at/confirmed_by (timestamp/uuid fk users), utilized_at/utilization_type/utilization_metadata (utilization tracking), archived_at/archived_by/archive_reason (archive tracking), createdAt; defined in apps/api/src/db/schema.ts; migrations apps/api/drizzle/0018_attachment_ocr_outputs.sql + apps/api/src/db/migrations/20260202142000-v3.5-ocr-states.sql (forward) and apps/api/src/db/migrations/20260202142000-v3.5-ocr-states-rollback.sql
+  - Indexes: idx_ocr_status, idx_ocr_attachment_status, idx_ocr_utilization (partial WHERE utilization_type IS NOT NULL), plus attachment_ocr_outputs_attachment_id_idx
+  - ocrResults ? TODO (v8) (not present in schema)
+  - ocrCorrections ? TODO (v8) (not present in schema)
   - remarks ? id (uuid pk), todoId fk todos.id, userId fk users.id, content (text max 150 chars), createdAt
   - audit_logs ? id (uuid pk), userId fk users.id nullable, action, resourceType, resourceId, details json string, ipAddress, userAgent, createdAt
   - system_settings ? id int pk default 1, minDurationMin, maxDurationMin, defaultDurationMin, createdAt, updatedAt
@@ -202,6 +238,7 @@ Overlap logic:
   - todos.userId ? users.id (cascade)
   - categories.userId ? users.id
   - attachments.todoId ? todos.id; attachments.userId ? users.id
+  - attachment_ocr_outputs.attachmentId ? attachments.id (cascade)
   - remarks.todoId ? todos.id (cascade); remarks.userId ? users.id (cascade)
   - user_settings.userId ? users.id unique
   - audit_logs.userId ? users.id (set null on delete)

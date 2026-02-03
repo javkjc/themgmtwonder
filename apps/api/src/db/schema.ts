@@ -6,7 +6,11 @@
   boolean,
   index,
   integer,
+  jsonb,
+  varchar,
+  numeric,
 } from 'drizzle-orm/pg-core';
+import { relations } from 'drizzle-orm';
 import { DEFAULT_TASK_STAGE_KEY } from '../common/constants';
 
 export const users = pgTable('users', {
@@ -167,16 +171,95 @@ export const attachmentOcrOutputs = pgTable(
       .references(() => attachments.id, { onDelete: 'cascade' }),
     extractedText: text('extracted_text').notNull(),
     metadata: text('metadata'),
-    status: text('status').notNull(),
+    // OCR worker processing state (previously the only status column)
+    processingStatus: text('processing_status').notNull(),
+    // Business-facing OCR lifecycle state; check constraint enforced via migration
+    status: varchar('status', { length: 20 }).default('draft').notNull(),
+    confirmedAt: timestamp('confirmed_at'),
+    confirmedBy: uuid('confirmed_by').references(() => users.id),
+    utilizedAt: timestamp('utilized_at'),
+    utilizationType: varchar('utilization_type', { length: 30 }),
+    utilizationMetadata: jsonb('utilization_metadata'),
+    archivedAt: timestamp('archived_at'),
+    archivedBy: uuid('archived_by').references(() => users.id),
+    archiveReason: text('archive_reason'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (t) => ({
     attachmentIdx: index('attachment_ocr_outputs_attachment_id_idx').on(
       t.attachmentId,
     ),
-    statusIdx: index('attachment_ocr_outputs_status_idx').on(t.status),
+    statusIdx: index('idx_ocr_status').on(t.status),
+    attachmentStatusIdx: index('idx_ocr_attachment_status').on(
+      t.attachmentId,
+      t.status,
+    ),
+    // Partial index (WHERE utilization_type IS NOT NULL) defined in SQL migration.
+    utilizationIdx: index('idx_ocr_utilization').on(t.utilizationType),
   }),
 );
+
+export const ocrResults = pgTable(
+  'ocr_results',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    attachmentOcrOutputId: uuid('attachment_ocr_output_id')
+      .notNull()
+      .references(() => attachmentOcrOutputs.id, { onDelete: 'cascade' }),
+    fieldName: varchar('field_name', { length: 255 }).notNull(),
+    fieldValue: text('field_value'),
+    confidence: numeric('confidence', { precision: 5, scale: 4 }),
+    boundingBox: jsonb('bounding_box'),
+    pageNumber: integer('page_number'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    attachmentIdx: index('idx_ocr_results_attachment_ocr_output_id').on(
+      t.attachmentOcrOutputId,
+    ),
+    fieldNameIdx: index('idx_ocr_results_field_name').on(t.fieldName),
+  }),
+);
+
+export const ocrResultsRelations = relations(ocrResults, ({ one }) => ({
+  attachmentOcrOutput: one(attachmentOcrOutputs, {
+    fields: [ocrResults.attachmentOcrOutputId],
+    references: [attachmentOcrOutputs.id],
+  }),
+}));
+
+export const ocrCorrections = pgTable(
+  'ocr_corrections',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ocrResultId: uuid('ocr_result_id')
+      .notNull()
+      .references(() => ocrResults.id, { onDelete: 'cascade' }),
+    correctedBy: uuid('corrected_by')
+      .notNull()
+      .references(() => users.id),
+    originalValue: text('original_value'),
+    correctedValue: text('corrected_value').notNull(),
+    correctionReason: text('correction_reason'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    ocrResultIdIdx: index('idx_ocr_corrections_ocr_result_id').on(t.ocrResultId),
+    correctedByIdx: index('idx_ocr_corrections_corrected_by').on(t.correctedBy),
+    createdAtIdx: index('idx_ocr_corrections_created_at').on(t.createdAt),
+  }),
+);
+
+export const ocrCorrectionsRelations = relations(ocrCorrections, ({ one }) => ({
+  ocrResult: one(ocrResults, {
+    fields: [ocrCorrections.ocrResultId],
+    references: [ocrResults.id],
+  }),
+  correctedByUser: one(users, {
+    fields: [ocrCorrections.correctedBy],
+    references: [users.id],
+  }),
+}));
 
 // Audit/Activity logs
 export const auditLogs = pgTable(

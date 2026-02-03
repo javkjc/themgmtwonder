@@ -39,7 +39,8 @@ type AttachmentOcrOutput = {
   id: string;
   extractedText: string;
   metadata?: string | null;
-  status: 'complete' | 'failed';
+  processingStatus: 'completed' | 'failed' | 'pending' | string;
+  lifecycleStatus: 'draft' | 'confirmed' | 'archived' | string;
   createdAt: string;
 };
 
@@ -762,7 +763,8 @@ export default function TaskDetailsPage() {
         ? data.map((item) => ({
             id: item.id,
             extractedText: item.extractedText ?? '',
-            status: item.status === 'complete' ? 'complete' : 'failed',
+            processingStatus: item.processingStatus ?? 'failed',
+            lifecycleStatus: item.status ?? 'draft',
             metadata: typeof item.metadata === 'string' ? item.metadata : null,
             createdAt: item.createdAt ?? '',
           }))
@@ -1028,6 +1030,44 @@ export default function TaskDetailsPage() {
       router.push('/');
     }
   };
+
+  const getLifecycleBadge = (status?: string) => {
+    switch (status) {
+      case 'confirmed':
+        return { label: 'Confirmed', color: '#16a34a' };
+      case 'archived':
+        return { label: 'Archived', color: '#475569' };
+      case 'draft':
+        return { label: 'Draft', color: '#2563eb' };
+      default:
+        return { label: status ? status : 'OCR', color: '#64748b' };
+    }
+  };
+
+  const getProcessingBadge = (status?: string) => {
+    switch (status) {
+      case 'completed':
+        return { label: 'Completed', color: '#22c55e' };
+      case 'failed':
+        return { label: 'Failed', color: '#ef4444' };
+      case 'pending':
+        return { label: 'Processing', color: '#f59e0b' };
+      default:
+        return { label: 'Processing', color: '#f59e0b' };
+    }
+  };
+
+  const renderBadgeStyle = (color: string) => ({
+    fontSize: 11,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.04em',
+    fontWeight: 600,
+    color,
+    padding: '2px 8px',
+    borderRadius: 4,
+    border: `1px solid ${color}`,
+    background: `${color}15`,
+  });
 
   const currentStageKey = (task?.stageKey ?? DEFAULT_TASK_STAGE_KEY) as TaskStageKey;
 
@@ -1585,22 +1625,19 @@ export default function TaskDetailsPage() {
                         const viewerCount = viewerState?.outputs?.length ?? 0;
                         const ocrTriggering = attachmentOcrTriggering[attachment.id] ?? false;
 
-                        // Derive OCR status
-                        let ocrStatus = 'Ready';
-                        let ocrStatusColor = '#64748b';
+                        const latestOutput = viewerState?.outputs?.[0];
+                        const latestProcessingStatus = latestOutput?.processingStatus ?? 'pending';
+                        const latestHasText = (latestOutput?.extractedText ?? '').trim().length > 0;
+                        let badge = { label: 'Ready', color: '#64748b' };
                         if (ocrTriggering) {
-                          ocrStatus = 'In Progress';
-                          ocrStatusColor = '#f59e0b';
-                        } else if (viewerState?.outputs && viewerState.outputs.length > 0) {
-                          const latestOutput = viewerState.outputs[0];
-                          if (latestOutput.status === 'complete') {
-                            ocrStatus = 'Completed';
-                            ocrStatusColor = '#22c55e';
-                          } else if (latestOutput.status === 'failed') {
-                            ocrStatus = 'Failed';
-                            ocrStatusColor = '#ef4444';
-                          }
+                          badge = { label: 'In Progress', color: '#f59e0b' };
+                        } else if (latestOutput) {
+                          badge = latestHasText
+                            ? getLifecycleBadge(latestOutput.lifecycleStatus)
+                            : getProcessingBadge(latestProcessingStatus);
                         }
+                        const showOcrWarning =
+                          latestOutput && latestHasText && latestProcessingStatus === 'failed';
                         return (
                           <div
                             key={attachment.id}
@@ -1631,20 +1668,23 @@ export default function TaskDetailsPage() {
                                attachment.mimeType.includes('zip') ? '📦' : '📎'}
                             </div>
                             <div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <div style={{ fontSize: 14, fontWeight: 500 }}>{attachment.filename}</div>
-                                <span style={{
-                                  fontSize: 11,
-                                  fontWeight: 600,
-                                  color: ocrStatusColor,
-                                  padding: '2px 8px',
-                                  borderRadius: 4,
-                                  border: `1px solid ${ocrStatusColor}`,
-                                  background: `${ocrStatusColor}15`,
-                                }}>
-                                  {ocrStatus}
-                                </span>
-                              </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <div style={{ fontSize: 14, fontWeight: 500 }}>{attachment.filename}</div>
+                                  <span style={renderBadgeStyle(badge.color)}>
+                                    {badge.label}
+                                  </span>
+                                  {showOcrWarning && (
+                                    <span style={{
+                                      fontSize: 11,
+                                      textTransform: 'uppercase',
+                                      letterSpacing: '0.04em',
+                                      fontWeight: 600,
+                                      color: '#f97316',
+                                    }}>
+                                      OCR Warning
+                                    </span>
+                                  )}
+                                </div>
                               <div style={{ fontSize: 12, color: '#64748b' }}>
                                 {attachment.mimeType} - {formatFileSize(attachment.size)} - {formatDateTime(attachment.createdAt)}
                               </div>
@@ -1767,8 +1807,15 @@ export default function TaskDetailsPage() {
                                     {viewerState.outputs.map((record) => {
                                       const recordLoading = ocrApplyLoading[record.id] ?? {};
                                       const recordHasText = (record.extractedText || '').trim().length > 0;
+                                      const recordProcessingStatus = record.processingStatus ?? 'pending';
+                                      const recordLifecycleStatus = record.lifecycleStatus ?? 'draft';
+                                      const recordBadge = recordHasText
+                                        ? getLifecycleBadge(recordLifecycleStatus)
+                                        : getProcessingBadge(recordProcessingStatus);
+                                      const showRecordWarning =
+                                        recordHasText && recordProcessingStatus === 'failed';
                                       const canApplyOcr =
-                                        record.status === 'complete' && recordHasText;
+                                        recordProcessingStatus === 'completed' && recordHasText;
                                       return (
                                         <div
                                         key={record.id}
@@ -1789,15 +1836,20 @@ export default function TaskDetailsPage() {
                                           }}
                                         >
                                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                            <span style={{
-                                              fontSize: 11,
-                                              textTransform: 'uppercase',
-                                              letterSpacing: '0.04em',
-                                              fontWeight: 600,
-                                              color: '#0f172a',
-                                            }}>
-                                              {record.status}
+                                            <span style={renderBadgeStyle(recordBadge.color)}>
+                                              {recordBadge.label}
                                             </span>
+                                            {showRecordWarning && (
+                                              <span style={{
+                                                fontSize: 11,
+                                                textTransform: 'uppercase',
+                                                letterSpacing: '0.04em',
+                                                fontWeight: 600,
+                                                color: '#f97316',
+                                              }}>
+                                                OCR Warning
+                                              </span>
+                                            )}
                                             <span style={{ fontSize: 12, color: '#64748b' }}>
                                               {formatDateTime(record.createdAt)}
                                             </span>
@@ -1867,6 +1919,11 @@ export default function TaskDetailsPage() {
                                             >
                                               {recordLoading.description ? 'Appending...' : 'Append to description'}
                                             </button>
+                                          </div>
+                                        )}
+                                        {recordHasText && recordProcessingStatus !== 'completed' && (
+                                          <div style={{ marginTop: 8, fontSize: 12, color: '#f97316' }}>
+                                            Cannot confirm until OCR processing completes.
                                           </div>
                                         )}
                                         </div>
