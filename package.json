@@ -8,5 +8,9 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.58.1"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^5.4.624",
+    "react-pdf": "^10.3.0"
   }
 }

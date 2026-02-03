@@ -1,4 +1,14 @@
-﻿# Execution Notes
+# Execution Notes
+
+## 2026-02-03 - v8 Task 5: Build Fix (OCR Review Imports)
+
+**Objective:** Ensure the OCR review page loads the helpers declared in apps/web/app/lib/api/ocr.ts so Turbopack resolves the module statically.
+
+**Change:** Confirmed createOcrCorrection, fetchAttachmentOcrResults, fetchOcrCorrectionHistory, and the related types are exported and that apps/web/app/attachments/[attachmentId]/review/page.tsx already imports the OCR helper bundle via @/app/lib/api and @/app/lib/api/ocr.
+
+**Verification:** npm --prefix apps/web run build fails immediately with Error: EPERM: operation not permitted, unlink C:\todo-docker\apps\web\.next\build\chunks\5bcb1_773c506d._.js because the account lacks delete rights on the existing .next artifacts; attempts to delete the directory or adjust ACLs were blocked by Access Denied.
+
+**Status:** Blocked (build cannot finish until .next is recreated with deletable permissions or the command runs in a clean environment).
 
 ## 2026-01-25 - Task Detail Page Status Badge UI Adjustment
 
@@ -322,7 +332,7 @@
 
 **Status:** Complete ?
 
-## 2026-01-25 - Task 5.6: Task Remarks – Author Display
+## 2026-01-25 - Task 5.6: Task Remarks � Author Display
 
 **Objective:** Show who wrote each remark in the task detail page.
 
@@ -550,7 +560,7 @@
 
 ## 2026-01-25 - Capability Audit (Core/Calendar/Duration/etc)
 
-- Conducted full capability audit per plan.md sections 1–5 list (core model, calendar v2, duration system, persistent settings, task editing, toast architecture, customizations, auth, description, remarks, attachments).
+- Conducted full capability audit per plan.md sections 1�5 list (core model, calendar v2, duration system, persistent settings, task editing, toast architecture, customizations, auth, description, remarks, attachments).
 - Updated `audit-plan.md` with PASS/FAIL/NEEDS REVIEW checklist and summary.
 - No code changes performed during audit; verification based on current repo state.
 
@@ -613,7 +623,7 @@
 
 ---
 
-## Task 5.9: Activity Log v2 — Who + Module + Target
+## Task 5.9: Activity Log v2 � Who + Module + Target
 
 **Date:** 2026-01-25
 **Objective:** Make activity log actionable by showing who performed the action and where it happened.
@@ -659,7 +669,7 @@
    - Actor: userEmail || userId || 'System'
    - Module: displayed directly
    - Target: resourceType + truncated resourceId
-   - Layout: compact inline display with "·" separators
+   - Layout: compact inline display with "�" separators
 
 **Implementation Details:**
 - Module field is nullable (backward compatible with old logs)
@@ -1084,7 +1094,7 @@
 ## 2026-01-27 - v3 OCR Blob typing fix
 
 **Changes Made:**
-- Created a trimmed `ArrayBuffer` (sliced only when offsets differ) before constructing the `Blob` so the fetch body satisfies TypeScript’s `BlobPart` requirement while keeping the same headers and timeout.
+- Created a trimmed `ArrayBuffer` (sliced only when offsets differ) before constructing the `Blob` so the fetch body satisfies TypeScript�s `BlobPart` requirement while keeping the same headers and timeout.
 
 **Verification:** Not performed (manual)
 
@@ -1361,7 +1371,7 @@ Verification: Not performed (manual)
 ## 2026-01-28 - Task detail crash fix
 
 - Cause: the OCR apply `useCallback` depended on `fetchRemarks` before the `const` function had been initialized, so the dependency array evaluation threw `ReferenceError: Cannot access 'fetchRemarks' before initialization` after a compose restart.
-- Fix: moved the `fetchRemarks` declaration up next to the other fetching helpers so the hook’s dependency array now sees an initialized function while leaving the remark handlers in place.
+- Fix: moved the `fetchRemarks` declaration up next to the other fetching helpers so the hook�s dependency array now sees an initialized function while leaving the remark handlers in place.
 
 **Verification:** Not performed (manual)
 
@@ -1370,14 +1380,14 @@ Verification: Not performed (manual)
 **Objective:** Surface an explicit per-attachment action so users can manually trigger OCR retrieval without automation.
 
 **Changes:**
-- Added `attachmentOcrTriggering` state plus a `triggerAttachmentOcr` helper that calls `POST /attachments/:id/ocr`, refreshes the audit history, and re-fetches the attachment’s derived outputs while delivering success/error toasts (apps/web/app/task/[id]/page.tsx:641).
+- Added `attachmentOcrTriggering` state plus a `triggerAttachmentOcr` helper that calls `POST /attachments/:id/ocr`, refreshes the audit history, and re-fetches the attachment�s derived outputs while delivering success/error toasts (apps/web/app/task/[id]/page.tsx:641).
 - Rendered a new **Retrieve OCR text** button next to the download/delete controls for each attachment, disabling it while the POST is in flight and reusing the existing viewer/audit UX to keep the action explicit and auditable (apps/web/app/task/[id]/page.tsx:1485).
 
 **Verification:** Not performed (manual)
 
 ## 2026-01-28 - v3 OCR PDF Support + Attachment Status UX
 
-**Task 1 — PDF OCR Support (Worker)**
+**Task 1 � PDF OCR Support (Worker)**
 
 **Objective:** Enable OCR worker to accept application/pdf MIME type and process PDF pages deterministically.
 
@@ -1401,7 +1411,7 @@ Verification: Not performed (manual)
 - Returns combined text, metadata with pages count, standard OCR metadata (engine, version, durationMs).
 - Image handling unchanged: single-page flow remains as-is.
 
-**Task 2 — Attachment Status UX (Web)**
+**Task 2 � Attachment Status UX (Web)**
 
 **Objective:** Replace stuck/confusing attachment status with correct derived + local state labels.
 
@@ -1436,7 +1446,7 @@ Verification: Not performed (manual)
 **Changes:**
 - [apps/web/app/task/[id]/page.tsx](apps/web/app/task/[id]/page.tsx#L1375-L1540): Removed the inline "In Progress" badge so attachment rows now show only Ready/Completed/Failed statuses while OCR progress is indicated via the disabled button/toast.
 - [apps/web/app/task/[id]/page.tsx](apps/web/app/task/[id]/page.tsx#L1950-L2014): History rows no longer render the placeholder icon on the left side.
-- [apps/web/app/task/[id]/page.tsx](apps/web/app/task/[id]/page.tsx#L1980-L2050): Audit entries now iterate `changes` to render "field: before → after" lines (stageKey/description diffs included via the new formatter).
+- [apps/web/app/task/[id]/page.tsx](apps/web/app/task/[id]/page.tsx#L1980-L2050): Audit entries now iterate `changes` to render "field: before ? after" lines (stageKey/description diffs included via the new formatter).
 - Verification: Not performed (manual)
 ## 2026-01-28 - Task 7.4d Annotation UI adjust
 
@@ -1942,7 +1952,7 @@ Frontend:
 - apps/web/app/lib/audit.ts
 
 Documentation:
-- plan.md (updated status: 8.4 ✅ DONE, 8.5 ✅ DONE, v4 COMPLETE)
+- plan.md (updated status: 8.4 ? DONE, 8.5 ? DONE, v4 COMPLETE)
 
 ### Verification Notes
 
@@ -1969,7 +1979,7 @@ Documentation:
 - "Child task deleted (detached)" action visible for child deletions
 - Before/after snapshots preserved
 
-**Status:** v4 Structural Task Relationships - ✅ COMPLETE
+**Status:** v4 Structural Task Relationships - ? COMPLETE
 
 ## 2026-01-29 - Task 9.1: Workflow Definition Data Model
 
@@ -2076,11 +2086,11 @@ Documentation:
    - Created workflow_executions table with 5 indexes
    - Created workflow_step_executions table with 4 indexes
    - Added 5 foreign key constraints:
-     - workflow_executions.workflow_definition_id → workflow_definitions.id (restrict)
-     - workflow_executions.triggered_by → users.id (restrict)
-     - workflow_step_executions.workflow_execution_id → workflow_executions.id (cascade)
-     - workflow_step_executions.workflow_step_id → workflow_steps.id (restrict)
-     - workflow_step_executions.actor_id → users.id (restrict)
+     - workflow_executions.workflow_definition_id ? workflow_definitions.id (restrict)
+     - workflow_executions.triggered_by ? users.id (restrict)
+     - workflow_step_executions.workflow_execution_id ? workflow_executions.id (cascade)
+     - workflow_step_executions.workflow_step_id ? workflow_steps.id (restrict)
+     - workflow_step_executions.actor_id ? users.id (restrict)
 
 **Design Decisions:**
 - Execution records are append-only and immutable (updatedAt field exists only for status transitions if needed)
@@ -2216,7 +2226,7 @@ Response: WorkflowExecution record
 **Files Modified:**
 - apps/api/src/audit/audit.service.ts (added workflow audit actions and module)
 - apps/api/src/app.module.ts (registered WorkflowsModule)
-- plan.md (marked Task 9.3 as ✅ DONE)
+- plan.md (marked Task 9.3 as ? DONE)
 
 **Out of Scope (as planned):**
 - UI for workflow triggering
@@ -2232,7 +2242,7 @@ Response: WorkflowExecution record
 **Status:** Task 9.3 complete. Backend endpoint ready for explicit workflow start. Next task: 9.4 (Workflow Step Actions).
 ---
 
-## Task 9.4: Workflow Step Actions (Backend Only) — 2026-01-29
+## Task 9.4: Workflow Step Actions (Backend Only) � 2026-01-29
 
 **Objective:** Allow users to explicitly act on workflow steps with approve/reject/acknowledge decisions.
 
@@ -2298,7 +2308,7 @@ Response: WorkflowStepExecution record
 - apps/api/src/workflows/dto/index.ts (exported StepActionDto)
 - apps/api/src/workflows/workflows.service.ts (added executeStepAction method with validation and stop-on-error logic)
 - apps/api/src/workflows/workflows.controller.ts (added executeStepAction endpoint with audit logging)
-- plan.md (marked Task 9.4 as ✅ DONE)
+- plan.md (marked Task 9.4 as ? DONE)
 
 **Out of Scope (as planned):**
 - UI for workflow step actions
@@ -2310,9 +2320,9 @@ Response: WorkflowStepExecution record
 
 **Verification:** Not performed (manual verification only, as per plan.md Definition of Done).
 
-**Status:** Task 9.4 complete. Backend endpoints ready for explicit workflow step actions with mandatory remarks and stop-on-error semantics. Next task: 9.5 (Readiness Audit — Workflow Isolation).
+**Status:** Task 9.4 complete. Backend endpoints ready for explicit workflow step actions with mandatory remarks and stop-on-error semantics. Next task: 9.5 (Readiness Audit � Workflow Isolation).
 
-## 2026-01-29 - Task 9.5: Readiness Audit — Workflow Isolation
+## 2026-01-29 - Task 9.5: Readiness Audit � Workflow Isolation
 
 **Objective:** Verify workflow logic does not leak into core task state.
 
@@ -2323,7 +2333,7 @@ Response: WorkflowStepExecution record
 
 **Findings:**
 
-### 1. Schema Isolation Review ✅ PASS
+### 1. Schema Isolation Review ? PASS
 
 **Workflow Tables (4 tables):**
 - `workflow_definitions` - Admin-owned, inert workflow templates
@@ -2332,45 +2342,45 @@ Response: WorkflowStepExecution record
 - `workflow_step_executions` - Append-only step-level history
 
 **Isolation Verification:**
-- ✅ No foreign keys from workflow tables to `todos` table
-- ✅ `workflow_executions` uses observational pattern: `resourceType` + `resourceId` (text fields, no FK constraint)
-- ✅ No workflow-specific columns added to `todos` table
-- ✅ Workflow tables use cascading deletes only within workflow domain:
+- ? No foreign keys from workflow tables to `todos` table
+- ? `workflow_executions` uses observational pattern: `resourceType` + `resourceId` (text fields, no FK constraint)
+- ? No workflow-specific columns added to `todos` table
+- ? Workflow tables use cascading deletes only within workflow domain:
   - `workflow_steps` cascades on `workflow_definitions` deletion
   - `workflow_executions` restricts deletion of referenced `workflow_definitions`
   - `workflow_step_executions` cascades on `workflow_executions` deletion
-- ✅ All workflow data is self-contained and reversible
+- ? All workflow data is self-contained and reversible
 
 **Schema Location:** [apps/api/src/db/schema.ts:246-377](apps/api/src/db/schema.ts#L246-L377)
 
-### 2. Service Boundary Review ✅ PASS
+### 2. Service Boundary Review ? PASS
 
 **Workflows Service ([apps/api/src/workflows/workflows.service.ts](apps/api/src/workflows/workflows.service.ts)):**
-- ✅ Only reads from `todos` table for ownership validation (lines 85-89)
-- ✅ Never writes to `todos` table or mutates task state
-- ✅ No task status changes triggered by workflow actions
-- ✅ Uses `validateResourceOwnership()` private method for read-only verification
-- ✅ Workflow execution state is entirely independent of task state
+- ? Only reads from `todos` table for ownership validation (lines 85-89)
+- ? Never writes to `todos` table or mutates task state
+- ? No task status changes triggered by workflow actions
+- ? Uses `validateResourceOwnership()` private method for read-only verification
+- ? Workflow execution state is entirely independent of task state
 
 **Todos Service ([apps/api/src/todos/todos.service.ts](apps/api/src/todos/todos.service.ts)):**
-- ✅ No imports from workflow module
-- ✅ No workflow-related logic in task create/update/delete operations
-- ✅ No workflow execution triggers
-- ✅ Task state machine remains independent
+- ? No imports from workflow module
+- ? No workflow-related logic in task create/update/delete operations
+- ? No workflow execution triggers
+- ? Task state machine remains independent
 
 **Module Isolation ([apps/api/src/workflows/workflows.module.ts](apps/api/src/workflows/workflows.module.ts)):**
-- ✅ WorkflowsModule imports only: DbModule, AuditModule
-- ✅ Exports: WorkflowsService (for potential future consumption)
-- ✅ No circular dependencies with TodosModule
-- ✅ Clean separation of concerns
+- ? WorkflowsModule imports only: DbModule, AuditModule
+- ? Exports: WorkflowsService (for potential future consumption)
+- ? No circular dependencies with TodosModule
+- ? Clean separation of concerns
 
 **Boundary Verification:**
-- ✅ Workflow operations are observational (read-only reference to tasks)
-- ✅ No implicit state mutation
-- ✅ No automatic triggers
-- ✅ No background automation
+- ? Workflow operations are observational (read-only reference to tasks)
+- ? No implicit state mutation
+- ? No automatic triggers
+- ? No background automation
 
-### 3. Audit Sufficiency Review ✅ PASS
+### 3. Audit Sufficiency Review ? PASS
 
 **Audit Actions Defined ([apps/api/src/audit/audit.service.ts:43-44](apps/api/src/audit/audit.service.ts#L43-L44)):**
 - `'workflow.start'` - Workflow execution start
@@ -2380,46 +2390,46 @@ Response: WorkflowStepExecution record
 **Audit Implementation ([apps/api/src/workflows/workflows.controller.ts](apps/api/src/workflows/workflows.controller.ts)):**
 
 **workflow.start (lines 43-68):**
-- ✅ Captures userId, ipAddress, userAgent
-- ✅ Records workflowDefinitionId, resourceType, resourceId
-- ✅ Before/after snapshot: before=null (new execution), after=full execution state
-- ✅ Includes inputs, status, triggeredBy, startedAt
+- ? Captures userId, ipAddress, userAgent
+- ? Records workflowDefinitionId, resourceType, resourceId
+- ? Before/after snapshot: before=null (new execution), after=full execution state
+- ? Includes inputs, status, triggeredBy, startedAt
 
 **workflow.step_action (lines 102-126):**
-- ✅ Captures state before action (executionBefore.status)
-- ✅ Captures state after action (executionAfter.status, stepExecution details)
-- ✅ Records decision, remark, stepId, executionId
-- ✅ Includes completedAt timestamp
-- ✅ Before/after snapshot shows execution status transition
+- ? Captures state before action (executionBefore.status)
+- ? Captures state after action (executionAfter.status, stepExecution details)
+- ? Records decision, remark, stepId, executionId
+- ? Includes completedAt timestamp
+- ? Before/after snapshot shows execution status transition
 
 **Audit Completeness:**
-- ✅ Every workflow operation creates an audit entry
-- ✅ Immutable append-only audit trail
-- ✅ Sufficient detail for reconstruction of workflow history
-- ✅ No silent decisions or mutations
-- ✅ User identity and timestamps captured
+- ? Every workflow operation creates an audit entry
+- ? Immutable append-only audit trail
+- ? Sufficient detail for reconstruction of workflow history
+- ? No silent decisions or mutations
+- ? User identity and timestamps captured
 
-### 4. v5 Principles Compliance ✅ PASS
+### 4. v5 Principles Compliance ? PASS
 
 **Verified Against Core Design Rules:**
-- ✅ Workflows do NOT own task state
-- ✅ Workflows do NOT mutate data implicitly
-- ✅ Workflows do NOT run unless a user explicitly starts them
-- ✅ All workflow execution is explicit and traceable
-- ✅ All decisions require user action (no auto-progression)
-- ✅ Audit trail is complete and accurate
-- ✅ Changes are minimal, localized, reversible
+- ? Workflows do NOT own task state
+- ? Workflows do NOT mutate data implicitly
+- ? Workflows do NOT run unless a user explicitly starts them
+- ? All workflow execution is explicit and traceable
+- ? All decisions require user action (no auto-progression)
+- ? Audit trail is complete and accurate
+- ? Changes are minimal, localized, reversible
 
 **Forbidden Patterns (verified absent):**
-- ❌ No background automation
-- ❌ No timers or schedulers
-- ❌ No implicit execution
-- ❌ No task state mutation by workflows
-- ❌ No automatic routing without user action
+- ? No background automation
+- ? No timers or schedulers
+- ? No implicit execution
+- ? No task state mutation by workflows
+- ? No automatic routing without user action
 
 ### Summary
 
-**Readiness Status: ✅ READY**
+**Readiness Status: ? READY**
 
 All v5 workflow foundations are properly isolated from core task state:
 1. Schema: Zero coupling between workflow tables and task state
@@ -2431,7 +2441,7 @@ All v5 workflow foundations are properly isolated from core task state:
 
 The workflow system is safe to use and will not interfere with existing v1-v4 functionality. All workflow data can be removed cleanly without affecting task state.
 
-**Next Step:** Mark Task 9.5 as ✅ DONE in plan.md.
+**Next Step:** Mark Task 9.5 as ? DONE in plan.md.
 
 
 ### Issue Found and Fixed During Re-verification (2026-01-29)
@@ -2450,10 +2460,10 @@ The workflow system is safe to use and will not interfere with existing v1-v4 fu
 ---
 
 
-## Task 10.1 — Admin Workflow List & Detail Pages (Read-Only)
+## Task 10.1 � Admin Workflow List & Detail Pages (Read-Only)
 
 **Date:** 2026-01-30
-**Status:** ✅ DONE
+**Status:** ? DONE
 
 ### What Was Built
 
@@ -2484,7 +2494,7 @@ Created admin-only, read-only UI for viewing workflow definitions:
 
 ### Design Compliance
 
-**v6 Scope Lock ✅ PASS:**
+**v6 Scope Lock ? PASS:**
 - Read-only visibility only
 - No mutation capability
 - No execution controls
@@ -2492,10 +2502,10 @@ Created admin-only, read-only UI for viewing workflow definitions:
 - Admin-only access enforced
 
 **Forbidden Patterns (verified absent):**
-- ❌ No workflow execution from UI
-- ❌ No task mutation
-- ❌ No background automation
-- ❌ No validation side effects
+- ? No workflow execution from UI
+- ? No task mutation
+- ? No background automation
+- ? No validation side effects
 
 ### Files Modified
 
@@ -2575,7 +2585,7 @@ User should verify:
 
 ---
 
-## v6 Task 10.2 — Workflow Definition Editor UI (Draft Mode)
+## v6 Task 10.2 � Workflow Definition Editor UI (Draft Mode)
 
 **Date:** 2026-01-30
 **Phase:** v6 Workflow Management (Admin UI)
@@ -2683,8 +2693,8 @@ Provide admin-only workflow editor for authoring and editing workflows in draft-
 - No implicit validation side effects
 
 **Navigation:**
-- /workflows → "+ Create Workflow" → /workflows/new
-- /workflows/[id] → "Edit Workflow" → /workflows/[id]/edit
+- /workflows ? "+ Create Workflow" ? /workflows/new
+- /workflows/[id] ? "Edit Workflow" ? /workflows/[id]/edit
 - Save Draft redirects to /workflows/[id] detail page
 
 ---
@@ -2723,8 +2733,8 @@ User should verify:
 4. Save Draft validates and persists to backend
 5. Preview panel updates in real-time as draft is edited
 6. Preview panel is read-only and non-persistent
-7. Navigation flow: list → new → save → detail
-8. Navigation flow: detail → edit → save → detail
+7. Navigation flow: list ? new ? save ? detail
+8. Navigation flow: detail ? edit ? save ? detail
 9. Audit log entries exist for workflow.create and workflow.update
 10. Non-admin users cannot access editor routes
 11. No activation, versioning, or execution controls present
@@ -2761,7 +2771,7 @@ User should verify:
 
 ---
 
-## v6 Bugfix — Next.js Dynamic Route Params Promise Unwrapping
+## v6 Bugfix � Next.js Dynamic Route Params Promise Unwrapping
 
 **Date:** 2026-01-30
 **Phase:** v6 Workflow Management (Admin UI)
@@ -2798,18 +2808,18 @@ Next.js App Router changed dynamic route params to be async (Promise-based) in c
 - Line 3: Added `use` to React imports
 - Line 33: Changed params type signature
 - Line 34: Added `const { id } = use(params);`
-- Line 68: `params.id` → `id` (loadWorkflow API call)
-- Line 204: `workflow.id` → `id` (Edit button link - no change needed, kept for consistency)
+- Line 68: `params.id` ? `id` (loadWorkflow API call)
+- Line 204: `workflow.id` ? `id` (Edit button link - no change needed, kept for consistency)
 
 **Edit Page Changes (edit/page.tsx):**
 - Line 3: Added `use` to React imports
 - Line 38: Changed params type signature
 - Line 39: Added `const { id } = use(params);`
-- Line 77: `params.id` → `id` (loadWorkflow API call)
-- Line 229: `params.id` → `id` (PUT request)
-- Line 235: `params.id` → `id` (redirect after save)
-- Line 289: `params.id` → `id` (Back button link)
-- Line 614: `params.id` → `id` (Cancel button link)
+- Line 77: `params.id` ? `id` (loadWorkflow API call)
+- Line 229: `params.id` ? `id` (PUT request)
+- Line 235: `params.id` ? `id` (redirect after save)
+- Line 289: `params.id` ? `id` (Back button link)
+- Line 614: `params.id` ? `id` (Cancel button link)
 
 ---
 
@@ -2871,9 +2881,9 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
 Clicking "Edit Workflow" from workflow detail page (/workflows/[id]) was expected to navigate to the edit page but user reported 404 error.
 
 ### Investigation
-- Examined [apps/web/app/workflows/[id]/page.tsx](apps/web/app/workflows/[id]/page.tsx):205 — Edit button uses `window.location.href = `/workflows/${id}/edit``
+- Examined [apps/web/app/workflows/[id]/page.tsx](apps/web/app/workflows/[id]/page.tsx):205 � Edit button uses `window.location.href = `/workflows/${id}/edit``
 - Verified edit route file exists at [apps/web/app/workflows/[id]/edit/page.tsx](apps/web/app/workflows/[id]/edit/page.tsx)
-- Ran `npm run build` in apps/web — build successful, route properly registered as dynamic route `ƒ /workflows/[id]/edit`
+- Ran `npm run build` in apps/web � build successful, route properly registered as dynamic route `� /workflows/[id]/edit`
 
 ### Root Cause
 No code defect found. The edit route was already correctly implemented and registered by Next.js. The 404 may have been:
@@ -2918,11 +2928,11 @@ npm run build
 
 Production build confirmed route as valid:
 ```
-✓ /workflows/[id]/edit  (Dynamic route)
+? /workflows/[id]/edit  (Dynamic route)
 ```
 
 ### Result
-Navigation now works correctly. No code changes required—issue was stale build cache.
+Navigation now works correctly. No code changes required�issue was stale build cache.
 
 ---
 ## 2026-01-31 | v6 Task 10.3: Workflow Versioning & Activation Controls (COMPLETE)
@@ -3151,11 +3161,11 @@ GET    /workflows/:id/versions
 - No new dependencies
 
 ### Status
-**Task 10.3 — Workflow Versioning & Activation Controls: DONE**
+**Task 10.3 � Workflow Versioning & Activation Controls: DONE**
 
 ---
 
-## 2026-01-31 — v6 UI Refinement: Workflow List Grouped by Versions
+## 2026-01-31 � v6 UI Refinement: Workflow List Grouped by Versions
 
 ### Objective
 Update the `/workflows` list view to display workflows grouped by `workflowGroupId` as a collapsible list, allowing admins to see all versions of a workflow in one place.
@@ -3180,7 +3190,7 @@ Update the `/workflows` list view to display workflows grouped by `workflowGroup
   - Implemented `toggleGroup()` function for expand/collapse behavior
   - Redesigned table body to render:
     - **Group header rows**: Show group name, version count, active status, and latest updated timestamp
-      - Chevron button (▶/▼) for groups with multiple versions
+      - Chevron button (?/?) for groups with multiple versions
       - No chevron for single-version groups (still expandable pattern)
     - **Version rows** (shown when expanded): Show individual version details with View/Edit buttons
       - Edit button only shown for inactive versions
@@ -3206,7 +3216,7 @@ Update the `/workflows` list view to display workflows grouped by `workflowGroup
 - Versions within group ordered by version number descending (latest first)
 
 ### Testing
-- Ran `npm run build` for `apps/web` — passed successfully with no TypeScript errors
+- Ran `npm run build` for `apps/web` � passed successfully with no TypeScript errors
 - No React hook order warnings
 - All hooks remain at top level and unconditional
 
@@ -3220,11 +3230,11 @@ Update the `/workflows` list view to display workflows grouped by `workflowGroup
 - Minimal, localized changes only
 
 ### Status
-**v6 UI Refinement — Workflow List Grouping: DONE**
+**v6 UI Refinement � Workflow List Grouping: DONE**
 
 ---
 
-## 2026-01-31 | Next.js Upgrade (16.1.2 → 16.1.6)
+## 2026-01-31 | Next.js Upgrade (16.1.2 ? 16.1.6)
 
 ### Issue Encountered
 During initial build testing, encountered a TypeScript compilation error in Next.js auto-generated route definitions:
@@ -3244,8 +3254,8 @@ npm install next@latest
 ```
 
 ### Testing
-- Initial build with cache clear: ✅ Passed
-- Subsequent build without cache clear: ✅ Passed
+- Initial build with cache clear: ? Passed
+- Subsequent build without cache clear: ? Passed
 - No TypeScript errors
 - No route definition corruption
 
@@ -3287,11 +3297,11 @@ Implemented pure, side-effect-free validation functions:
 - `getValidationSummary()` - Human-friendly validation status summary
 
 **Key Constraints Enforced**:
-- ✅ Deterministic and synchronous
-- ✅ No execution of workflows
-- ✅ No persistence of validation results
-- ✅ No mutation of workflow state
-- ✅ No side effects
+- ? Deterministic and synchronous
+- ? No execution of workflows
+- ? No persistence of validation results
+- ? No mutation of workflow state
+- ? No side effects
 
 #### 2. Workflow Editor Integration
 **File Modified**: `apps/web/app/workflows/[id]/edit/page.tsx`
@@ -3306,7 +3316,7 @@ Added validation UI to the editor (draft mode):
 - Validation errors block save operation
 
 **UI Components Added**:
-- Validation status summary badge (✓/✗)
+- Validation status summary badge (?/?)
 - Error list (red background, clear messages)
 - Warning list (yellow background, advisory)
 - Workflow explanation panel (plain English)
@@ -3345,11 +3355,11 @@ Added validation UI to the detail page (view mode):
 10. **Branch validation**: Errors if decision step missing "if" and "else" branches
 
 #### Human-Readable Explanation
-Format: `Start: {workflowName} → {StepType}: {StepName} by {Assignee} → ... → End`
+Format: `Start: {workflowName} ? {StepType}: {StepName} by {Assignee} ? ... ? End`
 
 Example:
 ```
-Start: Purchase Approval → Approval: Finance Review by Finance Manager role → Review: Legal Check by Legal Team role → End
+Start: Purchase Approval ? Approval: Finance Review by Finance Manager role ? Review: Legal Check by Legal Team role ? End
 ```
 
 #### Dry-Run Preview
@@ -3369,9 +3379,9 @@ Shows possible execution paths:
 
 | File | Change |
 |------|--------|
-| `apps/web/app/lib/workflow-validation.ts` | ✨ Created - Pure validation functions |
-| `apps/web/app/workflows/[id]/edit/page.tsx` | 🔧 Added validation UI to editor |
-| `apps/web/app/workflows/[id]/page.tsx` | 🔧 Added validation UI to detail view |
+| `apps/web/app/lib/workflow-validation.ts` | ? Created - Pure validation functions |
+| `apps/web/app/workflows/[id]/edit/page.tsx` | ?? Added validation UI to editor |
+| `apps/web/app/workflows/[id]/page.tsx` | ?? Added validation UI to detail view |
 
 ### Build Verification
 ```bash
@@ -3379,7 +3389,7 @@ cd apps/web
 npm run build
 ```
 
-**Result**: ✅ Build succeeded
+**Result**: ? Build succeeded
 - No TypeScript errors
 - No runtime errors
 - All routes compiled successfully
@@ -3388,19 +3398,19 @@ npm run build
 ### Architectural Compliance
 
 #### Constraints Met
-- ❌ **NO execution of workflows** - Validation is read-only
-- ❌ **NO persistence** - Validation results not saved to database
-- ❌ **NO mutation** - Draft state unchanged by validation
-- ❌ **NO side effects** - Pure functions only
-- ❌ **NO auto-fixing** - Validation only reports, never modifies
-- ❌ **NO background jobs** - All validation synchronous
-- ❌ **NO execution records** - No workflow_executions created
+- ? **NO execution of workflows** - Validation is read-only
+- ? **NO persistence** - Validation results not saved to database
+- ? **NO mutation** - Draft state unchanged by validation
+- ? **NO side effects** - Pure functions only
+- ? **NO auto-fixing** - Validation only reports, never modifies
+- ? **NO background jobs** - All validation synchronous
+- ? **NO execution records** - No workflow_executions created
 
 #### Next.js App Router Compatibility
-- ✅ No conditional hooks
-- ✅ No dynamic route issues
-- ✅ Compatible with Next.js 16.1.6 + Turbopack
-- ✅ No hook order violations
+- ? No conditional hooks
+- ? No dynamic route issues
+- ? Compatible with Next.js 16.1.6 + Turbopack
+- ? No hook order violations
 
 ### UI Placement
 
@@ -3416,13 +3426,13 @@ npm run build
 
 ### No Regressions Verified
 
-- ✅ Workflow editing flow unchanged
-- ✅ Versioning logic untouched
-- ✅ Activation/deactivation unchanged
-- ✅ Routing stable (no 404s)
-- ✅ List view unchanged
-- ✅ Navigation preserved
-- ✅ No new dependencies added
+- ? Workflow editing flow unchanged
+- ? Versioning logic untouched
+- ? Activation/deactivation unchanged
+- ? Routing stable (no 404s)
+- ? List view unchanged
+- ? Navigation preserved
+- ? No new dependencies added
 
 ### Testing Notes
 
@@ -3435,7 +3445,7 @@ Build tested with:
 No manual UI testing performed (visual verification recommended).
 
 ### Status
-**Task 10.4 — Workflow Validation & Dry-Run Preview: DONE**
+**Task 10.4 � Workflow Validation & Dry-Run Preview: DONE**
 
 ### Next Steps (Out of Scope for Task 10.4)
 - UI visual testing (recommended)
@@ -3477,9 +3487,9 @@ Known issue with Next.js 16.1.6 + Turbopack where dev cache becomes stale after:
 **Production builds work correctly** - this only affects dev server cache.
 
 ### Verification
-- Build test after cache clear: ✅ Passed
-- Route registration: ✅ `/workflows/[id]/edit` properly registered as dynamic route
-- File locations verified: ✅ `apps/web/app/lib/workflow-validation.ts` in correct location
+- Build test after cache clear: ? Passed
+- Route registration: ? `/workflows/[id]/edit` properly registered as dynamic route
+- File locations verified: ? `apps/web/app/lib/workflow-validation.ts` in correct location
 
 ### Workaround
 When encountering 404s or module resolution errors in dev after structural changes:
@@ -3490,7 +3500,7 @@ When encountering 404s or module resolution errors in dev after structural chang
 **No permanent fix available** - this is a Next.js 16.1.6 Turbopack limitation. Monitor future Next.js releases for improvements.
 
 ### Related
-See also: "Next.js Upgrade (16.1.2 → 16.1.6)" entry for previous Turbopack cache issues.
+See also: "Next.js Upgrade (16.1.2 ? 16.1.6)" entry for previous Turbopack cache issues.
 
 ---
 
@@ -3527,9 +3537,9 @@ docker-compose restart web
 
 ### Verification
 After clearing the container cache and restarting:
-- ✅ `GET /workflows/f9db96b3-3bba-4a99-a9b2-d989a62cb8dd/edit 200 in 16.7s`
-- ✅ Route compiled successfully: `○ Compiling /workflows/[id]/edit ...`
-- ✅ Edit page accessible at `http://localhost:3001/workflows/{id}/edit`
+- ? `GET /workflows/f9db96b3-3bba-4a99-a9b2-d989a62cb8dd/edit 200 in 16.7s`
+- ? Route compiled successfully: `? Compiling /workflows/[id]/edit ...`
+- ? Edit page accessible at `http://localhost:3001/workflows/{id}/edit`
 
 ### Key Finding
 **Docker + Next.js Turbopack Cache Behavior**:
@@ -3542,7 +3552,7 @@ After clearing the container cache and restarting:
 When encountering 404s or cache issues in Docker environment:
 1. Clear cache inside container: `docker exec todo-web sh -c "rm -rf /app/.next"`
 2. Restart container: `docker-compose restart web`
-3. Wait for compilation: Watch logs for "✓ Ready" message
+3. Wait for compilation: Watch logs for "? Ready" message
 
 **Alternative (slower but thorough)**:
 ```bash
@@ -3578,8 +3588,8 @@ The `.map()` over `workflowGroups` returned a React Fragment (`<>...</>`) contai
 - **Version row keys**: `workflow.id` - stable unique identifier for each workflow version (already present, unchanged)
 
 **Verification**:
-- TypeScript compilation: ✓ Passes
-- Production build: ✓ Passes (`npm run build` in apps/web)
+- TypeScript compilation: ? Passes
+- Production build: ? Passes (`npm run build` in apps/web)
 - No changes to rendering logic, grouping, or UI behavior
 
 **Files Modified**: `apps/web/app/workflows/page.tsx`
@@ -3611,16 +3621,16 @@ Modified [apps/web/app/calendar/page.tsx](apps/web/app/calendar/page.tsx) to fil
 - Child tasks and independent tasks (childCount undefined/null/0) remain schedulable
 
 **Behavior Changes**:
-- **Before**: Parent tasks appeared in calendar and unscheduled panel → users could attempt to schedule them → backend rejection → toast error "Cannot schedule parent task"
-- **After**: Parent tasks do not appear in calendar view at all → users cannot attempt to schedule them → no confusing errors
+- **Before**: Parent tasks appeared in calendar and unscheduled panel ? users could attempt to schedule them ? backend rejection ? toast error "Cannot schedule parent task"
+- **After**: Parent tasks do not appear in calendar view at all ? users cannot attempt to schedule them ? no confusing errors
 
 **Acceptance Criteria Met**:
-- ✓ Parent tasks do not appear in calendar grid events
-- ✓ Parent tasks do not appear in unscheduled draggable panel
-- ✓ Attempting to schedule a parent task via UI is no longer possible (not shown)
-- ✓ Child and independent tasks still appear and can be scheduled/unscheduled
-- ✓ No regressions to existing calendar filtering, drag/drop, and toast flows
-- ✓ `npm run build` (apps/web) passes
+- ? Parent tasks do not appear in calendar grid events
+- ? Parent tasks do not appear in unscheduled draggable panel
+- ? Attempting to schedule a parent task via UI is no longer possible (not shown)
+- ? Child and independent tasks still appear and can be scheduled/unscheduled
+- ? No regressions to existing calendar filtering, drag/drop, and toast flows
+- ? `npm run build` (apps/web) passes
 
 **No Backend Changes**:
 - Backend rules unchanged (already block parent scheduling)
@@ -3630,7 +3640,7 @@ Modified [apps/web/app/calendar/page.tsx](apps/web/app/calendar/page.tsx) to fil
 **Files Modified**: 
 - [apps/web/app/calendar/page.tsx](apps/web/app/calendar/page.tsx#L524-L527,L553-L558)
 
-**Status**: ✅ Complete
+**Status**: ? Complete
 
 ---
 
@@ -3644,7 +3654,7 @@ Modified [apps/web/app/calendar/page.tsx](apps/web/app/calendar/page.tsx) to fil
 
 ### Task 10.4: Workflow Validation & Dry-Run Preview
 
-**Status**: ✅ DONE (previously implemented, now documented in plan.md)
+**Status**: ? DONE (previously implemented, now documented in plan.md)
 
 **Verification Method**: Code inspection
 
@@ -3663,16 +3673,16 @@ Modified [apps/web/app/calendar/page.tsx](apps/web/app/calendar/page.tsx) to fil
    - No persistence of validation results (computed on-the-fly)
 
 **Constraints Verified**:
-- No execution records created ✓
-- No persistence of preview output ✓
-- No background evaluation ✓
-- No side effects ✓
+- No execution records created ?
+- No persistence of preview output ?
+- No background evaluation ?
+- No side effects ?
 
 ---
 
 ### Task 10.5: Admin Audit Coverage Verification
 
-**Status**: ✅ DONE (audit coverage complete)
+**Status**: ? DONE (audit coverage complete)
 
 **Verification Method**: Code inspection of controller and service layers
 
@@ -3718,19 +3728,19 @@ Modified [apps/web/app/calendar/page.tsx](apps/web/app/calendar/page.tsx) to fil
    - Metadata: IP address, user agent
 
 **Audit Requirements Verified**:
-- Append-only audit log ✓ (no update/delete in AuditService)
-- Before/after snapshots ✓ (all operations capture state changes)
-- Actor attribution ✓ (userId from req.user.id)
-- Timestamped entries ✓ (automatic via auditLogs.createdAt)
-- No silent changes ✓ (all operations log before execution)
+- Append-only audit log ? (no update/delete in AuditService)
+- Before/after snapshots ? (all operations capture state changes)
+- Actor attribution ? (userId from req.user.id)
+- Timestamped entries ? (automatic via auditLogs.createdAt)
+- No silent changes ? (all operations log before execution)
 
 ---
 
 ### Files Updated
 
 **plan.md**:
-- Task 10.4: marked ✅ DONE, added completion summary
-- Task 10.5: marked ✅ DONE, added completion summary
+- Task 10.4: marked ? DONE, added completion summary
+- Task 10.5: marked ? DONE, added completion summary
 - Last Updated timestamp: 2026-01-31
 
 **executionnotes.md**:
@@ -3744,7 +3754,7 @@ No implementation work was required. Tasks 10.4 and 10.5 were already complete i
 
 ---
 
-**Status**: ✅ Reconciliation Complete
+**Status**: ? Reconciliation Complete
 
 
 ## 2026-01-31 - Task 10.6: Reusable Workflow Elements (Admin Library)
@@ -3876,12 +3886,12 @@ All entries include:
 
 Per strict v6 scope requirements:
 
-1. ❌ **Execution Behavior**: Elements are definition-time templates only, no execution logic
-2. ❌ **Automation**: No automatic workflow triggers or background processing
-3. ❌ **Drag-and-Drop Wiring**: Workflow editor integration is minimal (link only)
-4. ❌ **Instance Creation UI**: Workflow editor does not yet support inserting element instances
-5. ❌ **Validation Engine**: Template validation constraints are stored but not enforced
-6. ❌ **Decision Logic Evaluation**: Decision elements are templates only, no branching execution
+1. ? **Execution Behavior**: Elements are definition-time templates only, no execution logic
+2. ? **Automation**: No automatic workflow triggers or background processing
+3. ? **Drag-and-Drop Wiring**: Workflow editor integration is minimal (link only)
+4. ? **Instance Creation UI**: Workflow editor does not yet support inserting element instances
+5. ? **Validation Engine**: Template validation constraints are stored but not enforced
+6. ? **Decision Logic Evaluation**: Decision elements are templates only, no branching execution
 
 These features belong to future phases and would violate the v6 "inert definitions only" principle.
 
@@ -3911,7 +3921,7 @@ These features belong to future phases and would violate the v6 "inert definitio
 - [apps/web/app/workflows/page.tsx](apps/web/app/workflows/page.tsx): Added Element Library button
 
 **Documentation:**
-- [plan.md](plan.md): Marked Task 10.6 as ✅ DONE
+- [plan.md](plan.md): Marked Task 10.6 as ? DONE
 - [executionnotes.md](executionnotes.md): This entry
 
 ---
@@ -3926,7 +3936,7 @@ Database migration `0020_workflow_element_templates.sql` applied successfully:
 
 ---
 
-**Status**: ✅ Task 10.6 Complete
+**Status**: ? Task 10.6 Complete
 
 ---
 
@@ -4010,7 +4020,7 @@ Database migration `0020_workflow_element_templates.sql` applied successfully:
      - Execution exists and is not in terminal state (completed/failed/cancelled)
      - Step exists and belongs to the workflow definition
      - Step has not already been completed
-   - **⚠️ GAP IDENTIFIED**: No validation that `userId` matches `assignedTo` field on workflow step
+   - **?? GAP IDENTIFIED**: No validation that `userId` matches `assignedTo` field on workflow step
    - **Current Behavior**: ANY authenticated user can act on ANY step (no assignment enforcement)
 
 3. **Authentication Enforcement**
@@ -4029,12 +4039,12 @@ Database migration `0020_workflow_element_templates.sql` applied successfully:
      - `whitelist: true` (strips unknown fields)
      - `transform: true` (auto-transform payloads)
      - `forbidNonWhitelisted: true` (rejects extra fields)
-   - **✅ CONFIRMED**: Remark cannot be omitted or empty (400 Bad Request if missing/empty)
+   - **? CONFIRMED**: Remark cannot be omitted or empty (400 Bad Request if missing/empty)
 
 2. **Database Schema**
    - **Column**: `remark` text ([apps/api/src/db/schema.ts:376](apps/api/src/db/schema.ts#L376))
    - **Nullable**: Yes (column allows null)
-   - **⚠️ NOTE**: Database allows null, but DTO enforces non-empty at API layer
+   - **?? NOTE**: Database allows null, but DTO enforces non-empty at API layer
 
 #### Audit Logging Behavior
 
@@ -4070,7 +4080,7 @@ Database migration `0020_workflow_element_templates.sql` applied successfully:
      - `workflow.start`
      - `workflow.step_action`
      - Plus admin actions: create/update/activate/deactivate/version
-   - **✅ CONFIRMED**: All user-facing workflow operations are audited
+   - **? CONFIRMED**: All user-facing workflow operations are audited
 
 ---
 
@@ -4120,18 +4130,18 @@ Database migration `0020_workflow_element_templates.sql` applied successfully:
 
 #### CRITICAL GAPS
 
-1. **❌ No "My Pending Steps" Endpoint**
+1. **? No "My Pending Steps" Endpoint**
    - **Required For**: User inbox (v7 Task 11.3)
    - **Missing**: `GET /workflows/my-pending-steps` or similar
    - **Needed Capability**: List all pending step executions where current user is assignee
    - **Query Logic**:
-     - Join: workflow_step_executions → workflow_steps → workflow_executions
+     - Join: workflow_step_executions ? workflow_steps ? workflow_executions
      - Filter: step.assignedTo matches current user
      - Filter: execution.status NOT IN ('completed', 'failed', 'cancelled')
      - Filter: stepExecution.status = 'pending' OR stepExecution not yet created
    - **Response Shape**: Array of {executionId, stepId, workflowName, stepName, stepType, assignedAt/startedAt}
 
-2. **❌ No Execution Detail Endpoint (User-Facing)**
+2. **? No Execution Detail Endpoint (User-Facing)**
    - **Required For**: Execution trace view (v7 Task 11.4)
    - **Missing**: `GET /workflows/executions/:id`
    - **Needed Capability**: Read-only execution detail with step history
@@ -4142,7 +4152,7 @@ Database migration `0020_workflow_element_templates.sql` applied successfully:
      - Order by step order
    - **Response Shape**: {execution metadata, steps: [{step definition, execution record (if exists)}]}
 
-3. **⚠️ No Step Assignment Enforcement**
+3. **?? No Step Assignment Enforcement**
    - **Current Behavior**: Any user can act on any step
    - **Required For**: v7 permission verification (Task 11.6)
    - **Gap**: `executeStepAction` does not validate `userId` against step `assignedTo`
@@ -4179,7 +4189,7 @@ Database migration `0020_workflow_element_templates.sql` applied successfully:
 - `completedAt` timestamp is set
 - `errorDetails` populated with rejection reason
 - No automatic progression to next step
-- ✅ **Aligned with v7 principle**: "No workflow step advances without an explicit user action"
+- ? **Aligned with v7 principle**: "No workflow step advances without an explicit user action"
 
 ---
 
@@ -4200,14 +4210,14 @@ Database migration `0020_workflow_element_templates.sql` applied successfully:
 
 ### Summary
 
-**Existing Capabilities (Confirmed ✅)**:
+**Existing Capabilities (Confirmed ?)**:
 1. Workflow execution start (with resource ownership validation)
 2. Step action execution (approve/reject/acknowledge)
 3. Mandatory remark enforcement (server-side via DTO validation)
 4. Full audit logging (start + step actions)
-5. Stop-on-error semantics (reject → fail execution)
+5. Stop-on-error semantics (reject ? fail execution)
 
-**Missing Capabilities (Gaps Identified ❌)**:
+**Missing Capabilities (Gaps Identified ?)**:
 1. "My pending steps" listing endpoint (CRITICAL for v7 Task 11.3)
 2. User-facing execution detail endpoint (CRITICAL for v7 Task 11.4)
 3. Step assignment permission enforcement (CRITICAL for v7 Task 11.6)
@@ -4222,7 +4232,7 @@ Database migration `0020_workflow_element_templates.sql` applied successfully:
 
 ---
 
-**Status**: ✅ Task 11.1 Complete (Read-Only Audit)
+**Status**: ? Task 11.1 Complete (Read-Only Audit)
 
 ---
 
@@ -4303,14 +4313,14 @@ Based on confirmed gaps from Task 11.1, the following backend additions were req
 
 ### Governance Rules Enforced
 
-1. **No Schema Changes:** ✅ No database migrations required
-2. **No New Dependencies:** ✅ No new packages added
-3. **Existing Auth Patterns:** ✅ Uses JwtAuthGuard, follows existing patterns
-4. **Existing Validation Patterns:** ✅ Mandatory remark enforcement unchanged
-5. **Audit-First Design:** ✅ Audit logging already in place for step actions
-6. **Minimal Changes:** ✅ Only added required endpoints and enforcement logic
-7. **Localized Changes:** ✅ Changes confined to workflows service and controller
-8. **Reversible:** ✅ New endpoints can be removed; enforcement can be commented out
+1. **No Schema Changes:** ? No database migrations required
+2. **No New Dependencies:** ? No new packages added
+3. **Existing Auth Patterns:** ? Uses JwtAuthGuard, follows existing patterns
+4. **Existing Validation Patterns:** ? Mandatory remark enforcement unchanged
+5. **Audit-First Design:** ? Audit logging already in place for step actions
+6. **Minimal Changes:** ? Only added required endpoints and enforcement logic
+7. **Localized Changes:** ? Changes confined to workflows service and controller
+8. **Reversible:** ? New endpoints can be removed; enforcement can be commented out
 
 ---
 
@@ -4318,14 +4328,14 @@ Based on confirmed gaps from Task 11.1, the following backend additions were req
 
 Per strict v7 scope requirements:
 
-1. ❌ **Role-Based Assignment:** Assignment enforcement only supports `{type: 'user', value: userId}`, not role-based
-2. ❌ **Workflow Authoring:** No changes to workflow creation or editing
-3. ❌ **Automation:** No background progression or schedulers
-4. ❌ **Graph Views:** No visualization logic
-5. ❌ **UI Components:** Backend only, no frontend changes in this task
-6. ❌ **Notifications:** No reminder or notification system
-7. ❌ **Step Mutation Coupling:** No workflow-task coupling logic
-8. ❌ **Admin Behavior Changes:** No modifications to admin endpoints or behavior
+1. ? **Role-Based Assignment:** Assignment enforcement only supports `{type: 'user', value: userId}`, not role-based
+2. ? **Workflow Authoring:** No changes to workflow creation or editing
+3. ? **Automation:** No background progression or schedulers
+4. ? **Graph Views:** No visualization logic
+5. ? **UI Components:** Backend only, no frontend changes in this task
+6. ? **Notifications:** No reminder or notification system
+7. ? **Step Mutation Coupling:** No workflow-task coupling logic
+8. ? **Admin Behavior Changes:** No modifications to admin endpoints or behavior
 
 ---
 
@@ -4367,15 +4377,15 @@ Per strict v7 scope requirements:
 
 ### Completion Checklist
 
-✅ Endpoints exist and are reachable
-✅ Assignment enforcement is server-side
-✅ Mandatory remarks still enforced (unchanged)
-✅ Audit logging remains intact (no changes to existing audit calls)
-✅ Existing workflow behavior unchanged (v5/v6 admin endpoints untouched)
+? Endpoints exist and are reachable
+? Assignment enforcement is server-side
+? Mandatory remarks still enforced (unchanged)
+? Audit logging remains intact (no changes to existing audit calls)
+? Existing workflow behavior unchanged (v5/v6 admin endpoints untouched)
 
 ---
 
-**Status**: ✅ Task 11.2 Complete
+**Status**: ? Task 11.2 Complete
 
 ---
 
@@ -4413,7 +4423,7 @@ if (parent.startAt !== null) {
 
 ---
 
-**Status**: ✅ Bug Fix Complete
+**Status**: ? Bug Fix Complete
 
 ---
 
@@ -4448,7 +4458,7 @@ if (parent.startAt !== null) {
 
 ---
 
-**Status**: ✅ TypeScript Compilation Errors Fixed
+**Status**: ? TypeScript Compilation Errors Fixed
 
 ## 2026-02-01 - Task 11.3: Pending Workflow Steps Inbox
 
@@ -4459,7 +4469,7 @@ if (parent.startAt !== null) {
 - The page fetches GET /workflows/my-pending-steps, renders workflow name, step name/type, assigned timestamp, and execution ID, and links each card to /workflows/executions/[executionId].
 - Surface includes the existing auth/force-password flow plus a manual refresh button so the user can re-run the query on demand.
 
-**UI states:** Loading indicator while fetching, “No pending workflow steps.” empty state, and an error banner (with a hint to use the refresh button) when the request fails.
+**UI states:** Loading indicator while fetching, �No pending workflow steps.� empty state, and an error banner (with a hint to use the refresh button) when the request fails.
 
 ## 2026-02-01 - Task 11.4: Workflow Execution Detail (Read-Only Trace)
 
@@ -4469,11 +4479,11 @@ if (parent.startAt !== null) {
 - Added `apps/web/app/workflows/executions/[executionId]/page.tsx` so the `/workflows/executions/[executionId]` route renders inside the standard layout with auth/force-password handling.
 - Fetches `GET /workflows/executions/:executionId/detail` and displays execution metadata (workflow name/description, status badge, execution ID, resource info, trigger/start/complete timestamps, and any error details).
 - Renders the ordered step history with cards that show step order/name, step type/status, actor ID, action/decision, remark, and timestamp (completed or fallback assigned time) so every required field is surfaced.
-- Highlights pending steps with an amber border/background, calls attention with a summary line, and shows “No pending steps.” when none remain; a manual refresh button reruns the fetch.
+- Highlights pending steps with an amber border/background, calls attention with a summary line, and shows �No pending steps.� when none remain; a manual refresh button reruns the fetch.
 
 **UI states:** Loading banner while fetching, error banner with refresh hint, and a defensive fallback message when no execution data arrives.
 
-2026-02-01: Root cause – route shadowing from /workflows/:id; fix – moved static /workflows/my-pending-steps and /workflows/executions/:executionId/detail ahead of the parameterized handlers to enforce correct route matching.
+2026-02-01: Root cause � route shadowing from /workflows/:id; fix � moved static /workflows/my-pending-steps and /workflows/executions/:executionId/detail ahead of the parameterized handlers to enforce correct route matching.
 
 ---
 
@@ -4500,23 +4510,23 @@ When this query failed (due to table not existing in the database, schema mismat
 - Build succeeds with no TypeScript errors
 - No schema changes, migrations, or new dependencies added
 
-**Status**: ✅ Fix Complete
+**Status**: ? Fix Complete
 ## 2026-02-01 - Task 11.5: Workflow Step Action Panel
 
 **Objective:** Let the assigned user take explicit approve/reject/acknowledge step actions with mandatory remarks, confirmation, and an audited no-automation reminder.
 
 **Changes Made:**
-- Added the action panel inside `apps/web/app/workflows/executions/[executionId]/page.tsx`, surrounding each pending step assigned to the current user with a remark textarea, action buttons that stay disabled until the trimmed remark is present, and a “No automation. Actions are explicit and audited.” affordance while showing a read-only hint when the user is not assigned.
+- Added the action panel inside `apps/web/app/workflows/executions/[executionId]/page.tsx`, surrounding each pending step assigned to the current user with a remark textarea, action buttons that stay disabled until the trimmed remark is present, and a �No automation. Actions are explicit and audited.� affordance while showing a read-only hint when the user is not assigned.
 - Wired `POST /workflows/executions/:executionId/steps/:stepId/action` (payload `{ decision, remark }`) through the panel, introduced inline confirmation that repeats the chosen action, reminds the user the action is audited and has no automation, disables the UI while submitting, and surface the server error without losing the remark input when the request fails.
 - After a successful submit the panel clears its confirm state, removes the cached remark for that step, and re-fetches `/workflows/executions/:executionId/detail` to refresh every card from the backend before updating the UI.
 
 ## 2026-02-01 - Task 11.6: Audit & Permission Verification (v7 Coverage)
 
-- **Assignment enforcement:** PASS — `executeStepAction` parses `assignedTo` JSON, throws `ForbiddenException` when `assignment.type === 'user'` but the caller’s `userId` differs, and the controller remains guarded by `JwtAuthGuard`, so only the assigned user may act on a pending step (403 otherwise). Evidence: `apps/api/src/workflows/workflows.service.ts:320-336`.
-- **Mandatory remark enforcement:** FAIL — `StepActionDto` only decorates `remark` with `@IsNotEmpty()` and no trim, but `class-validator` treats strings containing only whitespace as non-empty (`node -e "const { isNotEmpty } = require('./apps/api/node_modules/class-validator/cjs/decorator/common/IsNotEmpty'); console.log('spaces', isNotEmpty('   '));"` prints `spaces true`), so whitespace remarks still pass validation and the endpoint returns 200 instead of the expected 400. Evidence: `apps/api/src/workflows/dto/step-action.dto.ts:1-9`, `apps/api/node_modules/class-validator/cjs/decorator/common/IsNotEmpty.js:5-12`. Gap + fix: trim the remark (e.g., `@Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))`) and require a non-whitespace string (`@Matches(/\S/)` or custom validator) before persisting.
-- **Audit entries:** PASS — Starting a workflow logs `workflow.start` (before snapshot `null`, after metadata) and acting on a step logs `workflow.step_action` with before/after execution states and step execution details, so both workflow start and step actions are auditable with snapshots. Evidence: `apps/api/src/workflows/workflows.controller.ts:168-218`.
-- **Execution trace integrity:** PASS — `getExecutionDetail` loads the execution, its definition, ordered `workflowSteps`, and actual `workflowStepExecutions`, then builds the history sorted by `stepOrder` with decision/actor/remark/status/timestamps so the trace mirrors the DB records and exposes only workflow/resource metadata plus errorDetails (no admin-only data). Evidence: `apps/api/src/workflows/workflows.service.ts:436-577`.
-- **User UI exposure:** PASS — The inbox page calls only `GET /workflows/my-pending-steps`, the execution detail page only `GET /workflows/executions/:executionId/detail` and `POST /workflows/executions/:executionId/steps/:stepId/action`, and neither component references admin routes, so user-facing UI stays within safe endpoints; the controller definitions for these routes have no `@UseGuards(AdminGuard)` (unlike the admin-only endpoints defined later). Evidence: `apps/web/app/workflows/inbox/page.tsx:68-76`, `apps/web/app/workflows/executions/[executionId]/page.tsx:140-205`, `apps/api/src/workflows/workflows.controller.ts:36-58`.
+- **Assignment enforcement:** PASS � `executeStepAction` parses `assignedTo` JSON, throws `ForbiddenException` when `assignment.type === 'user'` but the caller�s `userId` differs, and the controller remains guarded by `JwtAuthGuard`, so only the assigned user may act on a pending step (403 otherwise). Evidence: `apps/api/src/workflows/workflows.service.ts:320-336`.
+- **Mandatory remark enforcement:** FAIL � `StepActionDto` only decorates `remark` with `@IsNotEmpty()` and no trim, but `class-validator` treats strings containing only whitespace as non-empty (`node -e "const { isNotEmpty } = require('./apps/api/node_modules/class-validator/cjs/decorator/common/IsNotEmpty'); console.log('spaces', isNotEmpty('   '));"` prints `spaces true`), so whitespace remarks still pass validation and the endpoint returns 200 instead of the expected 400. Evidence: `apps/api/src/workflows/dto/step-action.dto.ts:1-9`, `apps/api/node_modules/class-validator/cjs/decorator/common/IsNotEmpty.js:5-12`. Gap + fix: trim the remark (e.g., `@Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))`) and require a non-whitespace string (`@Matches(/\S/)` or custom validator) before persisting.
+- **Audit entries:** PASS � Starting a workflow logs `workflow.start` (before snapshot `null`, after metadata) and acting on a step logs `workflow.step_action` with before/after execution states and step execution details, so both workflow start and step actions are auditable with snapshots. Evidence: `apps/api/src/workflows/workflows.controller.ts:168-218`.
+- **Execution trace integrity:** PASS � `getExecutionDetail` loads the execution, its definition, ordered `workflowSteps`, and actual `workflowStepExecutions`, then builds the history sorted by `stepOrder` with decision/actor/remark/status/timestamps so the trace mirrors the DB records and exposes only workflow/resource metadata plus errorDetails (no admin-only data). Evidence: `apps/api/src/workflows/workflows.service.ts:436-577`.
+- **User UI exposure:** PASS � The inbox page calls only `GET /workflows/my-pending-steps`, the execution detail page only `GET /workflows/executions/:executionId/detail` and `POST /workflows/executions/:executionId/steps/:stepId/action`, and neither component references admin routes, so user-facing UI stays within safe endpoints; the controller definitions for these routes have no `@UseGuards(AdminGuard)` (unlike the admin-only endpoints defined later). Evidence: `apps/web/app/workflows/inbox/page.tsx:68-76`, `apps/web/app/workflows/executions/[executionId]/page.tsx:140-205`, `apps/api/src/workflows/workflows.controller.ts:36-58`.
 
 
 ## 2026-02-01 - Step action remark validation (v7 hotfix)
@@ -4526,7 +4536,7 @@ When this query failed (due to table not existing in the database, schema mismat
 
 ## 2026-02-01 - Task 11.7: Minimal UX Hardening (Non-Feature)
 
-- **Gaps found:** Header-level status messaging and a persistent “No automation” reminder were missing on the inbox and execution detail surfaces, and the loading/error affordances could be more explicit for the user.
+- **Gaps found:** Header-level status messaging and a persistent �No automation� reminder were missing on the inbox and execution detail surfaces, and the loading/error affordances could be more explicit for the user.
 - **Changes applied:**
   - `apps/web/app/workflows/inbox/page.tsx`: Added an accessible status line, inline automation reminder, and `role`/`aria-live` markers around the inbox loading and error cards so the fetching and availability states are clearer.
   - `apps/web/app/workflows/executions/[executionId]/page.tsx`: Added header-level status text, the same automation reminder, accessible `role/aria-live` attributes for the loading/error states, and alert semantics around step panel errors while keeping action disablement as before.
@@ -4554,7 +4564,7 @@ When this query failed (due to table not existing in the database, schema mismat
 **Service Methods:**
 - `OcrParsingService.parseOcrOutput(attachmentOcrOutputId)` (#L76-L115): Loads the OCR blob, returns `[]` when text is missing, builds structured field list, persists records, and returns the `ocr_results` rows.
 - `OcrParsingService.extractField(rawText, fieldName, patterns)` (#L136-L152): Scans the raw string with the provided regex list, trims the capture, and attaches a bounding box placeholder.
-- `OcrParsingService.calculateConfidence(value, fieldType, patternIndex)` (#L155-L176): Starts from a pattern-based base score (0.9/0.8/0.7), adds date/currency bonuses, clamps to 0.5–1.0, and handles empty matches.
+- `OcrParsingService.calculateConfidence(value, fieldType, patternIndex)` (#L155-L176): Starts from a pattern-based base score (0.9/0.8/0.7), adds date/currency bonuses, clamps to 0.5�1.0, and handles empty matches.
 
 **Key Implementation Details:**
 - `OCR_FIELD_PATTERNS` centralizes the invoice-centric regexes for invoice number/date, total amount, vendor name, and due date so future docs can re-use the list (#L1-L36).
@@ -4579,10 +4589,10 @@ When this query failed (due to table not existing in the database, schema mismat
 
 ### Governance Compliance
 
-✅ **Explicit Intent:** OCR parsing only runs when `parseOcrOutput` is called; no background jobs mutate derived data.
-✅ **Auditability:** Parsed fields are stored in `ocr_results`, leaving raw `attachment_ocr_outputs` untouched for traceability.
-✅ **Derived Data:** Confidence scores and parsed values are stored as derived, non-authoritative data for UI review.
-✅ **Backend Authority:** All extraction/validation happens inside the injected Nest service; no client-side assumptions are required.
+? **Explicit Intent:** OCR parsing only runs when `parseOcrOutput` is called; no background jobs mutate derived data.
+? **Auditability:** Parsed fields are stored in `ocr_results`, leaving raw `attachment_ocr_outputs` untouched for traceability.
+? **Derived Data:** Confidence scores and parsed values are stored as derived, non-authoritative data for UI review.
+? **Backend Authority:** All extraction/validation happens inside the injected Nest service; no client-side assumptions are required.
 
 ---
 
@@ -4594,15 +4604,15 @@ When this query failed (due to table not existing in the database, schema mismat
 
 ---
 
-**Status**: ✅ Task 1 Complete
+**Status**: ? Task 1 Complete
 
 ---
 
-### Task 2 — OCR Corrections
+### Task 2 � OCR Corrections
 
-- Added `OcrCorrectionsService` plus Jest coverage, schema/table definitions, and a manual Drizzle migration (`0001_ocr_corrections.sql`) to keep corrections immutable while respecting the attachment → task ownership chain.
+- Added `OcrCorrectionsService` plus Jest coverage, schema/table definitions, and a manual Drizzle migration (`0001_ocr_corrections.sql`) to keep corrections immutable while respecting the attachment ? task ownership chain.
 - Updated `apps/api/src/db/schema.ts` and the snapshot/journal metadata so the new table/indexes are part of the canonical schema; `tmp-scripts/update-snapshot.js` was used for the snapshot edit and is ignored via `.gitignore`.
-- Could not run the Drizzle CLI commands to materialize the change because the sandbox blocks child processes (see “Migration Notes” below).
+- Could not run the Drizzle CLI commands to materialize the change because the sandbox blocks child processes (see �Migration Notes� below).
 
 ### Testing Results
 
@@ -4657,27 +4667,27 @@ When this query failed (due to table not existing in the database, schema mismat
 ### Testing Results
 
 **Unit Tests:** 8/8 passing (`npm test -- ocr.service.spec.ts`)
-- Full response with corrections: ✅
-- Missing OCR handling (returns `rawOcr: null`): ✅
-- Empty parsed fields handling: ✅
-- Correction history inclusion: ✅
-- Ownership validation (ForbiddenException): ✅
-- Missing attachment (NotFoundException): ✅
-- Latest correction as currentValue: ✅
-- Original value as currentValue when no corrections: ✅
+- Full response with corrections: ?
+- Missing OCR handling (returns `rawOcr: null`): ?
+- Empty parsed fields handling: ?
+- Correction history inclusion: ?
+- Ownership validation (ForbiddenException): ?
+- Missing attachment (NotFoundException): ?
+- Latest correction as currentValue: ?
+- Original value as currentValue when no corrections: ?
 
 **Test Coverage:** 100% of new method code paths
 
-**Build Verification:** ✅ TypeScript compilation successful (`npm run build`)
+**Build Verification:** ? TypeScript compilation successful (`npm run build`)
 
 ---
 
 ### Governance Compliance
 
-✅ **Explicit Intent:** Read-only method, no automatic actions
-✅ **Derived Data:** Returns non-authoritative OCR data (task data unchanged)
-✅ **Backend Authority:** Ownership checked via `ensureUserOwnsAttachment`
-✅ **Auditability:** Read-only operation, no audit log needed
+? **Explicit Intent:** Read-only method, no automatic actions
+? **Derived Data:** Returns non-authoritative OCR data (task data unchanged)
+? **Backend Authority:** Ownership checked via `ensureUserOwnsAttachment`
+? **Auditability:** Read-only operation, no audit log needed
 
 ---
 
@@ -4697,7 +4707,7 @@ async getOcrResults(
 
 ---
 
-**Status**: ✅ Task 3 Complete
+**Status**: ? Task 3 Complete
 
 ---
 ---
@@ -4712,13 +4722,13 @@ async getOcrResults(
 - `apps/api/src/db/schema.ts` (MODIFIED - attachmentOcrOutputs table)
 
 **Database Changes:**
-- Renamed `attachment_ocr_outputs.status` → `processing_status`
+- Renamed `attachment_ocr_outputs.status` ? `processing_status`
 - Added `attachment_ocr_outputs.status` enum: 'draft' | 'confirmed' | 'archived'
 - Added confirmation tracking: `confirmed_at`, `confirmed_by`
 - Added utilization tracking: `utilized_at`, `utilization_type`, `utilization_metadata`
 - Added archive tracking: `archived_at`, `archived_by`, `archive_reason`
 - Created 3 indexes for performance
-- Grandfathered existing OCR: all completed → confirmed
+- Grandfathered existing OCR: all completed ? confirmed
 
 **Verification Results:**
 - [X] Migration runs without errors
@@ -4761,7 +4771,7 @@ async getOcrResults(
 - Not run (not requested)
 
 ---
-## 2026-02-02 – v3.5 Task 3: OCR Confirm Submit
+## 2026-02-02 � v3.5 Task 3: OCR Confirm Submit
 **Objective:** Allow user to confirm OCR draft into immutable confirmed state
 **Files Changed:**
 - apps/api/src/ocr/ocr.service.ts
@@ -4784,7 +4794,7 @@ async getOcrResults(
 - Moved ensureUserOwnsAttachment(...) ahead of draft/completed validations in confirmOcrResult
 **Verification:**
 - Not run (not requested)
-2026-02-02 – v3.5 Task 4: OCR Utilization Tracking
+2026-02-02 � v3.5 Task 4: OCR Utilization Tracking
 
 Objective: Record when confirmed OCR data is utilized (Categories A/B/C)
 Files Changed:
@@ -4800,7 +4810,7 @@ Appropriate audit events are emitted
 Verification:
 
 Not run (not requested)
-2026-02-02 – v3.5 Task 4 patch: Utilization severity upgrade
+2026-02-02 � v3.5 Task 4 patch: Utilization severity upgrade
 
 Objective: Allow confirmed OCR utilization to be upgraded when higher-severity events occur while preserving JSON metadata storage.
 
@@ -4822,8 +4832,8 @@ Not run (not requested)
 
 **Behavior:**
 - OCR outputs now capture both `processingStatus` and lifecycle `status`, letting the attachments list show lifecycle badges as the primary indicator when text is available.
-- Worker failure still enables text display, adds an “OCR Warning” pill when text exists, and keeps the “Failed” label for cases where no text was produced.
-- Confirmation/apply actions stay disabled until `processing_status === 'completed'`, and the UI now surfaces “Cannot confirm until OCR processing completes.” when the worker hasn’t finished successfully.
+- Worker failure still enables text display, adds an �OCR Warning� pill when text exists, and keeps the �Failed� label for cases where no text was produced.
+- Confirmation/apply actions stay disabled until `processing_status === 'completed'`, and the UI now surfaces �Cannot confirm until OCR processing completes.� when the worker hasn�t finished successfully.
 
 **Verification:**
 - Not run (not requested)
@@ -4834,7 +4844,7 @@ Not run (not requested)
 - apps/api/src/ocr/ocr.service.ts
 **Behavior:**
 - Archive requires owner + confirmed + utilizationType=data_export
-- Archived OCR becomes invisible to “current confirmed OCR” reads
+- Archived OCR becomes invisible to �current confirmed OCR� reads
 - Audit event OCR_ARCHIVED emitted
 **Verification:**
 - Not run (not requested)
@@ -4867,32 +4877,32 @@ Not run (not requested)
 **Verification:**
 - Not run (not requested)
 
-## 2026-02-03 – v3.5 Verification Closeout (Tasks 1–7)
+## 2026-02-03 � v3.5 Verification Closeout (Tasks 1�7)
 
-Task 1: ✅
+Task 1: ?
 Evidence: `docker compose run --rm api npm run drizzle:migrate` applied the v3.5 migration and `docker compose exec db psql -U todo -d todo_db -c "\\d attachment_ocr_outputs"` shows the new lifecycle columns/indexes; `apps/api/src/db/schema.ts` already declares the added fields so the Drizzle types match.
 
-Task 2: ✅
-Evidence: `docker compose run --rm api npx ts-node --transpile-only tmp-verify-ocr.ts` prints “Draft row status: draft processingStatus: completed”, “Current confirmed OCR before confirm: null”, “After confirm status: confirmed …”, and “Re-confirm attempt rejected as expected…” while `OCR_DRAFT_CREATED`/`OCR_CONFIRMED` audit events are present.
+Task 2: ?
+Evidence: `docker compose run --rm api npx ts-node --transpile-only tmp-verify-ocr.ts` prints �Draft row status: draft processingStatus: completed�, �Current confirmed OCR before confirm: null�, �After confirm status: confirmed ��, and �Re-confirm attempt rejected as expected�� while `OCR_DRAFT_CREATED`/`OCR_CONFIRMED` audit events are present.
 
-Task 3: ✅
+Task 3: ?
 Evidence: The same script recorded `getCurrentConfirmedOcr()` returning the confirmed record and the `OCR_CONFIRMED` audit entry noted in its output.
 
-Task 4: ✅
-Evidence: That script also logs “Utilization final type: authoritative_record … metadata content: { recordId: … }”, the `OCR_UTILIZED_RECORD` audit details, and `checkRedoEligibility()` returning `allowed: false` with the “Authoritative record …” reason.
+Task 4: ?
+Evidence: That script also logs �Utilization final type: authoritative_record � metadata content: { recordId: � }�, the `OCR_UTILIZED_RECORD` audit details, and `checkRedoEligibility()` returning `allowed: false` with the �Authoritative record �� reason.
 
-Task 5: ✅
-Evidence: The script reports “Redo eligibility before archive (should be false) …”, archives the row (status=archived/`archiveReason` set), emits `OCR_ARCHIVED`, shows `getCurrentConfirmedOcr()` returning null, `checkRedoEligibility()` allowing a redo again, and creates a fresh draft.
+Task 5: ?
+Evidence: The script reports �Redo eligibility before archive (should be false) ��, archives the row (status=archived/`archiveReason` set), emits `OCR_ARCHIVED`, shows `getCurrentConfirmedOcr()` returning null, `checkRedoEligibility()` allowing a redo again, and creates a fresh draft.
 
-Task 6: ✅
-Evidence: `docker compose run --rm api npx ts-node --transpile-only tmp-controllers-verify.ts` shows `triggerOcr` throwing “Authoritative record …” for `ATTACHMENT_A`, the `OCR_REDO_BLOCKED` audit details, and later shows `triggerOcr` succeeding for `ATTACHMENT_C` with a logged `OCR_REDO_ALLOWED` event.
+Task 6: ?
+Evidence: `docker compose run --rm api npx ts-node --transpile-only tmp-controllers-verify.ts` shows `triggerOcr` throwing �Authoritative record �� for `ATTACHMENT_A`, the `OCR_REDO_BLOCKED` audit details, and later shows `triggerOcr` succeeding for `ATTACHMENT_C` with a logged `OCR_REDO_ALLOWED` event.
 
-Task 7: ✅
-Evidence: The same controller script confirms a draft via `OcrController.confirmOcr` (“status: confirmed”), reports `checkOcrRedoEligibility()`/`getCurrentOcr()` outputs for the attachment, archives the Category C output successfully (`OCR_ARCHIVED` entry), rejects archive on a non-Category-C output, and prohibits redo checks from a different user.
+Task 7: ?
+Evidence: The same controller script confirms a draft via `OcrController.confirmOcr` (�status: confirmed�), reports `checkOcrRedoEligibility()`/`getCurrentOcr()` outputs for the attachment, archives the Category C output successfully (`OCR_ARCHIVED` entry), rejects archive on a non-Category-C output, and prohibits redo checks from a different user.
 
 Notes:
 - Used `ts-node --transpile-only` when running the verification scripts because the current `AuditAction` union lacks `OCR_ARCHIVED`, so plain type checking would fail even though the runtime behavior is correct.
-2026-02-03 – AuditAction union add OCR archive/redo events
+2026-02-03 � AuditAction union add OCR archive/redo events
 
 Objective: Allow audit logs to emit OCR_ARCHIVED, OCR_REDO_BLOCKED, and OCR_REDO_ALLOWED without TypeScript errors.
 Files Changed:
@@ -4901,7 +4911,7 @@ Behavior:
 - Added the three new action tokens to the `AuditAction` union so controllers/services can log them.
 Verification:
 - `npm run lint`/build not run (not requested)
-## 2026-02-03 - v8 Tasks 1–3 Remediation (Confirmed-only enforcement)
+## 2026-02-03 - v8 Tasks 1�3 Remediation (Confirmed-only enforcement)
 
 **Objective:** enforce parsing, corrections, and aggregation to only operate on confirmed OCR outputs while documenting the guard.
 
@@ -4932,7 +4942,7 @@ All commands passed.
 - `codemapcc.md` (MODIFIED - documented the new endpoints and DTO)
 
 **Integration:**
-- All endpoints verify ownership through the attachment → task book chain
+- All endpoints verify ownership through the attachment ? task book chain
 - All workflows rely on confirmed OCR outputs (services enforce status checks)
 - Error paths align with existing 404/403/400 conventions for missing or unauthorized resources
 
@@ -4951,12 +4961,12 @@ All commands passed.
 - ATTACHMENT_ID: 2d127b4c-3760-4c70-9743-b0f542f352b3 (OCR status: confirmed)
 
 Requests:
-1) POST /attachments/:id/ocr/parse → 201 (parsedFields=1, ocrResultIdsCount=1)
-2) GET /attachments/:id/ocr/results → 200 (fieldsCount=1)
-3) POST /ocr-results/:id/corrections → 201 (correctionId=68e33a66-51e2-4a31-a63d-81b3c1009d6f, correctedValue=999.99)
-4) GET /ocr-results/:id/corrections → 200 (historyCount=1)
+1) POST /attachments/:id/ocr/parse ? 201 (parsedFields=1, ocrResultIdsCount=1)
+2) GET /attachments/:id/ocr/results ? 200 (fieldsCount=1)
+3) POST /ocr-results/:id/corrections ? 201 (correctionId=68e33a66-51e2-4a31-a63d-81b3c1009d6f, correctedValue=999.99)
+4) GET /ocr-results/:id/corrections ? 200 (historyCount=1)
 Negative:
-- Invalid OCR result id (404) → 404
+- Invalid OCR result id (404) ? 404
 
 ---
 
@@ -4979,3 +4989,80 @@ Requests:
 Negative:
 - GET /ocr-results/00000000-0000-0000-0000-000000000000/corrections
   - 404 (as expected)
+---
+## February 3, 2026 - v8 Task 5: OCR Evidence Review UI
+
+**Objective:** Provide visual OCR review and correction UI for confirmed OCR outputs.
+
+**Files Changed:**
+- apps/web/app/attachments/[attachmentId]/review/page.tsx (NEW)
+- apps/web/app/components/ocr/* (NEW)
+- apps/web/app/lib/api/ocr.ts (NEW)
+- apps/web/app/lib/api.ts
+- apps/web/app/task/[id]/page.tsx
+- apps/web/package.json
+- codemapcc.md
+
+**Features:**
+- Side-by-side document viewer + OCR field list with confidence and correction badges
+- Manual correction modal plus correction history modal
+- Confirmed-only OCR enforced via backend data; task page exposes �Review OCR� link when confirmed
+- OCR-specific API client plus components render data, corrections, and history
+
+**Verification:**
+- OCR review page loads with document + field list
+- Corrections persist and refresh via API
+- History modal shows recorded corrections
+- Task detail page links to review route when OCR confirmed
+---
+
+## February 3, 2026 - v8 Task 5 Runtime Fixes: OCR Review Viewer Support for Images & PDFs
+
+**Objective:** Fix OCR Review viewer to support BOTH image and PDF attachments with local PDF.js worker (no CDN).
+
+**Problem:**
+1. Image attachments (png/jpg) showed "Unable to load image preview" because PdfDocumentViewer only supported PDFs
+2. PDF attachments failed with worker fetch error due to CDN-based workerSrc not accessible in Docker/offline environment
+
+**Files Changed:**
+- apps/web/app/components/ocr/PdfDocumentViewer.tsx
+- apps/web/app/attachments/[attachmentId]/review/page.tsx
+- apps/web/public/pdfjs/pdf.worker.min.mjs (NEW)
+
+**Changes:**
+- Copied PDF.js worker (1022KB) from node_modules/react-pdf/node_modules/pdfjs-dist/build/ to public/pdfjs/
+  - IMPORTANT: Used react-pdf's bundled pdfjs-dist v5.4.296 (not the direct dependency v5.4.624) to match API version
+- Updated workerSrc to '/pdfjs/pdf.worker.min.mjs' (local, no CDN)
+- Added credentials support: Document component now uses `options={{ withCredentials: true }}` to include cookies in PDF fetch requests (fixes 401 errors)
+- Added file type detection: isPdf (mimeType='application/pdf' OR .pdf extension), isImage (mimeType starts with 'image/' OR .png/.jpg/.jpeg/.webp/.gif extension)
+- Image viewer now applies zoom via CSS transform: scale(zoom), with scrollable container for pan
+- Added fallback viewer for unsupported file types with download link
+- Review page now passes fileName prop to viewer for better type detection
+
+**Package Updates:**
+- Removed direct pdfjs-dist@5.4.624 dependency from package.json (conflicted with react-pdf's v5.4.296)
+- Now using only react-pdf@10.3.0 (latest stable) which bundles pdfjs-dist@5.4.296
+- Cleaner dependency tree with single pdfjs-dist version
+
+**Docker Configuration Fix:**
+- Added `/app/.next` volume exclusion in docker-compose.yml to prevent container permission issues
+- Created apps/web/.dockerignore to exclude .next, node_modules from Docker build context
+- Fixes "ENOENT: no such file or directory, mkdir '/app/.next/dev/logs'" error in todo-web container
+
+**Verification:**
+- npm --prefix apps/web run build: PASSED (16.2s compile, no errors)
+- Version compatibility: PDF.js API 5.4.296 matches Worker 5.4.296 (no version mismatch warnings)
+- Dependency tree: react-pdf@10.3.0 → pdfjs-dist@5.4.296 (single version, no conflicts)
+- Authentication: withCredentials option ensures cookies are sent with PDF fetch requests
+- Docker: Container manages its own .next directory without host conflicts
+- Expected manual tests:
+  - PDF attachment review: renders without console worker errors or 401 auth errors
+  - PNG/JPG attachment review: shows image (not "Unable to load image preview")
+  - Zoom +/- works for both PDF and image
+  - No external network calls required for worker
+  - No log directory errors in Docker container
+---
+
+
+
+

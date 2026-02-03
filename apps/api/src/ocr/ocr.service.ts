@@ -86,7 +86,9 @@ export interface OcrResultsWithCorrectionsResponse {
       createdAt: Date;
     }>;
   }>;
+  utilizationType?: string | null;
 }
+
 
 @Injectable()
 export class OcrService {
@@ -95,7 +97,7 @@ export class OcrService {
     private readonly auditService: AuditService,
     private readonly ocrParsingService: OcrParsingService,
     private readonly ocrCorrectionsService: OcrCorrectionsService,
-  ) {}
+  ) { }
 
   async createDerivedOutput({
     userId,
@@ -115,6 +117,11 @@ export class OcrService {
     const processingStatus: DerivedOcrProcessingStatus =
       status === 'complete' ? 'completed' : 'failed';
 
+    await this.dbs.db
+      .update(attachmentOcrOutputs)
+      .set({ isCurrent: false })
+      .where(eq(attachmentOcrOutputs.attachmentId, attachmentId));
+
     const [record] = await this.dbs.db
       .insert(attachmentOcrOutputs)
       .values({
@@ -124,10 +131,11 @@ export class OcrService {
           metadata == null
             ? null
             : typeof metadata === 'string'
-            ? metadata
-            : JSON.stringify(metadata),
+              ? metadata
+              : JSON.stringify(metadata),
         processingStatus,
         status: 'draft',
+        isCurrent: true,
       })
       .returning();
 
@@ -230,7 +238,12 @@ export class OcrService {
     return this.dbs.db
       .select()
       .from(attachmentOcrOutputs)
-      .where(eq(attachmentOcrOutputs.attachmentId, attachmentId))
+      .where(
+        and(
+          eq(attachmentOcrOutputs.attachmentId, attachmentId),
+          eq(attachmentOcrOutputs.isCurrent, true)
+        )
+      )
       .orderBy(desc(attachmentOcrOutputs.createdAt));
   }
 
@@ -263,11 +276,29 @@ export class OcrService {
         and(
           eq(attachmentOcrOutputs.attachmentId, attachmentId),
           eq(attachmentOcrOutputs.status, 'confirmed'),
+          eq(attachmentOcrOutputs.isCurrent, true),
         ),
       )
       .orderBy(
         desc(attachmentOcrOutputs.confirmedAt),
         desc(attachmentOcrOutputs.createdAt),
+      )
+      .limit(1);
+
+    return ocr ?? null;
+  }
+
+  async getCurrentOcr(
+    attachmentId: string,
+  ) {
+    const [ocr] = await this.dbs.db
+      .select()
+      .from(attachmentOcrOutputs)
+      .where(
+        and(
+          eq(attachmentOcrOutputs.attachmentId, attachmentId),
+          eq(attachmentOcrOutputs.isCurrent, true),
+        ),
       )
       .limit(1);
 
@@ -293,11 +324,11 @@ export class OcrService {
 
     const reasons: Record<OcrUtilizationType, string> = {
       authoritative_record:
-        'Authoritative record created from this OCR. Redo not allowed.',
+        'Authoritative record created from this data',
       workflow_approval:
-        'Workflow approval committed using this OCR. Redo not allowed.',
+        'Workflow approval committed',
       data_export:
-        'Data has been exported. Must archive current OCR before redo.',
+        'Data has been exported – must archive first',
     };
 
     const reason =
@@ -474,7 +505,7 @@ export class OcrService {
     if (ocr.utilizationType !== 'data_export') {
       throw new BadRequestException(
         `Can only archive OCR with Category C utilization (data_export). ` +
-          `Current utilization: ${ocr.utilizationType ?? 'none'}.`,
+        `Current utilization: ${ocr.utilizationType ?? 'none'}.`,
       );
     }
 
@@ -523,7 +554,7 @@ export class OcrService {
   ): Promise<OcrResultsWithCorrectionsResponse> {
     const attachment = await this.ensureUserOwnsAttachment(userId, attachmentId);
 
-    const rawOcrOutput = await this.getCurrentConfirmedOcr(attachmentId);
+    const rawOcrOutput = await this.getCurrentOcr(attachmentId);
     const parsedResults = rawOcrOutput
       ? await this.ocrParsingService.getOcrResultsByOutputId(rawOcrOutput.id)
       : [];
@@ -576,14 +607,16 @@ export class OcrService {
       },
       rawOcr: rawOcrOutput
         ? {
-            id: rawOcrOutput.id,
-            extractedText: rawOcrOutput.extractedText || '',
-            status: rawOcrOutput.status,
-            createdAt: rawOcrOutput.createdAt,
-          }
+          id: rawOcrOutput.id,
+          extractedText: rawOcrOutput.extractedText || '',
+          status: rawOcrOutput.status,
+          createdAt: rawOcrOutput.createdAt,
+        }
         : null,
+      utilizationType: rawOcrOutput?.utilizationType || null,
       parsedFields,
     };
+
   }
 
   private async ensureUserOwnsAttachment(

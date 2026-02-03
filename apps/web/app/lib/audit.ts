@@ -34,11 +34,11 @@ const ACTION_LABELS: Record<string, AuditActionInfo> = {
   'remark.delete': { label: 'Remark deleted', color: '#dc2626', icon: '-' },
   'attachment.upload': { label: 'Attachment uploaded', color: '#3b82f6', icon: '+' },
   'attachment.delete': { label: 'Attachment deleted', color: '#dc2626', icon: '-' },
-  OCR_REQUESTED: { label: 'OCR requested', color: '#f97316', icon: '>' },
-  OCR_SUCCEEDED: { label: 'OCR succeeded', color: '#22c55e', icon: '+' },
-  OCR_FAILED: { label: 'OCR failed', color: '#dc2626', icon: '!' },
-  'ocr.apply.remark': { label: 'OCR text added to remark', color: '#14b8a6', icon: '+' },
-  'ocr.apply.description': { label: 'OCR text appended to description', color: '#14b8a6', icon: '+' },
+  OCR_REQUESTED: { label: 'Extraction requested', color: '#f97316', icon: '>' },
+  OCR_SUCCEEDED: { label: 'Extraction succeeded', color: '#22c55e', icon: '+' },
+  OCR_FAILED: { label: 'Extraction failed', color: '#dc2626', icon: '!' },
+  'ocr.apply.remark': { label: 'Extracted text added to remark', color: '#14b8a6', icon: '+' },
+  'ocr.apply.description': { label: 'Extracted text appended to description', color: '#14b8a6', icon: '+' },
 };
 
 const DEFAULT_ACTION_INFO: AuditActionInfo = {
@@ -51,7 +51,7 @@ const capitalizeSegment = (segment: string) => {
   const normalized = segment.trim();
   if (!normalized) return '';
   const lower = normalized.toLowerCase();
-  if (lower === 'ocr') return 'OCR';
+  if (lower === 'ocr') return 'Extraction';
   if (lower === 'id') return 'ID';
   return normalized[0].toUpperCase() + normalized.slice(1).toLowerCase();
 };

@@ -1,4 +1,5 @@
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
+export const API_BASE_URL = API;
 export const CSRF_COOKIE_NAME =
   process.env.NEXT_PUBLIC_CSRF_COOKIE_NAME || 'todo_csrf';
 export const CSRF_HEADER_NAME =

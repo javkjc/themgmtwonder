@@ -73,9 +73,12 @@
   - Uses: Layout, ScheduleModal, NotificationToast; hooks useDurationSettings, useCategories, useScheduledEvents, useSettings; lib dateTime
   - Mutations at: handleSave(), handleSchedule(), handleUnschedule(), handleToggleDone(), handleDelete(), handleUpload(), handleDeleteAttachment(), handleAddRemark(), handleDeleteRemark(), fetchRemarks(), fetchHistory(), fetchTask()
   - Toast calls at: page.tsx addNotification (save/schedule/unschedule/update/delete/upload/delete attachment/add remark/delete remark)
-  - Attachments/OCR: attachments panel uploads to POST /attachments/todo/:todoId, downloads via `${API_BASE_URL}/attachments/:id/download`, triggers OCR with POST /attachments/:id/ocr, fetches outputs via GET /attachments/:id/ocr, displays attachment_ocr_outputs text with copy/apply actions; apply uses POST /attachments/:id/ocr/apply to add remark or append description; status badges now show lifecycle state when extracted text exists and warn for failed processing with available text; no PDF viewer or bounding boxes
-- ROUTE: /attachments/:id/ocr-review
-  - Status: TODO (v8) (no page or route implemented)
+  - Attachments/OCR: attachments panel uploads to POST /attachments/todo/:todoId, downloads via `${API_BASE_URL}/attachments/:id/download`, triggers OCR with POST /attachments/:id/ocr, fetches outputs via GET /attachments/:id/ocr, displays attachment_ocr_outputs text with copy/confirm/apply actions; confirm uses POST /ocr/:ocrId/confirm to transition draft outputs to confirmed; Review OCR link available ONLY when status is confirmed; apply uses POST /attachments/:id/ocr/apply to add remark or append description; status badges now show lifecycle state when extracted text exists and warn for failed processing with available text; no PDF viewer or bounding boxes on task detail page
+- ROUTE: /attachments/[attachmentId]/review
+  - Path: apps/web/app/attachments/[attachmentId]/review/page.tsx
+  - Purpose: Visual OCR evidence review (attachment viewer + parsed field list + correction/history modals).
+  - Uses: PdfDocumentViewer, OcrFieldList, OcrFieldEditModal, OcrCorrectionHistoryModal, NotificationToast, lib/api/ocr.ts helpers (fetchAttachmentOcrResults, createOcrCorrection, fetchOcrCorrectionHistory), API_BASE_URL for downloads and document playback.
+  - Mutations at: POST /ocr-results/:ocrResultId/corrections via lib/api/ocr.ts; Task detail page links to this route when attachment OCR status is confirmed.
 - ROUTE: /settings
   - Path: apps/web/app/settings (folder empty)
   - Purpose: UNKNOWN (no page implemented)

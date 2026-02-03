@@ -8,6 +8,7 @@ import {
   getCsrfToken,
   isUnauthorized,
 } from '../../lib/api';
+import { confirmOcrOutput, fetchCurrentConfirmedOcr, fetchOcrRedoEligibility } from '../../lib/api/ocr';
 import { formatDate, formatDateTime } from '../../lib/dateTime';
 import { useCategories } from '../../hooks/useCategories';
 import { useDurationSettings } from '../../hooks/useDurationSettings';
@@ -207,6 +208,13 @@ export default function TaskDetailsPage() {
   >({});
   const [attachmentOcrTriggering, setAttachmentOcrTriggering] = useState<
     Record<string, boolean>
+  >({});
+  const [ocrConfirming, setOcrConfirming] = useState<Record<string, boolean>>({});
+  const [showConfirmOcrModal, setShowConfirmOcrModal] = useState(false);
+  const [pendingOcrConfirmation, setPendingOcrConfirmation] = useState<{ attachmentId: string, outputId: string, text?: string } | null>(null);
+  // v3.5 / v8 Task A1: Extraction State Handling
+  const [ocrEligibility, setOcrEligibility] = useState<
+    Record<string, { loading: boolean; allowed: boolean; reason?: string; hasConfirmed: boolean; utilizationType?: string }>
   >({});
 
   // History
@@ -742,7 +750,7 @@ export default function TaskDetailsPage() {
     }
   };
 
-  const fetchAttachmentOcr = async (attachmentId: string) => {
+  const fetchAttachmentOcr = useCallback(async (attachmentId: string) => {
     setAttachmentOcrViewerState((prev) => {
       const existing = prev[attachmentId];
       return {
@@ -761,13 +769,13 @@ export default function TaskDetailsPage() {
       const data = await apiFetchJson(`/attachments/${attachmentId}/ocr`);
       const outputs: AttachmentOcrOutput[] = Array.isArray(data)
         ? data.map((item) => ({
-            id: item.id,
-            extractedText: item.extractedText ?? '',
-            processingStatus: item.processingStatus ?? 'failed',
-            lifecycleStatus: item.status ?? 'draft',
-            metadata: typeof item.metadata === 'string' ? item.metadata : null,
-            createdAt: item.createdAt ?? '',
-          }))
+          id: item.id,
+          extractedText: item.extractedText ?? '',
+          processingStatus: item.processingStatus ?? 'failed',
+          lifecycleStatus: item.status ?? 'draft',
+          metadata: typeof item.metadata === 'string' ? item.metadata : null,
+          createdAt: item.createdAt ?? '',
+        }))
         : [];
       setAttachmentOcrViewerState((prev) => ({
         ...prev,
@@ -789,7 +797,7 @@ export default function TaskDetailsPage() {
         },
       }));
     }
-  };
+  }, []);
 
   const triggerAttachmentOcr = async (attachmentId: string) => {
     if (attachmentOcrTriggering[attachmentId]) return;
@@ -802,18 +810,19 @@ export default function TaskDetailsPage() {
       await apiFetchJson(`/attachments/${attachmentId}/ocr`, { method: 'POST' });
       addNotification(
         'success',
-        'OCR requested',
-        'The OCR worker has been asked to extract text. Open the viewer once it finishes.',
+        'Extraction requested',
+        'The extraction worker has been asked to retrieve data. Open the viewer once it finishes.',
         task?.title,
         task?.id,
       );
       fetchHistory(historyLimit, 0, false);
-      fetchAttachmentOcr(attachmentId);
+      await fetchAttachmentOcr(attachmentId);
+      await checkOcrEligibility(attachmentId);
     } catch (err: any) {
       addNotification(
         'error',
-        'OCR request failed',
-        err?.message || 'Failed to request OCR extraction.',
+        'Extraction request failed',
+        err?.message || 'Failed to request data extraction.',
         task?.title,
         task?.id,
       );
@@ -824,6 +833,51 @@ export default function TaskDetailsPage() {
       }));
     }
   };
+
+  const checkOcrEligibility = useCallback(async (attachmentId: string) => {
+    setOcrEligibility((prev) => ({
+      ...prev,
+      [attachmentId]: { ...(prev[attachmentId] || {}), loading: true, allowed: true, hasConfirmed: false },
+    }));
+
+    try {
+      const [eligibility, confirmedOcr] = await Promise.all([
+        fetchOcrRedoEligibility(attachmentId),
+        fetchCurrentConfirmedOcr(attachmentId),
+      ]);
+
+      // Task A2: Fetch full OCR state to detect any 'pending' retrievals
+      // This ensures we can block concurrent retrievals even if they were triggered elsewhere.
+      fetchAttachmentOcr(attachmentId);
+
+      setOcrEligibility((prev) => ({
+        ...prev,
+        [attachmentId]: {
+          loading: false,
+          allowed: eligibility.allowed,
+          reason: eligibility.reason,
+          hasConfirmed: !!confirmedOcr,
+          utilizationType: eligibility.currentOcr?.utilizationType,
+        },
+      }));
+    } catch (err) {
+      console.error('Failed to check OCR eligibility:', err);
+      setOcrEligibility((prev) => ({
+        ...prev,
+        [attachmentId]: { loading: false, allowed: false, reason: 'Failed to verify eligibility', hasConfirmed: false },
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (attachments.length > 0) {
+      attachments.forEach((att) => {
+        if (!ocrEligibility[att.id]) {
+          checkOcrEligibility(att.id);
+        }
+      });
+    }
+  }, [attachments, checkOcrEligibility]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggleOcrViewer = (attachmentId: string) => {
     const current = attachmentOcrViewerState[attachmentId];
@@ -848,7 +902,7 @@ export default function TaskDetailsPage() {
       addNotification(
         'error',
         'Nothing to copy',
-        'There is no OCR text available to copy.',
+        'There is no extracted text available to copy.',
         task?.title,
         task?.id,
       );
@@ -871,8 +925,8 @@ export default function TaskDetailsPage() {
       }
       addNotification(
         'success',
-        'OCR text copied',
-        'The OCR output is on your clipboard.',
+        'Extracted text copied',
+        'The extracted data is on your clipboard.',
         task?.title,
         task?.id,
       );
@@ -880,7 +934,7 @@ export default function TaskDetailsPage() {
       addNotification(
         'error',
         'Copy failed',
-        err?.message || 'Unable to copy OCR text.',
+        err?.message || 'Unable to copy extracted text.',
         task?.title,
         task?.id,
       );
@@ -895,8 +949,8 @@ export default function TaskDetailsPage() {
       const taskId = task.id;
       const confirmation =
         target === 'remark'
-          ? 'Add this OCR text as a remark?'
-          : 'Append this OCR text to the task description?';
+          ? 'Add this extracted text as a remark?'
+          : 'Append this extracted text to the task description?';
 
       if (!confirm(confirmation)) {
         return;
@@ -919,8 +973,8 @@ export default function TaskDetailsPage() {
           await fetchRemarks(remarksLimit, 0, false);
           addNotification(
             'success',
-            'OCR remark added',
-            'The OCR text was added as a remark.',
+            'Extraction remark added',
+            'The extracted text was added as a remark.',
             taskTitle,
             taskId,
           );
@@ -929,7 +983,7 @@ export default function TaskDetailsPage() {
           addNotification(
             'success',
             'Description updated',
-            'The OCR text was appended to the description.',
+            'The extracted text was appended to the description.',
             taskTitle,
             taskId,
           );
@@ -937,8 +991,8 @@ export default function TaskDetailsPage() {
       } catch (err: any) {
         addNotification(
           'error',
-          'OCR apply failed',
-          err?.message || 'Could not apply the OCR text.',
+          'Extraction apply failed',
+          err?.message || 'Could not apply the extracted text.',
           taskTitle,
           taskId,
         );
@@ -959,6 +1013,61 @@ export default function TaskDetailsPage() {
       addNotification,
     ],
   );
+
+  const handleConfirmOcr = useCallback(
+    (attachmentId: string, outputId: string, text?: string) => {
+      setPendingOcrConfirmation({ attachmentId, outputId, text });
+      setShowConfirmOcrModal(true);
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!showConfirmOcrModal) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowConfirmOcrModal(false);
+        setPendingOcrConfirmation(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showConfirmOcrModal]);
+
+  const executeConfirmOcr = async () => {
+    if (!task || !pendingOcrConfirmation) return;
+    const { attachmentId, outputId, text } = pendingOcrConfirmation;
+
+    setOcrConfirming((prev) => ({ ...prev, [outputId]: true }));
+    setShowConfirmOcrModal(false);
+
+    try {
+      await confirmOcrOutput(outputId, { editedExtractedText: text });
+
+      addNotification(
+        'success',
+        'Extraction confirmed',
+        'The extraction has been confirmed.',
+        task.title,
+        task.id
+      );
+
+      await fetchHistory(historyLimit, 0, false);
+      await fetchAttachmentOcr(attachmentId);
+      await checkOcrEligibility(attachmentId);
+    } catch (err: any) {
+      addNotification(
+        'error',
+        'Confirmation failed',
+        err?.message || 'Could not confirm the extraction.',
+        task.title,
+        task.id
+      );
+    } finally {
+      setOcrConfirming((prev) => ({ ...prev, [outputId]: false }));
+      setPendingOcrConfirmation(null);
+    }
+  };
 
   // Delete attachment
   const handleDeleteAttachment = async (attachmentId: string) => {
@@ -1040,7 +1149,7 @@ export default function TaskDetailsPage() {
       case 'draft':
         return { label: 'Draft', color: '#2563eb' };
       default:
-        return { label: status ? status : 'OCR', color: '#64748b' };
+        return { label: status ? status : 'Extraction', color: '#64748b' };
     }
   };
 
@@ -1638,6 +1747,9 @@ export default function TaskDetailsPage() {
                         }
                         const showOcrWarning =
                           latestOutput && latestHasText && latestProcessingStatus === 'failed';
+                        const hasOcrOutput = Boolean(
+                          viewerState?.outputs && viewerState.outputs.length > 0
+                        );
                         return (
                           <div
                             key={attachment.id}
@@ -1652,290 +1764,405 @@ export default function TaskDetailsPage() {
                             }}
                           >
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                              <div style={{
-                              width: 40,
-                              height: 40,
-                              borderRadius: 8,
-                              background: '#f1f5f9',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: 18,
-                            }}>
-                              {attachment.mimeType.startsWith('image/') ? '🖼' :
-                               attachment.mimeType.includes('pdf') ? '📄' :
-                               attachment.mimeType.includes('zip') ? '📦' : '📎'}
-                            </div>
-                            <div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  <div style={{ fontSize: 14, fontWeight: 500 }}>{attachment.filename}</div>
-                                  <span style={renderBadgeStyle(badge.color)}>
-                                    {badge.label}
-                                  </span>
-                                  {showOcrWarning && (
-                                    <span style={{
-                                      fontSize: 11,
-                                      textTransform: 'uppercase',
-                                      letterSpacing: '0.04em',
-                                      fontWeight: 600,
-                                      color: '#f97316',
-                                    }}>
-                                      OCR Warning
-                                    </span>
-                                  )}
-                                </div>
-                              <div style={{ fontSize: 12, color: '#64748b' }}>
-                                {attachment.mimeType} - {formatFileSize(attachment.size)} - {formatDateTime(attachment.createdAt)}
-                              </div>
-                            </div>
-                            </div>
-                            <div style={{ display: 'flex', gap: 8 }}>
-                            <button
-                              onClick={() => handleDownload(attachment)}
-                              style={{
-                                padding: '6px 10px',
-                                borderRadius: 4,
-                                border: '1px solid #e2e8f0',
-                                background: 'white',
-                                cursor: 'pointer',
-                                fontSize: 12,
-                              }}
-                            >
-                              Download
-                            </button>
-                            <button
-                              onClick={() => handleDeleteAttachment(attachment.id)}
-                              style={{
-                                padding: '6px 10px',
-                                borderRadius: 4,
-                                border: 'none',
-                                background: '#fee2e2',
-                                color: '#dc2626',
-                                cursor: 'pointer',
-                                fontSize: 12,
-                              }}
-                            >
-                              Delete
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => triggerAttachmentOcr(attachment.id)}
-                              disabled={ocrTriggering}
-                              style={{
-                                padding: '6px 10px',
-                                borderRadius: 4,
-                                border: '1px solid #e2e8f0',
-                                background: ocrTriggering ? '#e2e8f0' : 'white',
-                                color: '#0f172a',
-                                cursor: ocrTriggering ? 'not-allowed' : 'pointer',
-                                fontSize: 12,
-                              }}
-                            >
-                              {ocrTriggering ? 'Requesting OCR...' : 'Retrieve OCR text'}
-                            </button>
-                            </div>
-                          </div>
-                          <div style={{ marginTop: 10 }}>
-                            <button
-                              type="button"
-                              onClick={() => handleToggleOcrViewer(attachment.id)}
-                              aria-expanded={viewerOpen}
-                              style={{
-                                padding: '6px 10px',
-                                borderRadius: 4,
-                                border: '1px solid #e2e8f0',
-                                background: viewerOpen ? '#e0f2fe' : 'white',
-                                color: '#0f172a',
-                                cursor: 'pointer',
-                                fontSize: 12,
-                              }}
-                            >
-                              {viewerOpen ? 'Hide OCR text' : `Show OCR text${viewerCount ? ` (${viewerCount})` : ''}`}
-                            </button>
-                            {viewerOpen && (
-                              <div
-                                style={{
-                                  marginTop: 12,
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <div style={{
+                                  width: 40,
+                                  height: 40,
                                   borderRadius: 8,
-                                  border: '1px solid #e2e8f0',
-                                  background: '#f8fafc',
-                                  padding: 12,
-                                }}
-                              >
-                                {viewerState?.loading && (
-                                  <p style={{ margin: 0, fontSize: 13, color: '#475569' }}>
-                                    Loading OCR text...
-                                  </p>
-                                )}
-                                {viewerState?.error && (
-                                  <div
-                                    style={{
-                                      display: 'flex',
-                                      justifyContent: 'space-between',
-                                      alignItems: 'center',
-                                      gap: 8,
-                                      marginBottom: 8,
-                                    }}
-                                  >
-                                    <span style={{ fontSize: 13, color: '#dc2626' }}>
-                                      {viewerState.error}
+                                  background: '#f1f5f9',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: 18,
+                                }}>
+                                  {attachment.mimeType.startsWith('image/') ? '🖼' :
+                                    attachment.mimeType.includes('pdf') ? '📄' :
+                                      attachment.mimeType.includes('zip') ? '📦' : '📎'}
+                                </div>
+                                <div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <div style={{ fontSize: 14, fontWeight: 500 }}>{attachment.filename}</div>
+                                    <span style={renderBadgeStyle(badge.color)}>
+                                      {badge.label}
                                     </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => fetchAttachmentOcr(attachment.id)}
-                                      style={{
-                                        padding: '4px 8px',
-                                        borderRadius: 4,
-                                        border: '1px solid #e2e8f0',
-                                        background: 'white',
-                                        cursor: 'pointer',
-                                        fontSize: 12,
-                                      }}
-                                    >
-                                      Retry
-                                    </button>
+                                    {showOcrWarning && (
+                                      <span style={{
+                                        fontSize: 11,
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.04em',
+                                        fontWeight: 600,
+                                        color: '#f97316',
+                                      }}>
+                                        Extraction Warning
+                                      </span>
+                                    )}
                                   </div>
-                                )}
-                                {!viewerState?.loading && !viewerState?.error && viewerState?.outputs && viewerState.outputs.length === 0 && (
-                                  <p style={{ margin: 0, fontSize: 13, color: '#475569' }}>
-                                    No OCR output has been captured for this attachment.
-                                  </p>
-                                )}
-                                {!viewerState?.loading && viewerState?.outputs && viewerState.outputs.length > 0 && (
-                                  <div style={{ display: 'grid', gap: 12 }}>
-                                    {viewerState.outputs.map((record) => {
-                                      const recordLoading = ocrApplyLoading[record.id] ?? {};
-                                      const recordHasText = (record.extractedText || '').trim().length > 0;
-                                      const recordProcessingStatus = record.processingStatus ?? 'pending';
-                                      const recordLifecycleStatus = record.lifecycleStatus ?? 'draft';
-                                      const recordBadge = recordHasText
-                                        ? getLifecycleBadge(recordLifecycleStatus)
-                                        : getProcessingBadge(recordProcessingStatus);
-                                      const showRecordWarning =
-                                        recordHasText && recordProcessingStatus === 'failed';
-                                      const canApplyOcr =
-                                        recordProcessingStatus === 'completed' && recordHasText;
-                                      return (
-                                        <div
-                                        key={record.id}
+                                  <div style={{ fontSize: 12, color: '#64748b' }}>
+                                    {attachment.mimeType} - {formatFileSize(attachment.size)} - {formatDateTime(attachment.createdAt)}
+                                  </div>
+                                </div>
+                              </div>
+                              <div style={{ display: 'flex', gap: 8 }}>
+                                <button
+                                  onClick={() => handleDownload(attachment)}
+                                  style={{
+                                    padding: '6px 10px',
+                                    borderRadius: 4,
+                                    border: '1px solid #e2e8f0',
+                                    background: 'white',
+                                    cursor: 'pointer',
+                                    fontSize: 12,
+                                  }}
+                                >
+                                  Download
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteAttachment(attachment.id)}
+                                  style={{
+                                    padding: '6px 10px',
+                                    borderRadius: 4,
+                                    border: 'none',
+                                    background: '#fee2e2',
+                                    color: '#dc2626',
+                                    cursor: 'pointer',
+                                    fontSize: 12,
+                                  }}
+                                >
+                                  Delete
+                                </button>
+                                {(() => {
+                                  const eligibility = ocrEligibility[attachment.id];
+                                  const isBackendPending = latestOutput?.processingStatus === 'pending';
+
+                                  // Task A2 / v8 UI Governance: Block concurrent retrieval if already in progress on backend.
+                                  // This check is enforced regardless of redo eligibility to respect backend authority.
+                                  const isLoading = eligibility?.loading || ocrTriggering || isBackendPending;
+
+                                  const label = eligibility?.hasConfirmed ? 'Redo Retrieval' : 'Retrieve Data';
+                                  const isDisabled = isLoading || (eligibility?.hasConfirmed && !eligibility?.allowed);
+                                  const tooltip = (eligibility?.hasConfirmed && !eligibility?.allowed) ? eligibility.reason : undefined;
+
+                                  const isCategoryC = eligibility?.utilizationType === 'data_export';
+
+                                  return (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          triggerAttachmentOcr(attachment.id);
+                                        }}
+                                        disabled={isDisabled}
+                                        title={tooltip}
                                         style={{
-                                          padding: 10,
-                                          borderRadius: 8,
+                                          padding: '6px 10px',
+                                          borderRadius: 4,
                                           border: '1px solid #e2e8f0',
-                                          background: 'white',
+                                          background: isDisabled ? '#e2e8f0' : 'white',
+                                          color: '#0f172a',
+                                          cursor: isDisabled ? 'not-allowed' : 'pointer',
+                                          fontSize: 12,
+                                          position: 'relative',
                                         }}
                                       >
-                                        <div
+                                        {isLoading ? 'Processing...' : label}
+                                        {tooltip && <span className="sr-only">Redo blocked: {tooltip}</span>}
+                                      </button>
+
+                                      {isCategoryC && (
+                                        <button
+                                          type="button"
+                                          disabled
+                                          title="Archive requirement not yet implemented in UI"
                                           style={{
-                                            display: 'flex',
-                                            justifyContent: 'space-between',
-                                            alignItems: 'center',
-                                            gap: 8,
-                                            marginBottom: 6,
+                                            padding: '6px 10px',
+                                            borderRadius: 4,
+                                            border: '1px solid #e2e8f0',
+                                            background: '#e2e8f0',
+                                            color: '#64748b',
+                                            cursor: 'not-allowed',
+                                            fontSize: 12,
                                           }}
                                         >
-                                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                            <span style={renderBadgeStyle(recordBadge.color)}>
-                                              {recordBadge.label}
-                                            </span>
-                                            {showRecordWarning && (
-                                              <span style={{
-                                                fontSize: 11,
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '0.04em',
-                                                fontWeight: 600,
-                                                color: '#f97316',
-                                              }}>
-                                                OCR Warning
-                                              </span>
-                                            )}
-                                            <span style={{ fontSize: 12, color: '#64748b' }}>
-                                              {formatDateTime(record.createdAt)}
-                                            </span>
-                                          </div>
-                                          <button
-                                            type="button"
-                                            onClick={() => handleCopyOcrText(record.extractedText)}
-                                            style={{
-                                              padding: '4px 8px',
-                                              borderRadius: 4,
-                                              border: '1px solid #e2e8f0',
-                                              background: 'white',
-                                              cursor: 'pointer',
-                                              fontSize: 12,
-                                            }}
-                                          >
-                                            Copy
-                                          </button>
-                                        </div>
-                                        <pre
-                                          style={{
-                                            margin: 0,
-                                            whiteSpace: 'pre-wrap',
-                                            wordBreak: 'break-word',
-                                            fontSize: 13,
-                                            color: '#0f172a',
-                                          }}
-                                        >
-                                          {record.extractedText || 'No text extracted.'}
-                                        </pre>
-                                        {record.metadata && (
-                                          <div style={{ marginTop: 6, fontSize: 11, color: '#475569', wordBreak: 'break-word' }}>
-                                            Metadata: {record.metadata}
-                                          </div>
-                                        )}
-                                        {canApplyOcr && (
-                                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-                                            <button
-                                              type="button"
-                                              onClick={() => handleApplyOcr(attachment.id, record.id, 'remark')}
-                                              disabled={recordLoading.remark === true}
-                                              style={{
-                                                padding: '6px 10px',
-                                                borderRadius: 4,
-                                                border: '1px solid #e2e8f0',
-                                                background: recordLoading.remark ? '#cbd5e1' : 'white',
-                                                color: '#0f172a',
-                                                cursor: recordLoading.remark ? 'not-allowed' : 'pointer',
-                                                fontSize: 12,
-                                              }}
-                                            >
-                                              {recordLoading.remark ? 'Adding remark...' : 'Add as remark'}
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={() => handleApplyOcr(attachment.id, record.id, 'description')}
-                                              disabled={recordLoading.description === true}
-                                              style={{
-                                                padding: '6px 10px',
-                                                borderRadius: 4,
-                                                border: '1px solid #e2e8f0',
-                                                background: recordLoading.description ? '#cbd5e1' : 'white',
-                                                color: '#0f172a',
-                                                cursor: recordLoading.description ? 'not-allowed' : 'pointer',
-                                                fontSize: 12,
-                                              }}
-                                            >
-                                              {recordLoading.description ? 'Appending...' : 'Append to description'}
-                                            </button>
-                                          </div>
-                                        )}
-                                        {recordHasText && recordProcessingStatus !== 'completed' && (
-                                          <div style={{ marginTop: 8, fontSize: 12, color: '#f97316' }}>
-                                            Cannot confirm until OCR processing completes.
-                                          </div>
-                                        )}
-                                        </div>
-                                    );
-                                  })}
-                                </div>
+                                          Archive & Redo
+                                        </button>
+                                      )}
+                                    </>
+                                  );
+                                })()}
+                                {latestOutput && latestOutput.lifecycleStatus === 'draft' && latestOutput.processingStatus === 'completed' && (
+                                  <>
+                                    {ocrEligibility[attachment.id]?.hasConfirmed ? (
+                                      <span style={{ fontSize: 12, color: '#64748b', fontStyle: 'italic' }}>
+                                        A confirmed extraction already exists for this attachment.
+                                      </span>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleConfirmOcr(attachment.id, latestOutput.id, latestOutput.extractedText)}
+                                        disabled={ocrConfirming[latestOutput.id]}
+                                        style={{
+                                          padding: '6px 10px',
+                                          borderRadius: 4,
+                                          border: '1px solid #16a34a',
+                                          background: '#f0fdf4',
+                                          color: '#166534',
+                                          cursor: ocrConfirming[latestOutput.id] ? 'not-allowed' : 'pointer',
+                                          fontSize: 12,
+                                          fontWeight: 600,
+                                        }}
+                                      >
+                                        {ocrConfirming[latestOutput.id] ? 'Confirming...' : 'Confirm Extraction'}
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                                {hasOcrOutput && (
+                                  <button
+                                    type="button"
+                                    onClick={() => router.push(`/attachments/${attachment.id}/review?taskId=${taskId}`)}
+                                    style={{
+                                      padding: '6px 10px',
+                                      borderRadius: 4,
+                                      border: '1px solid #2563eb',
+                                      background: '#eff6ff',
+                                      color: '#1d4ed8',
+                                      cursor: 'pointer',
+                                      fontSize: 12,
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    Review Extraction
+                                  </button>
                                 )}
                               </div>
-                            )}
+                            </div>
+                            <div style={{ marginTop: 10 }}>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleOcrViewer(attachment.id)}
+                                aria-expanded={viewerOpen}
+                                style={{
+                                  padding: '6px 10px',
+                                  borderRadius: 4,
+                                  border: '1px solid #e2e8f0',
+                                  background: viewerOpen ? '#e0f2fe' : 'white',
+                                  color: '#0f172a',
+                                  cursor: 'pointer',
+                                  fontSize: 12,
+                                }}
+                              >
+                                {viewerOpen ? 'Hide extracted text' : `Show extracted text${viewerCount ? ` (${viewerCount})` : ''}`}
+                              </button>
+                              {viewerOpen && (
+                                <div
+                                  style={{
+                                    marginTop: 12,
+                                    borderRadius: 8,
+                                    border: '1px solid #e2e8f0',
+                                    background: '#f8fafc',
+                                    padding: 12,
+                                  }}
+                                >
+                                  {viewerState?.loading && (
+                                    <p style={{ margin: 0, fontSize: 13, color: '#475569' }}>
+                                      Loading extracted text...
+                                    </p>
+                                  )}
+                                  {viewerState?.error && (
+                                    <div
+                                      style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        gap: 8,
+                                        marginBottom: 8,
+                                      }}
+                                    >
+                                      <span style={{ fontSize: 13, color: '#dc2626' }}>
+                                        {viewerState.error}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => fetchAttachmentOcr(attachment.id)}
+                                        style={{
+                                          padding: '4px 8px',
+                                          borderRadius: 4,
+                                          border: '1px solid #e2e8f0',
+                                          background: 'white',
+                                          cursor: 'pointer',
+                                          fontSize: 12,
+                                        }}
+                                      >
+                                        Retry
+                                      </button>
+                                    </div>
+                                  )}
+                                  {!viewerState?.loading && !viewerState?.error && viewerState?.outputs && viewerState.outputs.length === 0 && (
+                                    <p style={{ margin: 0, fontSize: 13, color: '#475569' }}>
+                                      No extraction output has been captured for this attachment.
+                                    </p>
+                                  )}
+                                  {!viewerState?.loading && viewerState?.outputs && viewerState.outputs.length > 0 && (
+                                    <div style={{ display: 'grid', gap: 12 }}>
+                                      {viewerState.outputs.map((record) => {
+                                        const recordLoading = ocrApplyLoading[record.id] ?? {};
+                                        const recordHasText = (record.extractedText || '').trim().length > 0;
+                                        const recordProcessingStatus = record.processingStatus ?? 'pending';
+                                        const recordLifecycleStatus = record.lifecycleStatus ?? 'draft';
+                                        const recordBadge = recordHasText
+                                          ? getLifecycleBadge(recordLifecycleStatus)
+                                          : getProcessingBadge(recordProcessingStatus);
+                                        const showRecordWarning =
+                                          recordHasText && recordProcessingStatus === 'failed';
+                                        const canApplyOcr =
+                                          recordProcessingStatus === 'completed' && recordHasText;
+                                        return (
+                                          <div
+                                            key={record.id}
+                                            style={{
+                                              padding: 10,
+                                              borderRadius: 8,
+                                              border: '1px solid #e2e8f0',
+                                              background: 'white',
+                                            }}
+                                          >
+                                            <div
+                                              style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                gap: 8,
+                                                marginBottom: 6,
+                                              }}
+                                            >
+                                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                <span style={renderBadgeStyle(recordBadge.color)}>
+                                                  {recordBadge.label}
+                                                </span>
+                                                {showRecordWarning && (
+                                                  <span style={{
+                                                    fontSize: 11,
+                                                    textTransform: 'uppercase',
+                                                    letterSpacing: '0.04em',
+                                                    fontWeight: 600,
+                                                    color: '#f97316',
+                                                  }}>
+                                                    Extraction Warning
+                                                  </span>
+                                                )}
+                                                <span style={{ fontSize: 12, color: '#64748b' }}>
+                                                  {formatDateTime(record.createdAt)}
+                                                </span>
+                                              </div>
+                                              <button
+                                                type="button"
+                                                onClick={() => handleCopyOcrText(record.extractedText)}
+                                                style={{
+                                                  padding: '4px 8px',
+                                                  borderRadius: 4,
+                                                  border: '1px solid #e2e8f0',
+                                                  background: 'white',
+                                                  cursor: 'pointer',
+                                                  fontSize: 12,
+                                                }}
+                                              >
+                                                Copy
+                                              </button>
+                                            </div>
+                                            <pre
+                                              style={{
+                                                margin: 0,
+                                                whiteSpace: 'pre-wrap',
+                                                wordBreak: 'break-word',
+                                                fontSize: 13,
+                                                color: '#0f172a',
+                                              }}
+                                            >
+                                              {record.extractedText || 'No text extracted.'}
+                                            </pre>
+                                            {record.metadata && (
+                                              <div style={{ marginTop: 6, fontSize: 11, color: '#475569', wordBreak: 'break-word' }}>
+                                                Metadata: {record.metadata}
+                                              </div>
+                                            )}
+                                            {canApplyOcr && (
+                                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                                                {recordLifecycleStatus === 'draft' && recordProcessingStatus === 'completed' && (
+                                                  <>
+                                                    {ocrEligibility[attachment.id]?.hasConfirmed ? (
+                                                      <span style={{ fontSize: 12, color: '#64748b', fontStyle: 'italic' }}>
+                                                        A confirmed extraction already exists for this attachment.
+                                                      </span>
+                                                    ) : (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => handleConfirmOcr(attachment.id, record.id, record.extractedText)}
+                                                        disabled={ocrConfirming[record.id]}
+                                                        style={{
+                                                          padding: '6px 10px',
+                                                          borderRadius: 4,
+                                                          border: '1px solid #16a34a',
+                                                          background: '#f0fdf4',
+                                                          color: '#166534',
+                                                          cursor: ocrConfirming[record.id] ? 'not-allowed' : 'pointer',
+                                                          fontSize: 12,
+                                                          fontWeight: 600,
+                                                        }}
+                                                      >
+                                                        {ocrConfirming[record.id] ? 'Confirming...' : 'Confirm Extraction'}
+                                                      </button>
+                                                    )}
+                                                  </>
+                                                )}
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleApplyOcr(attachment.id, record.id, 'remark')}
+                                                  disabled={recordLoading.remark === true}
+                                                  style={{
+                                                    padding: '6px 10px',
+                                                    borderRadius: 4,
+                                                    border: '1px solid #e2e8f0',
+                                                    background: recordLoading.remark ? '#cbd5e1' : 'white',
+                                                    color: '#0f172a',
+                                                    cursor: recordLoading.remark ? 'not-allowed' : 'pointer',
+                                                    fontSize: 12,
+                                                  }}
+                                                >
+                                                  {recordLoading.remark ? 'Adding remark...' : 'Add as remark'}
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleApplyOcr(attachment.id, record.id, 'description')}
+                                                  disabled={recordLoading.description === true}
+                                                  style={{
+                                                    padding: '6px 10px',
+                                                    borderRadius: 4,
+                                                    border: '1px solid #e2e8f0',
+                                                    background: recordLoading.description ? '#cbd5e1' : 'white',
+                                                    color: '#0f172a',
+                                                    cursor: recordLoading.description ? 'not-allowed' : 'pointer',
+                                                    fontSize: 12,
+                                                  }}
+                                                >
+                                                  {recordLoading.description ? 'Appending...' : 'Append to description'}
+                                                </button>
+                                              </div>
+                                            )}
+                                            {recordHasText && recordProcessingStatus !== 'completed' && (
+                                              <div style={{ marginTop: 8, fontSize: 12, color: '#f97316' }}>
+                                                Cannot confirm until extraction completes.
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      );
+                        );
                       })}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
@@ -2039,58 +2266,58 @@ export default function TaskDetailsPage() {
                       const stageBadge = renderStageBadge(remark.stageKeyAtCreation);
                       return (
                         <div
-                        key={remark.id}
-                        style={{
-                          padding: 12,
-                          borderRadius: 8,
-                          border: '1px solid #e2e8f0',
-                          background: '#f8fafc',
-                          minWidth: 0,
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                          <div style={{ minWidth: 0, flex: 1 }}>
-                            <div style={{ fontSize: 12, color: '#64748b' }}>
-                              {formatDateTime(remark.createdAt)}
-                            </div>
-                            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
-                              Written by {remark.authorEmail || remark.userId}
-                            </div>
-                            {stageBadge && (
-                              <div style={{ marginTop: 6 }}>
-                                {stageBadge}
+                          key={remark.id}
+                          style={{
+                            padding: 12,
+                            borderRadius: 8,
+                            border: '1px solid #e2e8f0',
+                            background: '#f8fafc',
+                            minWidth: 0,
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>
+                                {formatDateTime(remark.createdAt)}
                               </div>
+                              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                                Written by {remark.authorEmail || remark.userId}
+                              </div>
+                              {stageBadge && (
+                                <div style={{ marginTop: 6 }}>
+                                  {stageBadge}
+                                </div>
+                              )}
+                            </div>
+                            {remark.userId === me.userId && (
+                              <button
+                                onClick={() => handleDeleteRemark(remark.id)}
+                                style={{
+                                  padding: '4px 8px',
+                                  borderRadius: 4,
+                                  border: 'none',
+                                  background: '#fee2e2',
+                                  color: '#dc2626',
+                                  cursor: 'pointer',
+                                  fontSize: 11,
+                                  flexShrink: 0,
+                                }}
+                              >
+                                Delete
+                              </button>
                             )}
                           </div>
-                          {remark.userId === me.userId && (
-                            <button
-                              onClick={() => handleDeleteRemark(remark.id)}
-                              style={{
-                                padding: '4px 8px',
-                                borderRadius: 4,
-                                border: 'none',
-                                background: '#fee2e2',
-                                color: '#dc2626',
-                                cursor: 'pointer',
-                                fontSize: 11,
-                                flexShrink: 0,
-                              }}
-                            >
-                              Delete
-                            </button>
-                          )}
+                          <p style={{
+                            margin: 0,
+                            fontSize: 14,
+                            color: '#1e293b',
+                            whiteSpace: 'pre-wrap',
+                            overflowWrap: 'anywhere',
+                            wordBreak: 'break-word',
+                          }}>
+                            {remark.content}
+                          </p>
                         </div>
-                        <p style={{
-                          margin: 0,
-                          fontSize: 14,
-                          color: '#1e293b',
-                          whiteSpace: 'pre-wrap',
-                          overflowWrap: 'anywhere',
-                          wordBreak: 'break-word',
-                        }}>
-                          {remark.content}
-                        </p>
-                      </div>
                       );
                     })}
                   </div>
@@ -2167,101 +2394,101 @@ export default function TaskDetailsPage() {
                 {(parent || children.length > 0) ? (
                   <div>
 
-                  {parent && (
-                    <div style={{ marginBottom: children.length > 0 ? 16 : 0 }}>
-                      <div style={{ fontSize: 13, color: '#64748b', marginBottom: 8, fontWeight: 500 }}>Parent Task</div>
-                      <div
-                        onClick={() => router.push(`/task/${parent.id}`)}
-                        style={{
-                          padding: '12px 16px',
-                          borderRadius: 8,
-                          border: '1px solid #e2e8f0',
-                          background: '#f8fafc',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = '#f1f5f9';
-                          e.currentTarget.style.borderColor = '#cbd5e1';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = '#f8fafc';
-                          e.currentTarget.style.borderColor = '#e2e8f0';
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ fontSize: 14, fontWeight: 500, color: '#1e293b', flex: 1 }}>
-                            {parent.title}
-                          </span>
-                          {parent.done && (
-                            <span style={{
-                              padding: '2px 8px',
-                              borderRadius: 4,
-                              background: '#dcfce7',
-                              color: '#166534',
-                              fontSize: 11,
-                              fontWeight: 600,
-                            }}>
-                              DONE
+                    {parent && (
+                      <div style={{ marginBottom: children.length > 0 ? 16 : 0 }}>
+                        <div style={{ fontSize: 13, color: '#64748b', marginBottom: 8, fontWeight: 500 }}>Parent Task</div>
+                        <div
+                          onClick={() => router.push(`/task/${parent.id}`)}
+                          style={{
+                            padding: '12px 16px',
+                            borderRadius: 8,
+                            border: '1px solid #e2e8f0',
+                            background: '#f8fafc',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = '#f1f5f9';
+                            e.currentTarget.style.borderColor = '#cbd5e1';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = '#f8fafc';
+                            e.currentTarget.style.borderColor = '#e2e8f0';
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 14, fontWeight: 500, color: '#1e293b', flex: 1 }}>
+                              {parent.title}
                             </span>
-                          )}
-                          <span style={{ fontSize: 18, color: '#94a3b8' }}>→</span>
+                            {parent.done && (
+                              <span style={{
+                                padding: '2px 8px',
+                                borderRadius: 4,
+                                background: '#dcfce7',
+                                color: '#166534',
+                                fontSize: 11,
+                                fontWeight: 600,
+                              }}>
+                                DONE
+                              </span>
+                            )}
+                            <span style={{ fontSize: 18, color: '#94a3b8' }}>→</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {children.length > 0 && (
-                    <div>
-                      <div style={{ fontSize: 13, color: '#64748b', marginBottom: 8, fontWeight: 500 }}>
-                        Child Tasks ({children.length})
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {children.map((child) => (
-                          <div
-                            key={child.id}
-                            onClick={() => router.push(`/task/${child.id}`)}
-                            style={{
-                              padding: '12px 16px',
-                              borderRadius: 8,
-                              border: '1px solid #e2e8f0',
-                              background: '#f8fafc',
-                              cursor: 'pointer',
-                              transition: 'all 0.2s',
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.background = '#f1f5f9';
-                              e.currentTarget.style.borderColor = '#cbd5e1';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.background = '#f8fafc';
-                              e.currentTarget.style.borderColor = '#e2e8f0';
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span style={{ fontSize: 14, fontWeight: 500, color: '#1e293b', flex: 1 }}>
-                                {child.title}
-                              </span>
-                              {child.done && (
-                                <span style={{
-                                  padding: '2px 8px',
-                                  borderRadius: 4,
-                                  background: '#dcfce7',
-                                  color: '#166534',
-                                  fontSize: 11,
-                                  fontWeight: 600,
-                                }}>
-                                  DONE
+                    {children.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 13, color: '#64748b', marginBottom: 8, fontWeight: 500 }}>
+                          Child Tasks ({children.length})
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {children.map((child) => (
+                            <div
+                              key={child.id}
+                              onClick={() => router.push(`/task/${child.id}`)}
+                              style={{
+                                padding: '12px 16px',
+                                borderRadius: 8,
+                                border: '1px solid #e2e8f0',
+                                background: '#f8fafc',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s',
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = '#f1f5f9';
+                                e.currentTarget.style.borderColor = '#cbd5e1';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = '#f8fafc';
+                                e.currentTarget.style.borderColor = '#e2e8f0';
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{ fontSize: 14, fontWeight: 500, color: '#1e293b', flex: 1 }}>
+                                  {child.title}
                                 </span>
-                              )}
-                              <span style={{ fontSize: 18, color: '#94a3b8' }}>→</span>
+                                {child.done && (
+                                  <span style={{
+                                    padding: '2px 8px',
+                                    borderRadius: 4,
+                                    background: '#dcfce7',
+                                    color: '#166534',
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                  }}>
+                                    DONE
+                                  </span>
+                                )}
+                                <span style={{ fontSize: 18, color: '#94a3b8' }}>→</span>
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
                 ) : (
                   <div style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', padding: '16px 0' }}>
                     No parent or child tasks. Use "Set Parent" to associate this task.
@@ -2644,6 +2871,95 @@ export default function TaskDetailsPage() {
                 }}
               >
                 {associating ? 'Removing...' : 'Remove Parent'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* OCR Confirmation Modal (Task D1) */}
+      {showConfirmOcrModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000,
+            padding: 16,
+          }}
+          onClick={() => {
+            setShowConfirmOcrModal(false);
+            setPendingOcrConfirmation(null);
+          }}
+        >
+          <div
+            style={{
+              background: 'white',
+              borderRadius: 12,
+              padding: 24,
+              width: '100%',
+              maxWidth: 480,
+              boxShadow: '0 24px 80px rgba(0,0,0,0.25)',
+              position: 'relative',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>Confirm Extraction</h2>
+
+            <div style={{ marginBottom: 20 }}>
+              <p style={{ fontSize: 14, fontWeight: 500, color: '#1e293b', marginBottom: 12 }}>
+                Confirming will:
+              </p>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
+                <li style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14, color: '#475569' }}>
+                  <span style={{ color: '#16a34a' }}>✓</span>
+                  <span>Lock this data as the baseline</span>
+                </li>
+                <li style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14, color: '#475569' }}>
+                  <span style={{ color: '#16a34a' }}>✓</span>
+                  <span>Make it available for use in tasks, exports, and workflows</span>
+                </li>
+                <li style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14, color: '#475569' }}>
+                  <span style={{ color: '#dc2626' }}>✗</span>
+                  <span>Cannot be edited after utilization</span>
+                </li>
+              </ul>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                onClick={() => {
+                  setShowConfirmOcrModal(false);
+                  setPendingOcrConfirmation(null);
+                }}
+                style={{
+                  padding: '10px 16px',
+                  borderRadius: 8,
+                  border: '1px solid #e2e8f0',
+                  background: 'white',
+                  color: '#475569',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={executeConfirmOcr}
+                style={{
+                  padding: '10px 18px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: '#16a34a',
+                  color: 'white',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Yes, Confirm
               </button>
             </div>
           </div>

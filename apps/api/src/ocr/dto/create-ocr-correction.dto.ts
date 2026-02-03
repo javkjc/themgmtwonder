@@ -6,6 +6,6 @@ export class CreateOcrCorrectionDto {
   correctedValue: string;
 
   @IsString()
-  @IsOptional()
-  correctionReason?: string;
+  @IsNotEmpty()
+  correctionReason: string;
 }

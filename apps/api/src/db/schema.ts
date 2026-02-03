@@ -183,6 +183,7 @@ export const attachmentOcrOutputs = pgTable(
     archivedAt: timestamp('archived_at'),
     archivedBy: uuid('archived_by').references(() => users.id),
     archiveReason: text('archive_reason'),
+    isCurrent: boolean('is_current').default(true).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (t) => ({

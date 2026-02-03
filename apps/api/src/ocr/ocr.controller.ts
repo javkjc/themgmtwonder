@@ -34,7 +34,7 @@ export class OcrController {
     private readonly ocrParsingService: OcrParsingService,
     private readonly ocrCorrectionsService: OcrCorrectionsService,
     private readonly dbs: DbService,
-  ) {}
+  ) { }
 
   /**
    * Confirm a draft OCR result so it becomes the authoritative record for the attachment.

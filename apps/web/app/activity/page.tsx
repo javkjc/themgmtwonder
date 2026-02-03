@@ -25,6 +25,11 @@ const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   'admin.reset_password': { label: 'Admin reset password', color: '#ef4444' },
   'user.role.grant': { label: 'Admin role granted', color: '#10b981' },
   'user.role.revoke': { label: 'Admin role revoked', color: '#ef4444' },
+  'OCR_REQUESTED': { label: 'Extraction requested', color: '#f59e0b' },
+  'OCR_SUCCEEDED': { label: 'Extraction succeeded', color: '#10b981' },
+  'OCR_FAILED': { label: 'Extraction failed', color: '#ef4444' },
+  'ocr.apply.remark': { label: 'Extracted text added to remark', color: '#0ea5e9' },
+  'ocr.apply.description': { label: 'Extracted text appended to description', color: '#0ea5e9' },
 };
 
 function formatDate(dateStr: string) {
@@ -228,7 +233,7 @@ export default function ActivityPage() {
   const [actionFilter, setActionFilter] = useState<string>('');
   const auditLogs = useAuditLogs({
     action: actionFilter || undefined,
-    onUnauthorized: () => {},
+    onUnauthorized: () => { },
   });
 
   if (auth.initialLoad) {
@@ -267,6 +272,7 @@ export default function ActivityPage() {
     { value: 'todo', label: 'Tasks' },
     { value: 'category', label: 'Categories' },
     { value: 'settings', label: 'Settings' },
+    { value: 'ocr', label: 'Extraction' },
   ];
 
   return (

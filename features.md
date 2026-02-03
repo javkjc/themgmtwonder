@@ -690,6 +690,571 @@ One-Line Rule
 
 OCR suggests → user confirms → saved data becomes immutable baseline; redo is only possible before real decisions are made, or after explicit archive if the data has left the system.
 
+## v8.1 - Additional features
+Status: Completed
+TASK GROUP A: Core State Machine (Blockers)
+Task A1: Add Extraction State to UI
+Priority: CRITICAL - Blocks all other work
+Estimated Effort: Small
+Dependencies: None
+Changes needed:
+
+Frontend must query getCurrentConfirmedOcr() to check if confirmed extraction exists
+Frontend must query checkRedoEligibility() before showing "Retrieve" button
+Button states:
+
+"Retrieve Data" (no confirmed extraction exists)
+"Redo Retrieval" (confirmed exists + redo allowed)
+Disabled + tooltip (confirmed exists + redo blocked)
+
+
+
+Files to modify:
+
+Task detail page where OCR trigger button lives
+Add loading state for eligibility check
+
+
+Task A2: Block Concurrent Retrieval
+Priority: HIGH
+Estimated Effort: Small
+Dependencies: A1
+Changes needed:
+
+Frontend: Disable retrieve button while processingStatus = 'pending'
+Backend already has this via attachment_ocr_outputs.processingStatus
+Just need UI to respect it
+
+Files to modify:
+
+Task detail page OCR button
+Add check for existing pending OCR
+
+
+Task A3: Enforce Redo Rules in UI
+Priority: HIGH
+Estimated Effort: Medium
+Dependencies: A1
+Changes needed:
+
+Call GET /attachments/:id/ocr/redo-eligibility before allowing retrieve
+Show tooltip explaining why redo is blocked:
+
+"Authoritative record created from this data"
+"Data has been exported - must archive first"
+"Workflow approval committed"
+
+
+Add "Archive & Redo" workflow for Category C
+
+Files to modify:
+
+Task detail OCR section
+New tooltip component explaining utilization
+
+
+TASK GROUP B: Review Page Semantics
+Task B1: Rename & Reframe Review Page
+Priority: MEDIUM
+Estimated Effort: Small
+Dependencies: None (can be done in parallel)
+Changes needed:
+
+Page title: "OCR Review" → "Extracted Data Review"
+Section headers: "OCR Fields" → "Extracted Fields"
+Help text: Explain this is reviewing extraction, not the document itself
+Add state badge: "Draft" / "Confirmed" / "Archived"
+
+Files to modify:
+
+/attachments/[id]/review/page.tsx (or wherever review page is)
+Update all copy to use "extraction" not "OCR"
+
+
+Task B2: Show Extraction Provenance
+Priority: MEDIUM
+Estimated Effort: Medium
+Dependencies: B1
+Changes needed:
+
+For each field, show:
+
+Original extracted value (grayed out if corrected)
+Current value (highlighted if corrected)
+"Extracted via: OCR" badge
+Correction history link (if corrections exist)
+
+
+Distinguish original vs corrected visually
+
+Files to modify:
+
+OcrFieldList component
+Add "original value" display above current value
+Add strikethrough style for corrected originals
+
+
+Task B3: Handle Empty/Failed Extraction
+Priority: HIGH
+Estimated Effort: Small
+Dependencies: None
+Changes needed:
+
+If parsedFields.length === 0: Show "No fields extracted"
+If PDF preview fails: Show error + download link
+If OCR confidence universally low: Show warning banner
+Don't fail silently
+
+Files to modify:
+
+Review page error states
+Add empty state UI
+
+
+TASK GROUP C: Editing Governance
+Task C1: Block Editing on Utilized Extraction
+Priority: CRITICAL
+Estimated Effort: Medium
+Dependencies: Backend already tracks utilization
+Changes needed:
+
+Check attachment_ocr_outputs.utilization_type before showing edit button
+If utilized: Hide edit button, show "Read-only (data in use)" badge
+Add tooltip explaining why: "Authoritative record created" / "Data exported" / "Workflow approved"
+
+Files to modify:
+
+OcrFieldList component
+Add utilization check in field render
+
+
+Task C2: Require Correction Reason for Edits
+Priority: HIGH
+Estimated Effort: Small
+Dependencies: C1
+Changes needed:
+
+OcrFieldEditModal must have mandatory "Reason for correction" textarea
+Cannot save without reason (client + server validation)
+Reason shown in correction history
+
+Files to modify:
+
+OcrFieldEditModal component
+Make correctionReason required (not optional)
+Update DTO validation on backend
+
+
+Task C3: Show Draft vs Confirmed State Clearly
+Priority: HIGH
+Estimated Effort: Small
+Dependencies: None
+Changes needed:
+
+Review page must show banner at top:
+
+Draft: Yellow banner "This is a draft extraction. Confirm to make it the baseline."
+Confirmed: Green banner "This is the confirmed baseline extraction."
+Archived: Gray banner "This extraction is archived (view only)."
+
+
+Hide confirm button if already confirmed
+
+Files to modify:
+
+Review page header
+Add state banner component
+
+
+TASK GROUP D: Confirmation Semantics
+Task D1: Add Confirmation Explanation Modal
+Priority: MEDIUM
+Estimated Effort: Small
+Dependencies: None
+Changes needed:
+
+Before confirm, show modal:
+
+"Confirming will:"
+"✓ Lock this data as the baseline"
+"✓ Make it available for use in tasks/exports/workflows"
+"✗ Cannot be edited after utilization"
+"Are you sure?"
+
+
+Require explicit "Yes, Confirm" click
+
+Files to modify:
+
+Review page confirm button
+Add confirmation modal component
+
+
+Task D2: Block Confirm Button on Draft After Utilization
+Priority: LOW (edge case)
+Estimated Effort: Small
+Dependencies: Backend already prevents this
+Changes needed:
+
+If somehow user has draft + confirmed exists: Hide confirm button
+Show message: "A confirmed extraction already exists for this attachment"
+
+Files to modify:
+
+Review page logic
+Check for existing confirmed before showing confirm
+
+
+TASK GROUP E: Terminology Cleanup
+Task E1: Decouple "OCR" from "Extraction" in Code
+Priority: LOW (refactor)
+Estimated Effort: Large (but safe)
+Dependencies: All other tasks complete
+Changes needed:
+
+Rename internally:
+
+ocrResults → extractionFields (or keep as is, just document)
+ocrCorrections → extractionCorrections (or keep)
+Services can stay named OCR (implementation detail)
+
+
+Update all UI copy to say "extraction" not "OCR"
+Backend schema can stay as-is (breaking change not worth it)
+
+Files to modify:
+
+All frontend components
+User-facing text only
+Backend stays unchanged (API contract)
+
+
+Recommended Implementation Order
+Phase 1: Critical Blockers (Week 1)
+
+Task A1: Add Extraction State to UI
+Task A2: Block Concurrent Retrieval
+Task C1: Block Editing on Utilized Extraction
+Task B3: Handle Empty/Failed Extraction
+
+Phase 2: Governance (Week 2)
+5. Task A3: Enforce Redo Rules in UI
+6. Task C2: Require Correction Reason
+7. Task C3: Show Draft vs Confirmed State
+8. Task D1: Add Confirmation Explanation Modal
+Phase 3: Polish (Week 3)
+9. Task B1: Rename & Reframe Review Page
+10. Task B2: Show Extraction Provenance
+11. Task D2: Block Confirm on Existing Confirmed
+Phase 4: Refactor (Optional)
+12. Task E1: Decouple "OCR" from "Extraction" (if desired)
+
+Conflict Analysis with v3.5/v8
+No conflicts found - These tasks extend existing work:
+
+✅ v3.5 provides the state machine (draft/confirmed/archived)
+✅ v3.5 provides utilization tracking
+✅ v3.5 provides redo eligibility checks
+✅ v8 Tasks 1-4 provide the backend services
+✅ These tasks build UI on top of that foundation
+
+Key insight: The backend is correct, the frontend just needs to respect it.
+
+
+---
+
+## v8.5 — Field Builder (Structured Extraction Authoring) (Planned)
+What this is
+
+A governed Field Builder inside the Extracted Data Review page that lets a user convert raw extracted text into structured fields (key/value pairs) using explicit, auditable actions. It supports “no fields extracted” situations by allowing the user to build fields manually from the extracted text.
+
+What this is not
+
+No automatic background extraction or auto-field creation
+
+No learning, no model fine-tuning
+
+No authoritative record creation (still derived data)
+
+No silent overwrite of existing fields (all edits are explicit + audited)
+
+No table/line-item intelligence unless explicitly enabled as a separate sub-feature
+
+Design intent
+
+When parsing yields zero or low-quality fields, the user still needs a way to turn evidence into usable structured data while preserving:
+
+explicit intent,
+
+auditability,
+
+backend authority,
+
+and the draft → confirm → utilize lifecycle.
+
+Core UX: How Field Builder works on the Review Page
+Layout additions (Review Page)
+
+Existing: Viewer (PDF/image) + Extracted Fields list
+Add: “Field Builder” panel that can be toggled
+
+Sections:
+
+Raw Extracted Text (read-only)
+
+Field Builder (authoring tools)
+
+Extracted Fields (current working set)
+
+Primary user flow
+
+User opens Review Page.
+
+If fields exist: user can refine/add fields.
+
+If fields are empty: user uses Field Builder to create fields from extracted text.
+
+User confirms extraction (existing confirm semantics).
+
+After utilization: editing remains blocked (existing C1 rule).
+
+Field Builder capabilities
+Capability A — Add Field (Manual)
+
+User can create a new field:
+
+Field name (required)
+
+Field value (required)
+
+Optional field type (text/number/date/currency) — UI validation only unless backend supports types
+
+Mandatory correction/add reason (reuse C2 reason requirement)
+
+Rules
+
+Creating a new field is treated as a “correction-style mutation” (requires reason).
+
+No auto-save; explicit “Add Field” click.
+
+Capability B — Create Field from Text Selection
+
+User selects text in “Raw Extracted Text” and clicks:
+
+“Use Selection as Value”
+Then enters a field name (or chooses from suggestions list).
+
+Optional enhancement:
+
+“Use Selection as Label” (if user highlights a label like “Total”)
+
+“Use Selection as Value” (if user highlights a number like “$123.45”)
+
+Rules
+
+Selection does not mutate anything until the user confirms “Create Field”.
+
+Field creation requires a reason.
+
+Capability C — Suggested Field Templates (Non-authoritative)
+
+Provide quick-add templates (pure UI convenience):
+
+Common invoice/receipt fields: Vendor, Date, Total, Tax, Subtotal, Currency, Invoice No.
+
+Common document fields: Reference No, Subject, Amount, Notes
+
+Rules
+
+Templates only pre-fill field names; they do not infer values.
+
+Capability D — Field Normalization Helpers (UI-only)
+
+Small assistive actions that never auto-commit:
+
+Trim whitespace
+
+Normalize currency format (e.g., remove commas) — only when user clicks “Normalize”
+
+Date parse preview (show “interprets as YYYY-MM-DD”) — but store as text unless backend supports typed values
+
+Rules
+
+Helpers require explicit click, and if they change the stored value, they require a reason.
+
+Data model + governance alignment
+Authoritative principle
+
+Field Builder does not create a new OCR output record.
+It only modifies the draft working extraction fields that will later be confirmed.
+
+Status-based behavior
+
+draft: Field Builder enabled
+
+confirmed: Field Builder read-only; can view raw text + fields
+
+archived: view-only
+
+Utilization-based lockout
+
+If utilizationType is present (C1):
+
+Hide/disable Field Builder inputs
+
+Show badge “Read-only (data in use)” with tooltip reason
+
+Audit + evidence
+
+Every Field Builder mutation must produce:
+
+field name
+
+before/after (or “created”)
+
+reason (mandatory)
+
+timestamp + actor
+
+Review Page behaviors for “No fields extracted”
+
+When parsedFields.length === 0:
+
+Show: “No fields extracted.”
+
+Show helper: “Why no fields were extracted?” (pure UX)
+
+Keep raw extracted text visible
+
+Promote Field Builder CTA: “Create fields from extracted text”
+
+API/implementation notes (non-binding)
+
+This module can be implemented in two ways:
+
+Option 1 (Preferred): Reuse existing correction mechanism
+
+Treat “add field” as a correction entry where fieldKey is new
+
+Backend validates reason (already enforced by C2)
+
+Keeps audit trail consistent
+
+Option 2: Add dedicated endpoint (only if needed)
+
+POST /attachments/:id/extraction/fields to append a draft field
+
+Still requires reason
+
+Still blocks when utilized/confirmed as per governance
+
+Out of scope (explicit)
+
+Automatic key/value detection from raw text without user action
+
+Table/line-item extraction (can be a separate v8.6 module if needed)
+
+OCR engine changes
+
+Background parsing retries
+
+**Task 8.5.1 — Review Page UI: Field Builder panel + empty-state behaviors**
+
+* Add a toggleable **Field Builder** panel to the existing Review Page layout.
+* Ensure the page contains 3 clear sections:
+
+  * **Raw Extracted Text (read-only)**
+  * **Field Builder (authoring tools)**
+  * **Extracted Fields (current working set)**
+* Implement “No fields extracted” behaviors:
+
+  * Show message: “No fields extracted.”
+  * Keep raw extracted text visible.
+  * Promote CTA: “Create fields from extracted text.”
+  * Include helper link: “Why no fields were extracted?” (UX-only, no backend behavior).
+
+---
+
+**Task 8.5.2 — Governance gates: status + utilization lockout enforcement (UI + server)**
+
+* Enforce status-based enablement:
+
+  * `draft`: Field Builder enabled
+  * `confirmed`: Field Builder read-only (view raw text + fields)
+  * `archived`: view-only
+* Enforce utilization-based lockout (`utilizationType` present, C1):
+
+  * Disable/hide Field Builder inputs and mutation actions.
+  * Show badge: “Read-only (data in use)” with tooltip explaining lock reason.
+* Backend must reject any mutation when:
+
+  * extraction is `confirmed` or `archived`
+  * or `utilizationType` is present
+* UI must reflect lock state accurately (no “looks editable but fails on submit”).
+
+---
+
+**Task 8.5.3 — Capability A: Add Field (Manual) with mandatory reason + audit evidence**
+
+* Implement manual field creation:
+
+  * Field name (required)
+  * Field value (required)
+  * Optional field type selector: `text | number | date | currency` (UI validation only)
+  * Mandatory **reason** (reuse C2 correction/add reason requirement)
+  * Explicit submit: **“Add Field”** (no auto-save)
+* Behavior rules:
+
+  * Treat add field as a correction-style mutation requiring reason.
+  * Mutation produces audit evidence: created fieldKey, value, reason, timestamp, actor.
+* Ensure “created” is represented in before/after semantics consistently (before = null/empty).
+
+---
+
+**Task 8.5.4 — Capability B: Create Field from text selection (selection → preview → create)**
+
+* Allow text selection in **Raw Extracted Text** and support actions:
+
+  * “Use Selection as Value” → prompts for field name (manual or from suggestion list)
+  * Optional enhancement: “Use Selection as Label” / “Use Selection as Value”
+* Rules:
+
+  * Selection does not mutate anything until user clicks **“Create Field”**
+  * Field creation requires a **reason**
+* UX requirements:
+
+  * Clear preview of the selected text to be used as label/value.
+  * Cancel path must discard the selection-based draft (no changes).
+
+---
+
+**Task 8.5.5 — Capability C: Suggested Field Templates (UI convenience only)**
+
+* Provide quick-add templates (non-authoritative UI helpers) such as:
+
+  * Vendor, Date, Total, Tax, Subtotal, Currency, Invoice No
+  * Reference No, Subject, Amount, Notes
+* Rules:
+
+  * Templates only pre-fill **field names** (no value inference).
+  * Choosing a template does not mutate fields until user confirms creation.
+  * Final creation still requires a **reason** and produces audit evidence.
+* Ensure templates remain optional and do not block manual entry.
+
+---
+
+**Task 8.5.6 — Capability D: Normalization helpers (UI-only, explicit apply, reason if persisted)**
+
+* Implement helper actions that never auto-commit:
+
+  * Trim whitespace (preview/apply)
+  * Currency normalization (e.g., remove commas) on explicit click
+  * Date parse preview (“interprets as YYYY-MM-DD”) without changing stored value unless user applies
+* Rules:
+
+  * Helpers must be explicit (button click) and show preview before applying.
+  * If a helper changes the stored field value, the action requires a **reason** and generates audit evidence (before/after).
+* Confirm helpers do not create typed backend values unless backend explicitly supports it (store as text by default).
 
 
 ## v9 — Graph-Based Workflow Execution Engine (Backend Foundation) (Planned)
