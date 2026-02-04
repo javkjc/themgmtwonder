@@ -12,10 +12,12 @@ import { AuditService, type AuditAction } from '../audit/audit.service';
 import {
   attachmentOcrOutputs,
   attachments,
+  ocrResults,
   todos,
 } from '../db/schema';
 import { OcrParsingService } from './ocr-parsing.service';
 import { OcrCorrectionsService } from './ocr-corrections.service';
+import { CreateOcrFieldDto } from './dto/create-ocr-field.dto';
 
 export type DerivedOcrStatus = 'complete' | 'failed';
 type DerivedOcrProcessingStatus = 'completed' | 'failed';
@@ -89,7 +91,6 @@ export interface OcrResultsWithCorrectionsResponse {
   utilizationType?: string | null;
 }
 
-
 @Injectable()
 export class OcrService {
   constructor(
@@ -97,7 +98,7 @@ export class OcrService {
     private readonly auditService: AuditService,
     private readonly ocrParsingService: OcrParsingService,
     private readonly ocrCorrectionsService: OcrCorrectionsService,
-  ) { }
+  ) {}
 
   async createDerivedOutput({
     userId,
@@ -162,7 +163,7 @@ export class OcrService {
       let fileBuffer: Buffer;
       try {
         fileBuffer = await fs.readFile(payload.filePath);
-      } catch (err) {
+      } catch {
         throw new InternalServerErrorException(
           'Unable to read attachment bytes for OCR',
         );
@@ -195,7 +196,12 @@ export class OcrService {
         body: fileBody,
       });
 
-      const body = await response.json().catch(() => null);
+      const body = (await response.json().catch(() => null)) as {
+        text?: string;
+        meta?: unknown;
+        error?: string;
+        details?: string;
+      } | null;
 
       if (!response.ok) {
         const message =
@@ -224,7 +230,9 @@ export class OcrService {
       };
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
-        throw new Error(`OCR worker request timed out after ${OCR_TIMEOUT_MS / 1000} seconds`);
+        throw new Error(
+          `OCR worker request timed out after ${OCR_TIMEOUT_MS / 1000} seconds`,
+        );
       }
       throw err;
     } finally {
@@ -241,8 +249,8 @@ export class OcrService {
       .where(
         and(
           eq(attachmentOcrOutputs.attachmentId, attachmentId),
-          eq(attachmentOcrOutputs.isCurrent, true)
-        )
+          eq(attachmentOcrOutputs.isCurrent, true),
+        ),
       )
       .orderBy(desc(attachmentOcrOutputs.createdAt));
   }
@@ -258,7 +266,10 @@ export class OcrService {
       throw new NotFoundException('OCR output not found');
     }
 
-    const attachment = await this.ensureUserOwnsAttachment(userId, output.attachmentId);
+    const attachment = await this.ensureUserOwnsAttachment(
+      userId,
+      output.attachmentId,
+    );
 
     return {
       output,
@@ -266,9 +277,7 @@ export class OcrService {
     };
   }
 
-  async getCurrentConfirmedOcr(
-    attachmentId: string,
-  ) {
+  async getCurrentConfirmedOcr(attachmentId: string) {
     const [ocr] = await this.dbs.db
       .select()
       .from(attachmentOcrOutputs)
@@ -288,9 +297,7 @@ export class OcrService {
     return ocr ?? null;
   }
 
-  async getCurrentOcr(
-    attachmentId: string,
-  ) {
+  async getCurrentOcr(attachmentId: string) {
     const [ocr] = await this.dbs.db
       .select()
       .from(attachmentOcrOutputs)
@@ -305,9 +312,7 @@ export class OcrService {
     return ocr ?? null;
   }
 
-  async checkRedoEligibility(
-    attachmentId: string,
-  ): Promise<{
+  async checkRedoEligibility(attachmentId: string): Promise<{
     allowed: boolean;
     reason?: string;
     currentOcr?: AttachmentOcrOutputRecord | null;
@@ -323,12 +328,9 @@ export class OcrService {
     }
 
     const reasons: Record<OcrUtilizationType, string> = {
-      authoritative_record:
-        'Authoritative record created from this data',
-      workflow_approval:
-        'Workflow approval committed',
-      data_export:
-        'Data has been exported – must archive first',
+      authoritative_record: 'Authoritative record created from this data',
+      workflow_approval: 'Workflow approval committed',
+      data_export: 'Data has been exported – must archive first',
     };
 
     const reason =
@@ -388,7 +390,9 @@ export class OcrService {
     }
 
     const finalExtractedText =
-      editedExtractedText !== undefined ? editedExtractedText : ocr.extractedText;
+      editedExtractedText !== undefined
+        ? editedExtractedText
+        : ocr.extractedText;
 
     const [confirmedOcr] = await this.dbs.db
       .update(attachmentOcrOutputs)
@@ -441,7 +445,8 @@ export class OcrService {
       );
     }
 
-    const existingType = (ocr.utilizationType ?? null) as OcrUtilizationType | null;
+    const existingType = (ocr.utilizationType ??
+      null) as OcrUtilizationType | null;
     if (existingType) {
       if (existingType === utilizationType) {
         return;
@@ -466,7 +471,9 @@ export class OcrService {
       })
       .where(eq(attachmentOcrOutputs.id, ocrId));
 
-    const auditAction = utilizationAuditEventMap[utilizationType] as AuditAction;
+    const auditAction = utilizationAuditEventMap[
+      utilizationType
+    ] as AuditAction;
 
     await this.auditService.log({
       actorType: 'system',
@@ -481,11 +488,113 @@ export class OcrService {
     });
   }
 
-  async archiveOcrResult(
+  /**
+   * Manually add a structured field to an OCR output.
+   * Treated as a correction-style mutation (requires reason).
+   */
+  async createManualField(
     ocrId: string,
     userId: string,
-    archiveReason: string,
+    dto: CreateOcrFieldDto,
   ) {
+    const ocr = await this.dbs.db.query.attachmentOcrOutputs.findFirst({
+      where: eq(attachmentOcrOutputs.id, ocrId),
+    });
+
+    if (!ocr) {
+      throw new NotFoundException('OCR output not found');
+    }
+
+    await this.ensureUserOwnsAttachment(userId, ocr.attachmentId);
+
+    // According to C1 rule: blocked if utilized
+    if (ocr.utilizationType) {
+      throw new BadRequestException(
+        `Cannot add fields to utilized extraction (utilization: ${ocr.utilizationType})`,
+      );
+    }
+
+    const [newField] = await this.dbs.db
+      .insert(ocrResults)
+      .values({
+        attachmentOcrOutputId: ocrId,
+        fieldName: dto.fieldName,
+        fieldValue: dto.fieldValue,
+        confidence: '1.0000', // Manual fields have 100% confidence by definition
+        createdAt: new Date(),
+      })
+      .returning();
+
+    await this.auditService.log({
+      userId,
+      actorType: 'user',
+      action: 'ocr.field_added_manually',
+      module: 'ocr',
+      resourceType: 'ocr_result',
+      resourceId: newField.id,
+      details: {
+        ocrId,
+        fieldName: dto.fieldName,
+        fieldValue: dto.fieldValue,
+        reason: dto.reason,
+      },
+    });
+
+    return newField;
+  }
+
+  /**
+   * Manually delete a structured field from an OCR output.
+   */
+  async deleteField(fieldId: string, userId: string, reason: string) {
+    const [field] = await this.dbs.db
+      .select()
+      .from(ocrResults)
+      .where(eq(ocrResults.id, fieldId))
+      .limit(1);
+
+    if (!field) {
+      throw new NotFoundException('OCR field not found');
+    }
+
+    const ocr = await this.dbs.db.query.attachmentOcrOutputs.findFirst({
+      where: eq(attachmentOcrOutputs.id, field.attachmentOcrOutputId),
+    });
+
+    if (!ocr) {
+      throw new InternalServerErrorException('Orphaned OCR field');
+    }
+
+    await this.ensureUserOwnsAttachment(userId, ocr.attachmentId);
+
+    // Blocked if utilized
+    if (ocr.utilizationType) {
+      throw new BadRequestException(
+        `Cannot delete fields from utilized extraction (utilization: ${ocr.utilizationType})`,
+      );
+    }
+
+    await this.dbs.db.delete(ocrResults).where(eq(ocrResults.id, fieldId));
+
+    await this.auditService.log({
+      userId,
+      actorType: 'user',
+      action: 'ocr.field_deleted_manually',
+      module: 'ocr',
+      resourceType: 'ocr_result',
+      resourceId: fieldId,
+      details: {
+        ocrId: ocr.id,
+        fieldName: field.fieldName,
+        fieldValue: field.fieldValue,
+        reason,
+      },
+    });
+
+    return { success: true };
+  }
+
+  async archiveOcrResult(ocrId: string, userId: string, archiveReason: string) {
     const ocr = await this.dbs.db.query.attachmentOcrOutputs.findFirst({
       where: eq(attachmentOcrOutputs.id, ocrId),
     });
@@ -505,7 +614,7 @@ export class OcrService {
     if (ocr.utilizationType !== 'data_export') {
       throw new BadRequestException(
         `Can only archive OCR with Category C utilization (data_export). ` +
-        `Current utilization: ${ocr.utilizationType ?? 'none'}.`,
+          `Current utilization: ${ocr.utilizationType ?? 'none'}.`,
       );
     }
 
@@ -552,7 +661,10 @@ export class OcrService {
     attachmentId: string,
     userId: string,
   ): Promise<OcrResultsWithCorrectionsResponse> {
-    const attachment = await this.ensureUserOwnsAttachment(userId, attachmentId);
+    const attachment = await this.ensureUserOwnsAttachment(
+      userId,
+      attachmentId,
+    );
 
     const rawOcrOutput = await this.getCurrentOcr(attachmentId);
     const parsedResults = rawOcrOutput
@@ -607,40 +719,29 @@ export class OcrService {
       },
       rawOcr: rawOcrOutput
         ? {
-          id: rawOcrOutput.id,
-          extractedText: rawOcrOutput.extractedText || '',
-          status: rawOcrOutput.status,
-          createdAt: rawOcrOutput.createdAt,
-        }
+            id: rawOcrOutput.id,
+            extractedText: rawOcrOutput.extractedText || '',
+            status: rawOcrOutput.status,
+            createdAt: rawOcrOutput.createdAt,
+          }
         : null,
       utilizationType: rawOcrOutput?.utilizationType || null,
       parsedFields,
     };
-
   }
 
-  private async ensureUserOwnsAttachment(
-    userId: string,
-    attachmentId: string,
-  ) {
-    const [attachment] = await this.dbs.db
-      .select()
-      .from(attachments)
-      .where(eq(attachments.id, attachmentId));
+  private async ensureUserOwnsAttachment(userId: string, attachmentId: string) {
+    const attachment = await this.dbs.db.query.attachments.findFirst({
+      where: eq(attachments.id, attachmentId),
+    });
 
     if (!attachment) {
       throw new NotFoundException('Attachment not found');
     }
 
-    const [todo] = await this.dbs.db
-      .select()
-      .from(todos)
-      .where(
-        and(
-          eq(todos.id, attachment.todoId),
-          eq(todos.userId, userId),
-        ),
-      );
+    const todo = await this.dbs.db.query.todos.findFirst({
+      where: and(eq(todos.id, attachment.todoId), eq(todos.userId, userId)),
+    });
 
     if (!todo) {
       throw new ForbiddenException('Access denied');

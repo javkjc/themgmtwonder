@@ -27,3 +27,8 @@ Thumbs.db
 /test-results/
 /trace.zip
 tmp-scripts/update-snapshot.js
+
+# Playwright
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

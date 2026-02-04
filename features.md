@@ -471,33 +471,35 @@ This version is intentionally **thin**. It establishes the **minimum operational
 
 ---
 
-## v8 — Evidence Review & Derived Data Verification (Visual) (Planned)
-What this is
+## v8 — Evidence Review & Derived Data Verification (Visual) (Superseded by v8.1)
 
-Visual, side-by-side inspection of source documents and extracted OCR data
-Complete OCR retrieval & confirmation workflow (draft → confirm → utilize)
-Utilization tracking and redo eligibility enforcement
-Field-to-source linkage via highlights / bounding boxes
-Per-field confidence indicators and unresolved-field tracking
-Explicit user-corrected extraction revisions with full audit trail
-Option-C archive mechanism for soft-utilization redo scenarios
+**Status:** Superseded / Partially Deferred
+**Actual Implementation:** See **v8.1** below.
 
-What this is not
+**What this is (Vision)**
+- Visual, side-by-side inspection of source documents and extracted OCR data
+- Complete OCR retrieval & confirmation workflow (draft → confirm → utilize)
+- Utilization tracking and redo eligibility enforcement
+- **[DEFERRED]** Field-to-source linkage via highlights / bounding boxes
+- **[DEFERRED]** Per-field confidence indicators and unresolved-field tracking
+- Explicit user-corrected extraction revisions with full audit trail
+- Option-C archive mechanism for soft-utilization redo scenarios
 
-No authoritative data mutation (OCR data is baseline for record creation, not the record itself)
-No automatic correction or learning
-No workflow coupling initially (workflow integration deferred to post-v9)
+**Modifications from Original Plan**
+The core logic (Review, Confirm, Utilize, Redo, Archive) was implemented in **v8.1** using existing v3.5 infrastructure to accelerate delivery. The advanced visual features (bounding boxes, per-field confidence) are **DEFERRED** to future versions (e.g., v8.6) if needed.
 
-Design Intent
-Derived data must be inspectable, explainable, and correctable by humans
-before it is used to explain reality, simulate outcomes, or advise decisions.
-OCR suggests → user confirms → saved data becomes immutable baseline; redo is only possible before real decisions are made, or after explicit archive if the data has left the system.
-Dependencies
+**What this is not**
+- No authoritative data mutation (OCR data is baseline for record creation, not the record itself)
+- No automatic correction or learning
+- No workflow coupling initially (workflow integration deferred to post-v9)
 
-REQUIRES: v3 (OCR system with ocrResults table and state model)
-REQUIRES: v3 (Attachments system)
-EXTENDS: v3 OCR data model (status, utilization tracking already added in v3)
-NO MODIFICATIONS to v5/v6/v7 workflow system (standalone feature initially)
+**Dependencies**
+- **REQUIRES:** v3 (OCR system)
+- **REQUIRES:** v3 (Attachments system)
+- **NO MODIFICATIONS** to v5/v6/v7 workflow system
+
+---
+
 
 Modifications to Existing Code
 v3 OCR Service - EXTENDS:
@@ -1256,6 +1258,817 @@ Background parsing retries
   * If a helper changes the stored field value, the action requires a **reason** and generates audit evidence (before/after).
 * Confirm helpers do not create typed backend values unless backend explicitly supports it (store as text by default).
 
+
+## v8.6 — Field-Based Extraction Assignment & Baseline (Complete Specification)
+Based on your existing document and ML architecture decisions, here's the complete v8.6 specification with milestones:
+
+Status: Planned
+Dependencies:
+
+REQUIRES: v8.1 (OCR retrieval & confirmation workflow)
+REQUIRES: v8.5 (Field Builder infrastructure)
+EXTENDS: v3 OCR system (adds field library + baseline model)
+ML INTEGRATION: Uses FastAPI microservice (PaddleOCR + Sentence-BERT)
+
+
+Capability A — Field Library (Admin-Managed)
+Milestone 8.6.1: Field Library Data Model
+
+NEW TABLE: field_library (id, field_key, label, character_type, character_limit, version, status, created_by, created_at, updated_at)
+
+field_key: VARCHAR(255) UNIQUE — Stable identifier (e.g., invoice_number, total_amount)
+label: VARCHAR(255) — User-facing display name (e.g., "Invoice Number")
+character_type: ENUM('varchar', 'int', 'decimal', 'date', 'currency')
+character_limit: INT NULLABLE — Optional length constraint
+version: INT DEFAULT 1 — For field evolution tracking
+status: ENUM('active', 'hidden', 'archived') DEFAULT 'active'
+created_by: FK to users (admin who created field)
+
+
+Indexes: field_key (unique), status (for filtering active fields)
+
+Milestone 8.6.2: Field Library CRUD APIs (Admin-Only)
+
+GET /fields — List all fields (with status filter: active/hidden/archived)
+GET /fields/:field_key — Get field detail
+POST /fields — Create new field (admin only, validates field_key uniqueness)
+PUT /fields/:field_key — Update field (admin only, creates new version if character_type changes)
+PATCH /fields/:field_key/archive — Archive field (admin only, sets status='archived')
+PATCH /fields/:field_key/hide — Hide field (admin only, sets status='hidden')
+Validation: Prevent archiving/hiding fields currently in use (check extraction_baselines)
+
+Milestone 8.6.3: Field Library UI (Admin Page)
+
+Page: /admin/fields
+Display: table of fields (field_key, label, character_type, status, version)
+Actions: [Create Field] [Edit] [Archive] [Hide]
+Create/Edit Modal:
+
+Field Key: text input (immutable after creation, shows warning)
+Label: text input (user-facing name)
+Character Type: dropdown (varchar, int, decimal, date, currency)
+Character Limit: number input (optional, only for varchar)
+
+
+Archive confirmation modal: "Fields in use cannot be archived"
+
+
+Capability B — Baseline Extraction (Single Authority)
+Milestone 8.6.4: Baseline Data Model
+
+NEW TABLE: extraction_baselines (id, attachment_id, status, confirmed_at, confirmed_by, utilized_at, utilization_type, archived_at, archived_by, created_at)
+
+attachment_id: FK to attachments (one-to-one, each attachment has ≤1 confirmed baseline)
+status: ENUM('draft', 'reviewed', 'confirmed', 'archived')
+confirmed_at: TIMESTAMP NULLABLE — When baseline was confirmed
+confirmed_by: FK to users — Who confirmed this baseline
+utilized_at: TIMESTAMP NULLABLE — First utilization timestamp (immutable)
+utilization_type: ENUM('record_created', 'workflow_committed', 'data_exported') NULLABLE
+archived_at: TIMESTAMP NULLABLE — When baseline was archived (Option-C redo)
+archived_by: FK to users NULLABLE
+
+
+Constraint: UNIQUE(attachment_id, status) WHERE status='confirmed' — Only one confirmed baseline per attachment
+Indexes: attachment_id, status
+
+Milestone 8.6.5: Baseline State Machine (Service Layer)
+
+NEW SERVICE: BaselineManagementService
+Methods:
+
+createDraftBaseline(attachmentId) — Creates baseline with status='draft'
+markReviewed(baselineId) — Sets status='reviewed' (still editable)
+confirmBaseline(baselineId, userId) — Sets status='confirmed', locks editing, archives previous baseline
+archiveBaseline(baselineId, userId, reason) — Sets status='archived' (Option-C redo)
+
+
+State transitions enforced:
+
+draft → reviewed → confirmed → archived
+Cannot skip states (must review before confirming)
+Confirming new baseline auto-archives old one (atomic transaction)
+
+
+
+Milestone 8.6.6: Baseline Confirmation UI (Review Page)
+
+On Review Page (/attachments/:id/review):
+
+Show baseline status badge: "Draft" (yellow) / "Reviewed" (blue) / "Confirmed" (green)
+Button: "Mark as Reviewed" (only visible in draft state)
+Button: "Confirm Baseline" (only visible in reviewed state)
+Confirmation modal:
+
+"This will lock the baseline and make it system-usable. Previous baseline will be archived."
+[Cancel] [Confirm]
+
+
+After confirmation: button changes to "Confirmed ✓" (disabled)
+
+
+
+
+Capability C — Extracted Text Pool
+Milestone 8.6.7: Extracted Text Storage (Already exists from v8.1)
+
+Reuse existing extracted_text_segments table (from v8.1):
+
+Contains: text, confidence, bounding_box, embedding (Sentence-BERT)
+No changes needed (already stores raw OCR output)
+
+
+
+Milestone 8.6.8: Extracted Text Display (Review Page)
+
+Review Page left panel: "Extracted Text Pool"
+Display: list of extracted text segments (read-only)
+
+Text content (truncated if >50 chars, expand on click)
+Confidence score (color-coded: green >80%, yellow 60-80%, red <60%)
+Bounding box highlight on hover (if PDF/image preview available)
+
+
+Unassigned text remains visible (does not disappear after assignment)
+No "candidate" concept exposed to users (just raw extracted text)
+
+
+Capability D — Field Assignment (Core of v8.6)
+Milestone 8.6.9: Field Assignment Data Model
+
+NEW TABLE: baseline_field_assignments (id, baseline_id, field_key, assigned_value, source_segment_id, assigned_by, assigned_at, corrected_from, correction_reason)
+
+baseline_id: FK to extraction_baselines
+field_key: FK to field_library.field_key — Which field this value belongs to
+assigned_value: TEXT — The actual value (stored as text, validated against character_type)
+source_segment_id: FK to extracted_text_segments NULLABLE — Which text segment this came from (null if manually entered)
+assigned_by: FK to users — Who assigned this value
+assigned_at: TIMESTAMP
+corrected_from: TEXT NULLABLE — Previous value (if user corrected a suggestion)
+correction_reason: TEXT NULLABLE — Why user corrected (required if corrected_from is not null)
+
+
+Constraint: UNIQUE(baseline_id, field_key) — One field → one value per baseline
+
+Milestone 8.6.10: Field Assignment Validation Service
+
+NEW SERVICE: FieldAssignmentValidator
+Methods:
+
+validate(fieldKey, value) — Validates value against field character_type
+Returns: { valid: boolean, error?: string, suggestedCorrection?: string }
+
+
+Validation rules:
+
+varchar: length ≤ character_limit (if set)
+int: parseable as integer
+decimal: parseable as decimal (2 decimal places)
+date: parseable as ISO 8601 date
+currency: matches currency format (e.g., $1,234.56 or 1234.56)
+
+
+If validation fails: return inline guidance (e.g., "Expected number, got text")
+Suggest correction: attempt to parse/normalize (e.g., "$1,234" → "1234.00")
+
+Milestone 8.6.11: Field Assignment API
+
+POST /baselines/:id/assign — Assign value to field
+
+Body: { field_key, assigned_value, source_segment_id?, correction_reason? }
+Validation: field exists, value matches character_type
+If field already assigned: treat as correction (requires correction_reason)
+Returns: created/updated assignment
+
+
+DELETE /baselines/:id/assign/:field_key — Remove assignment (set value to null, requires reason)
+GET /baselines/:id/assignments — List all assignments for baseline
+
+Milestone 8.6.12: Field Assignment UI (Review Page)
+
+Review Page right panel: "Field Assignment Panel"
+Display: list of fields from field_library (active fields only)
+
+Field label (user-facing name)
+Input field (text/number/date picker based on character_type)
+Drag-drop zone (drop text segment from left panel)
+Validation indicator (green checkmark / red error icon)
+
+
+Actions:
+
+Type value manually → validates on blur
+Drag text segment into field → auto-fills value
+Select text segment + click "Assign to Field" → choose field from dropdown
+Edit assigned value → requires correction_reason (modal)
+Clear field (set to empty) → requires reason (modal)
+
+
+
+
+Capability E — System-Suggested Assignment (ML-Assisted)
+Milestone 8.6.13: ML Suggestion Service (FastAPI Microservice)
+
+NEW ENDPOINT (FastAPI): POST /ml/suggest-assignments
+
+Input: { extracted_text_segments: [...], field_keys: [...] }
+Process:
+
+Generate embeddings for extracted text (Sentence-BERT)
+Generate embeddings for field_keys (Sentence-BERT)
+Compute cosine similarity (text → field matching)
+For each field, select highest confidence text segment
+Apply character type filtering (e.g., field expects int → filter non-numeric)
+Return suggestions with confidence scores
+
+
+Output: { suggestions: [{ field_key, text_segment_id, value, confidence }] }
+
+
+
+Milestone 8.6.14: Suggestion Application (NestJS Backend)
+
+NEW SERVICE: SuggestionApplicationService
+Method: applySuggestions(baselineId, attachmentId)
+
+Call FastAPI /ml/suggest-assignments with extracted text + active fields
+For each suggestion with confidence ≥ 50%:
+
+Create draft assignment in baseline_field_assignments
+Set source_segment_id (links to extracted text)
+Mark as system-generated (assigned_by = system user)
+
+
+Store confidence scores in metadata (for display)
+
+
+
+Milestone 8.6.15: Suggestion Display (Review Page)
+
+Field Assignment Panel shows system suggestions:
+
+Fields with suggestions: pre-filled with suggested value
+Confidence indicator: color-coded badge (High ≥80%, Medium 50-79%, Low <50%)
+User can:
+
+Accept: click field, see value, click "Confirm" (saves assignment)
+Modify: edit value before confirming (marks as corrected, requires reason)
+Clear: remove suggestion (requires reason)
+
+
+Once user edits field: suggestion is discarded (assigned_by changes to user)
+
+
+
+
+Capability F — User Assignment & Editing
+Milestone 8.6.16: Drag-and-Drop Assignment
+
+Implement drag-drop from Extracted Text Pool → Field Assignment Panel
+On drop:
+
+Extract text content from segment
+Validate against field character_type
+If valid: fill field, show success indicator
+If invalid: show error tooltip with suggested correction
+Require confirmation (modal): "Assign [text] to [field]?" [Cancel] [Confirm]
+
+
+
+Milestone 8.6.17: Manual Editing with Validation
+
+User edits field value directly (text input/number input/date picker)
+On blur:
+
+Call FieldAssignmentValidator.validate(field_key, value)
+If invalid: show inline error message below field
+Suggest correction in tooltip (if available)
+
+
+User decides final value (can override validation warnings, but must acknowledge)
+
+Milestone 8.6.18: Correction Reason Requirement
+
+If user edits pre-filled suggestion or existing assignment:
+
+Show modal: "Why are you correcting this value?"
+Text area: correction reason (required, min 10 chars)
+[Cancel] [Save Correction]
+
+
+Correction reason stored in correction_reason field
+Audit log: record before/after + reason
+
+
+Capability G — Review Page Layout & Interaction
+Milestone 8.6.19: Three-Panel Layout
+
+Review Page structure:
+
+Left Panel (40% width): Document Preview (PDF/image viewer, no preview for XLSX)
+Middle Panel (30% width): Extracted Text Pool (read-only list)
+Right Panel (30% width): Field Assignment Panel (interactive form)
+
+
+Responsive: on mobile, collapse to tabs (Document / Text / Fields)
+
+Milestone 8.6.20: Persistent Panel (Non-Modal)
+
+Field Assignment Panel is always visible (not a modal)
+User can scroll through fields while viewing document
+Back button in navbar: returns to Task detail page
+
+Milestone 8.6.21: Document Preview Handling
+
+PDF/Image: Show preview with pdf.js (existing from v3)
+XLSX: No preview, show message "Excel files have no preview. Download to view."
+DOC/DOCX: Explicitly excluded, show error "Word documents not supported"
+
+
+Capability H — Review → Confirm Lifecycle
+Milestone 8.6.22: Reviewed State
+
+Button: "Mark as Reviewed" (only visible when status='draft')
+Action: Sets baseline status='reviewed'
+Still editable (user can continue assigning fields)
+Not usable by system (queries filter to status='confirmed' only)
+
+Milestone 8.6.23: Confirmed State
+
+Button: "Confirm Baseline" (only visible when status='reviewed')
+Confirmation modal:
+
+"This will lock the baseline. You will not be able to edit field assignments."
+Show summary: "X fields assigned, Y fields empty"
+[Cancel] [Confirm]
+
+
+Action:
+
+Set status='confirmed', confirmed_at=now(), confirmed_by=currentUser
+Archive previous baseline (if exists): set status='archived'
+Lock editing (UI disables all inputs, shows "Read-Only" badges)
+
+
+
+Milestone 8.6.24: Confirmation Occurs on Review Page Only
+
+Confirmation button only on Review Page (not on Task detail)
+After confirmation: redirect to Task detail with success toast
+Task detail shows baseline status: "Confirmed on [date] by [user]"
+
+
+Capability I — Utilization Locking
+Milestone 8.6.25: Utilization Detection Service
+
+EXTEND existing UtilizationTrackingService (from v8.1):
+
+Method: markUtilized(baselineId, type: 'record_created' | 'workflow_committed' | 'data_exported')
+Called by:
+
+Record creation APIs (Category A)
+Workflow approval handlers (Category B, future)
+Export endpoints (Category C)
+
+
+Sets: utilized_at (first call wins), utilization_type
+
+
+
+Milestone 8.6.26: Utilization Lockout (UI + Backend)
+
+If baseline has utilization_type set:
+
+UI: Disable all editing inputs, show "Read-Only (data in use)" badge
+Tooltip: Explain why locked ("Authoritative record created" / "Data exported" / "Workflow approved")
+Backend: Reject edit/delete requests with 403 error
+
+
+Viewing does NOT count as usage (reading baseline data doesn't lock it)
+
+Milestone 8.6.27: Utilization Indicator (Task Detail)
+
+On Task detail page, show baseline utilization status:
+
+"Not yet used" (utilization_type=null)
+"⚠️ Record created from this data" (Category A)
+"⚠️ Used in workflow approval" (Category B)
+"⚠️ Data exported" (Category C)
+
+
+Click indicator → shows detail (which record, when, by whom)
+
+
+Capability J — Supported File Types
+Milestone 8.6.28: File Type Validation
+
+Supported for extraction:
+
+PDF (with preview)
+PNG, JPG, JPEG (with preview)
+XLSX (no preview, extraction only)
+
+
+Explicitly excluded:
+
+DOC, DOCX (show error: "Word documents not supported. Please convert to PDF.")
+
+
+Validation on upload (v3 attachments service):
+
+Check MIME type
+Reject unsupported types with clear error message
+
+
+
+
+## v8.7 — ML Model Training & Fine-Tuning (Planned)
+What this is
+
+Collect user corrections from v8.6 to build training dataset
+Fine-tune Sentence-BERT on domain-specific field matching
+Improve suggestion accuracy over time (active learning loop)
+A/B test model versions to measure improvement
+
+What this is not
+
+Not automatic model updates (admin triggers retraining)
+Not real-time learning (batch training, e.g., weekly)
+Not mandatory (v8.6 works with pre-trained models)
+
+
+Capability A: Correction Dataset Collection
+Milestone 8.7.1: Correction Data Schema
+
+Use existing baseline_field_assignments table
+Filter records where corrected_from IS NOT NULL (user corrected suggestion)
+Export format:
+
+json  {
+    "text_segment": "INV-12345",
+    "suggested_field": "invoice_number",
+    "user_assigned_field": "invoice_number",
+    "confidence": 0.75,
+    "accepted": true
+  }
+Milestone 8.7.2: Training Data Export API
+
+GET /admin/ml/training-data (admin only)
+Query parameters: ?start_date, ?end_date, ?min_corrections=10
+Returns: JSON array of correction records
+Include: text, suggested field, actual field, confidence, accepted/rejected
+
+Milestone 8.7.3: Training Data Quality Filters
+
+Exclude low-quality corrections:
+
+Corrections with reason="typo" (not model error)
+Single-user corrections (might be user-specific preference)
+Corrections from first 30 days (users still learning system)
+
+
+Include high-quality signals:
+
+Corrections made by multiple users (consensus)
+Corrections on high-confidence suggestions (model was confident but wrong)
+
+
+
+
+Capability B: Model Fine-Tuning Pipeline
+Milestone 8.7.4: Fine-Tuning Script (Python)
+
+NEW: /ml-service/training/finetune.py
+Process:
+
+Load correction dataset (from API export)
+Split train/val/test (80/10/10)
+Fine-tune Sentence-BERT on field matching task
+Evaluate: accuracy, precision, recall on test set
+Save fine-tuned model to /ml-service/models/minilm-finetuned-v{date}.onnx
+
+
+Hyperparameters: learning rate, epochs, batch size (configurable)
+
+Milestone 8.7.5: Model Versioning
+
+NEW TABLE: ml_model_versions (id, model_name, version, file_path, metrics, trained_at, is_active)
+
+model_name: 'sentence-bert-field-matching'
+version: 'v2024-02-01' (date-based)
+file_path: '/ml-service/models/minilm-finetuned-v2024-02-01.onnx'
+metrics: JSON (accuracy, precision, recall from evaluation)
+is_active: BOOLEAN (only one active version at a time)
+
+
+
+Milestone 8.7.6: Model Deployment (Hot Swap)
+
+FastAPI endpoint: POST /ml/models/activate
+
+Input: { version }
+Action: Load new model into memory, mark as active in DB
+Atomic: old model remains loaded until new model ready
+Rollback: if new model fails health check, keep old model active
+
+
+
+
+Capability C: A/B Testing & Performance Tracking
+Milestone 8.7.7: Suggestion Acceptance Tracking
+
+EXTEND baseline_field_assignments: add suggestion_accepted BOOLEAN
+
+TRUE: user accepted suggestion without modification
+FALSE: user modified or cleared suggestion
+NULL: manually entered (no suggestion provided)
+
+
+Track per model version (link to ml_model_versions.id)
+
+Milestone 8.7.8: A/B Testing Framework
+
+Feature flag: ML_MODEL_AB_TEST=true
+When enabled:
+
+50% of requests use model A (current active)
+50% of requests use model B (new candidate)
+
+
+Track acceptance rate per model version
+After 1000 suggestions per model: compare metrics
+
+Milestone 8.7.9: Model Performance Dashboard (Admin)
+
+Page: /admin/ml/performance
+Display:
+
+Current active model: version, accuracy, acceptance rate
+Historical models: list with metrics over time
+Trend chart: acceptance rate by week (last 12 weeks)
+Recommendation: "Model v2024-02-01 has 5% higher acceptance rate. Activate?"
+
+
+
+
+Capability D: Continuous Improvement Loop
+Milestone 8.7.10: Scheduled Retraining (Weekly Batch)
+
+Cron job: Every Sunday at 2 AM
+Steps:
+
+Export correction dataset (last 7 days)
+If corrections < 100: skip (insufficient data)
+Run fine-tuning script
+Evaluate new model
+If accuracy > current model + 2%: mark as candidate for A/B test
+Notify admin: "New model ready for testing"
+
+
+
+Milestone 8.7.11: Admin Retraining Trigger (Manual)
+
+Admin can trigger retraining manually:
+
+Button: "Retrain Model" (on ML performance dashboard)
+Input: date range for corrections, minimum correction count
+Run asynchronously (background job)
+Notify admin when complete
+
+
+
+
+## v8.8 — Multi-Language OCR Support (Planned)
+What this is
+
+Support OCR for non-English documents (Spanish, French, German, Chinese, etc.)
+Language detection (automatic or manual selection)
+Language-specific field matching (embeddings in target language)
+Per-org default language settings
+
+What this is not
+
+Not automatic translation (OCR outputs in original language)
+Not cross-language field matching (Spanish text → English fields)
+
+
+Capability A: Language Detection
+Milestone 8.8.1: Language Detection Service
+
+Integrate language detection library (langdetect or fasttext)
+NEW SERVICE: LanguageDetectionService
+Method: detectLanguage(text): LanguageCode
+
+Input: sample text (first 500 chars from OCR output)
+Output: ISO 639-1 language code (e.g., 'en', 'es', 'fr', 'zh')
+Confidence score (0-100%)
+
+
+
+Milestone 8.8.2: Language Field in Data Model
+
+EXTEND extracted_text_segments: add detected_language VARCHAR(5)
+EXTEND extraction_baselines: add primary_language VARCHAR(5)
+Store detected language for each text segment
+Baseline primary language = most common language in segments
+
+Milestone 8.8.3: Language Detection UI
+
+On OCR retrieval: automatically detect language
+Display detected language in Review Page header
+Badge: "Language: Spanish (98% confidence)"
+If confidence <80%: show warning + manual language selector
+
+
+Capability B: Multi-Language OCR Engine
+Milestone 8.8.4: PaddleOCR Multi-Language Support
+
+PaddleOCR already supports 80+ languages
+Configure language models in FastAPI service:
+
+python  ocr_engines = {
+      'en': PaddleOCR(lang='en'),
+      'es': PaddleOCR(lang='es'),
+      'fr': PaddleOCR(lang='fr'),
+      'zh': PaddleOCR(lang='ch'),
+      # ... preload common languages
+  }
+
+On OCR request: detect language → select appropriate engine
+
+Milestone 8.8.5: Language-Specific Model Loading
+
+Lazy load language models (don't preload all 80 languages)
+Cache loaded models in memory (30 min TTL)
+If language not cached: download model (one-time), then load
+
+
+Capability C: Language-Specific Field Matching
+Milestone 8.8.6: Multi-Language Embeddings
+
+Use multilingual Sentence-BERT model: paraphrase-multilingual-MiniLM-L12-v2
+Supports 50+ languages in same vector space
+Replace monolingual model in FastAPI service
+No code changes needed (API stays same)
+
+Milestone 8.8.7: Language-Aware Field Suggestions
+
+When suggesting field assignments:
+
+Embed text segments in original language
+Embed field labels (translate if needed, or use multilingual embeddings)
+Match in shared vector space
+
+
+Example: Spanish text "Número de factura" matches field "invoice_number"
+
+
+Capability D: Organization Language Settings
+Milestone 8.8.8: Org Default Language
+
+EXTEND organizations.settings: add default_language VARCHAR(5)
+Admin can set default language in org settings
+Used as fallback if language detection fails
+Applied to new attachments automatically
+
+Milestone 8.8.9: User Language Preference
+
+EXTEND users table: add preferred_language VARCHAR(5)
+User can set in profile settings
+Affects UI language (labels, messages)
+Does not affect OCR language (OCR uses detected language)
+
+
+## v8.9 — Batch Extraction & Processing (Planned)
+What this is
+
+Upload multiple documents at once
+Batch OCR processing (queue-based, parallel)
+Bulk baseline confirmation (review all, confirm all)
+Progress tracking (X of Y documents processed)
+
+What this is not
+
+Not automatic confirmation (user must review each baseline)
+Not bulk field assignment (each document assigned independently)
+
+
+Capability A: Bulk Upload
+Milestone 8.9.1: Multi-File Upload UI
+
+On Task detail page: "Upload Multiple Files" button
+File picker: allow selecting multiple files (Ctrl+Click or Drag-drop)
+Display upload queue: list of files with progress bars
+Validation: check file types, max size (20MB each), max count (50 files)
+
+Milestone 8.9.2: Bulk Upload API
+
+POST /attachments/bulk/upload
+
+Input: FormData with multiple files, task_id
+Process: save each file, create attachment records
+Return: array of attachment IDs
+
+
+Backend: handle concurrent uploads (use async/await, rate limit per user)
+
+
+Capability B: Batch OCR Processing
+Milestone 8.9.3: OCR Job Queue
+
+Install BullMQ (Redis-based job queue)
+NEW QUEUE: ocr-processing-queue
+Job structure: { attachmentId, userId, priority }
+Worker: processes jobs concurrently (5 workers, configurable)
+
+Milestone 8.9.4: Queue Job Lifecycle
+
+On bulk upload: create OCR job for each attachment
+Job states: pending → processing → completed → failed
+Store job state in attachment_ocr_outputs.processing_status
+Track retries: max 3 attempts, exponential backoff
+
+Milestone 8.9.5: Progress Tracking UI
+
+On Task detail: "Batch Processing" widget
+Display: "Processing 12 of 50 documents"
+Progress bar (% complete)
+List of files: status icon (pending/processing/done/failed)
+Auto-refresh every 5 seconds (polling or WebSocket)
+
+
+Capability C: Bulk Baseline Review
+Milestone 8.9.6: Batch Review UI
+
+New page: /tasks/:id/batch-review
+Display: grid view of all attachments (thumbnails)
+For each attachment:
+
+Thumbnail (PDF first page, image preview)
+Status badge (Draft/Reviewed/Confirmed)
+Field assignment count (e.g., "5/10 fields assigned")
+
+
+Click thumbnail → opens Review Page (v8.6)
+
+Milestone 8.9.7: Bulk Confirmation
+
+On Batch Review page: "Confirm All Reviewed" button
+Enabled only if all baselines in "Reviewed" state
+Confirmation modal:
+
+"This will confirm 12 baselines. Continue?"
+Show summary: total fields assigned, empty fields
+[Cancel] [Confirm All]
+
+
+Action: loop through baselines, confirm each (atomic transaction)
+
+
+Capability D: Error Handling & Retry
+Milestone 8.9.8: Failed OCR Handling
+
+If OCR job fails (API timeout, invalid file, etc.):
+
+Mark processing_status='failed'
+Store error message in attachment_ocr_outputs.error_details
+Display error in UI (red icon, tooltip with error message)
+Button: "Retry OCR" (re-queues job)
+
+
+
+Milestone 8.9.9: Partial Batch Completion
+
+If batch processing partially fails (some succeed, some fail):
+
+Show summary: "45 succeeded, 5 failed"
+Allow user to proceed with successful ones
+Option: "Retry Failed" (re-process only failed files)
+Option: "Delete Failed" (remove failed attachments)
+
+Integration Notes
+v8.6 → v8.7 Integration:
+
+v8.7 uses correction data from v8.6 (baseline_field_assignments)
+No schema changes to v8.6 tables
+ML model improvements transparent to users
+
+v8.7 → v8.8 Integration:
+
+v8.8 replaces monolingual Sentence-BERT with multilingual version
+v8.7 fine-tuning pipeline works with multilingual model (no changes)
+
+v8.8 → v8.9 Integration:
+
+v8.9 processes multiple documents using same v8.6 baseline workflow
+Language detection (v8.8) applied per document in batch
+
+Dependencies:
+
+v8.6 REQUIRES: v8.1 (confirmation workflow), v8.5 (Field Builder)
+v8.7 REQUIRES: v8.6 (correction dataset)
+v8.8 REQUIRES: v8.6 (field matching), v8.7 (multilingual embeddings)
+v8.9 REQUIRES: v8.6 (baseline review), v8.8 (language detection per file)
+---
 
 ## v9 — Graph-Based Workflow Execution Engine (Backend Foundation) (Planned)
 

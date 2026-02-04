@@ -22,6 +22,20 @@
       "when": 1770017275440,
       "tag": "0002_bitter_mesmero",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1770189700508,
+      "tag": "0003_married_warhawk",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1770194796715,
+      "tag": "0004_flaky_captain_universe",
+      "breakpoints": true
     }
   ]
 }

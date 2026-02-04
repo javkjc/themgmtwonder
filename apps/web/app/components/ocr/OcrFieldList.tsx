@@ -7,6 +7,7 @@ type OcrFieldListProps = {
   onEdit: (field: OcrField) => void;
   onViewHistory: (field: OcrField) => void;
   onSelect?: (field: OcrField) => void;
+  onDelete?: (field: OcrField) => void;
   selectedFieldId?: string | null;
   utilizationType?: string | null;
 };
@@ -37,6 +38,7 @@ export default function OcrFieldList({
   onEdit,
   onViewHistory,
   onSelect,
+  onDelete,
   selectedFieldId,
   utilizationType,
 }: OcrFieldListProps) {
@@ -103,12 +105,20 @@ export default function OcrFieldList({
                   fontSize: 10,
                   fontWeight: 800,
                   letterSpacing: '0.025em',
-                  background: '#f8fafc',
-                  color: '#64748b',
-                  border: '1px solid #e2e8f0',
+                  background: field.confidence === 1 && !field.originalValue ? '#f0f9ff' : '#f8fafc',
+                  color: field.confidence === 1 && !field.originalValue ? '#0369a1' : '#64748b',
+                  border: `1px solid ${field.confidence === 1 && !field.originalValue ? '#bae6fd' : '#e2e8f0'}`,
                   textTransform: 'uppercase'
                 }}>
-                  <span style={{ fontSize: 12 }}>🤖</span> Extracted via: OCR
+                  {field.confidence === 1 && !field.originalValue ? (
+                    <>
+                      <span style={{ fontSize: 12 }}>✍️</span> Manually Added
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ fontSize: 12 }}>🤖</span> Extracted via: OCR
+                    </>
+                  )}
                 </div>
 
                 <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>
@@ -144,26 +154,50 @@ export default function OcrFieldList({
                     <span style={{ fontSize: 13 }}>🔒</span> Read-only (data in use)
                   </span>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onEdit(field);
-                    }}
-                    style={{
-                      padding: '6px 14px',
-                      borderRadius: 8,
-                      border: '1px solid #2563eb',
-                      background: 'white',
-                      color: '#2563eb',
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                    }}
-                  >
-                    Edit
-                  </button>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onEdit(field);
+                      }}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: 8,
+                        border: '1px solid #2563eb',
+                        background: 'white',
+                        color: '#2563eb',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      Edit
+                    </button>
+                    {field.confidence === 1 && !field.originalValue && onDelete && (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onDelete(field);
+                        }}
+                        style={{
+                          padding: '6px 14px',
+                          borderRadius: 8,
+                          border: '1px solid #ef4444',
+                          background: 'white',
+                          color: '#ef4444',
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                        }}
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
                 )}
 
                 {field.isCorrected && (

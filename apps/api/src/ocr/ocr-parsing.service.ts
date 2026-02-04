@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { asc, eq } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { attachmentOcrOutputs, ocrResults } from '../db/schema';
@@ -26,10 +31,7 @@ export const OCR_FIELD_PATTERNS = {
     /Amount\s*Due\s*:?\s*\$?\s*([\d,]+\.?\d*)/i,
     /\$\s*([\d,]+\.?\d{2})/,
   ],
-  vendor_name: [
-    /From\s*:?\s*(.+?)(?:\n|$)/i,
-    /Vendor\s*:?\s*(.+?)(?:\n|$)/i,
-  ],
+  vendor_name: [/From\s*:?\s*(.+?)(?:\n|$)/i, /Vendor\s*:?\s*(.+?)(?:\n|$)/i],
   due_date: [
     /Due\s*Date\s*:?\s*(\d{4}-\d{2}-\d{2})/i,
     /Payment\s*Due\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i,
@@ -73,10 +75,14 @@ export class OcrParsingService {
   /**
    * Parse an OCR output record into structured fields with confidence scores.
    */
-  async parseOcrOutput(attachmentOcrOutputId: string): Promise<ParsedOcrResult[]> {
+  async parseOcrOutput(
+    attachmentOcrOutputId: string,
+  ): Promise<ParsedOcrResult[]> {
     const ocrOutput = await this.loadOcrOutput(attachmentOcrOutputId);
     if (ocrOutput.status !== 'confirmed') {
-      throw new BadRequestException('OCR output must be confirmed before parsing');
+      throw new BadRequestException(
+        'OCR output must be confirmed before parsing',
+      );
     }
     const rawText = (ocrOutput.extractedText ?? '').trim();
     if (!rawText) {
@@ -98,7 +104,9 @@ export class OcrParsingService {
       .where(eq(attachmentOcrOutputs.id, attachmentOcrOutputId))
       .limit(1);
     if (!ocrOutput) {
-      throw new NotFoundException(`OCR output ${attachmentOcrOutputId} not found`);
+      throw new NotFoundException(
+        `OCR output ${attachmentOcrOutputId} not found`,
+      );
     }
     return ocrOutput;
   }
@@ -106,7 +114,11 @@ export class OcrParsingService {
   private buildParsedFields(rawText: string): ParsedField[] {
     const parsed: ParsedField[] = [];
     for (const fieldName of FIELD_NAMES) {
-      const match = this.extractField(rawText, fieldName, OCR_FIELD_PATTERNS[fieldName]);
+      const match = this.extractField(
+        rawText,
+        fieldName,
+        OCR_FIELD_PATTERNS[fieldName],
+      );
       if (match) {
         parsed.push({ fieldName, ...match });
       }
@@ -167,8 +179,7 @@ export class OcrParsingService {
     if (!trimmed) {
       return 0.5;
     }
-    const base =
-      patternIndex === 0 ? 0.9 : patternIndex === 1 ? 0.8 : 0.7;
+    const base = patternIndex === 0 ? 0.9 : patternIndex === 1 ? 0.8 : 0.7;
     let confidence = base;
     if (this.isValidDateFormat(trimmed)) {
       confidence += 0.05;

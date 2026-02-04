@@ -11,7 +11,10 @@ const createSelectBuilder = (result: SelectResponse) => {
     where: () => builder,
     innerJoin: () => builder,
     limit: jest.fn().mockResolvedValue(result),
-    then(onFulfilled: (value: SelectResponse) => unknown, onRejected?: (reason?: unknown) => unknown) {
+    then(
+      onFulfilled: (value: SelectResponse) => unknown,
+      onRejected?: (reason?: unknown) => unknown,
+    ) {
       return Promise.resolve(result).then(onFulfilled, onRejected);
     },
     catch(onRejected: (reason?: unknown) => unknown) {
@@ -48,14 +51,16 @@ const createMockDb = (selectResults: SelectResponse[]) => {
     selectMock,
     insertMock,
     inserted,
-    dbService: { db: { select: selectMock, insert: insertMock } } as unknown as DbService,
+    dbService: {
+      db: { select: selectMock, insert: insertMock },
+    } as unknown as DbService,
   };
 };
 
 const createAuditService = () =>
   ({
     log: jest.fn().mockResolvedValue(undefined),
-  } as unknown as AuditService);
+  }) as unknown as AuditService;
 
 const buildOcrResult = () => ({
   id: 'ocr-1',

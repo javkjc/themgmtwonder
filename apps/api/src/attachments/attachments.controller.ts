@@ -148,10 +148,7 @@ export class AttachmentsController {
   }
 
   @Get(':id/ocr/current')
-  async getCurrentOcr(
-    @Req() req: any,
-    @Param('id') attachmentId: string,
-  ) {
+  async getCurrentOcr(@Req() req: any, @Param('id') attachmentId: string) {
     await this.ocrService.verifyUserOwnsAttachment(
       req.user.userId,
       attachmentId,

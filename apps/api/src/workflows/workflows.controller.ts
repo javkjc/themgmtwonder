@@ -11,7 +11,16 @@ import {
 import { JwtAuthGuard, AdminGuard } from '../auth/auth.guard';
 import { WorkflowsService } from './workflows.service';
 import { AuditService } from '../audit/audit.service';
-import { StartWorkflowDto, StepActionDto, CreateWorkflowDto, UpdateWorkflowDto, CreateVersionDto, CreateElementTemplateDto, UpdateElementTemplateDto, DeprecateElementTemplateDto } from './dto';
+import {
+  StartWorkflowDto,
+  StepActionDto,
+  CreateWorkflowDto,
+  UpdateWorkflowDto,
+  CreateVersionDto,
+  CreateElementTemplateDto,
+  UpdateElementTemplateDto,
+  DeprecateElementTemplateDto,
+} from './dto';
 
 @Controller('workflows')
 @UseGuards(JwtAuthGuard)
@@ -127,7 +136,11 @@ export class WorkflowsController {
     const workflowBefore = await this.workflowsService.getWorkflowById(id);
 
     // Update workflow
-    const workflowAfter = await this.workflowsService.updateWorkflow(id, dto, userId);
+    const workflowAfter = await this.workflowsService.updateWorkflow(
+      id,
+      dto,
+      userId,
+    );
 
     // Audit log entry with before/after snapshot
     await this.auditService.log({
@@ -231,7 +244,8 @@ export class WorkflowsController {
     const userId = req.user.id;
 
     // Capture state before action
-    const executionBefore = await this.workflowsService.getExecution(executionId);
+    const executionBefore =
+      await this.workflowsService.getExecution(executionId);
 
     // Execute step action
     const stepExecution = await this.workflowsService.executeStepAction(
@@ -242,7 +256,8 @@ export class WorkflowsController {
     );
 
     // Capture state after action
-    const executionAfter = await this.workflowsService.getExecution(executionId);
+    const executionAfter =
+      await this.workflowsService.getExecution(executionId);
 
     // Audit log entry with before/after snapshot
     await this.auditService.log({
@@ -284,7 +299,9 @@ export class WorkflowsController {
     const userId = req.user.id;
 
     // Capture source workflow state before cloning
-    const sourceWorkflow = await this.workflowsService.getWorkflowById(dto.sourceWorkflowId);
+    const sourceWorkflow = await this.workflowsService.getWorkflowById(
+      dto.sourceWorkflowId,
+    );
 
     // Create new version
     const newVersion = await this.workflowsService.createVersion(dto, userId);
@@ -335,7 +352,10 @@ export class WorkflowsController {
     const workflowBefore = await this.workflowsService.getWorkflowById(id);
 
     // Activate workflow (deactivates others)
-    const workflowAfter = await this.workflowsService.activateWorkflow(id, userId);
+    const workflowAfter = await this.workflowsService.activateWorkflow(
+      id,
+      userId,
+    );
 
     // Audit log entry
     await this.auditService.log({
@@ -374,7 +394,10 @@ export class WorkflowsController {
     const workflowBefore = await this.workflowsService.getWorkflowById(id);
 
     // Deactivate workflow
-    const workflowAfter = await this.workflowsService.deactivateWorkflow(id, userId);
+    const workflowAfter = await this.workflowsService.deactivateWorkflow(
+      id,
+      userId,
+    );
 
     // Audit log entry
     await this.auditService.log({
@@ -441,11 +464,17 @@ export class WorkflowsController {
    */
   @Post('elements/templates')
   @UseGuards(AdminGuard)
-  async createElementTemplate(@Body() dto: CreateElementTemplateDto, @Req() req: any) {
+  async createElementTemplate(
+    @Body() dto: CreateElementTemplateDto,
+    @Req() req: any,
+  ) {
     const userId = req.user.id;
 
     // Create element template
-    const template = await this.workflowsService.createElementTemplate(dto, userId);
+    const template = await this.workflowsService.createElementTemplate(
+      dto,
+      userId,
+    );
 
     // Audit log entry
     await this.auditService.log({
@@ -482,10 +511,14 @@ export class WorkflowsController {
     const userId = req.user.id;
 
     // Capture source template
-    const sourceTemplate = await this.workflowsService.getElementTemplateById(id);
+    const sourceTemplate =
+      await this.workflowsService.getElementTemplateById(id);
 
     // Create new version
-    const newVersion = await this.workflowsService.createElementTemplateVersion(id, userId);
+    const newVersion = await this.workflowsService.createElementTemplateVersion(
+      id,
+      userId,
+    );
 
     // Audit log entry
     await this.auditService.log({
@@ -530,10 +563,15 @@ export class WorkflowsController {
     const userId = req.user.id;
 
     // Capture state before update
-    const templateBefore = await this.workflowsService.getElementTemplateById(id);
+    const templateBefore =
+      await this.workflowsService.getElementTemplateById(id);
 
     // Update template (creates new version)
-    const templateAfter = await this.workflowsService.updateElementTemplate(id, dto, userId);
+    const templateAfter = await this.workflowsService.updateElementTemplate(
+      id,
+      dto,
+      userId,
+    );
 
     // Audit log entry
     await this.auditService.log({
@@ -577,10 +615,15 @@ export class WorkflowsController {
     const userId = req.user.id;
 
     // Capture state before deprecation
-    const templateBefore = await this.workflowsService.getElementTemplateById(id);
+    const templateBefore =
+      await this.workflowsService.getElementTemplateById(id);
 
     // Deprecate template
-    const templateAfter = await this.workflowsService.deprecateElementTemplate(id, dto, userId);
+    const templateAfter = await this.workflowsService.deprecateElementTemplate(
+      id,
+      dto,
+      userId,
+    );
 
     // Audit log entry
     await this.auditService.log({

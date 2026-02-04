@@ -1,9 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { DbService } from '../db/db.service';
-import {
-  OcrParsingService,
-  OCR_FIELD_PATTERNS,
-} from './ocr-parsing.service';
+import { OcrParsingService, OCR_FIELD_PATTERNS } from './ocr-parsing.service';
 
 const SAMPLE_OCR_TEXT = `
 INVOICE
@@ -77,7 +74,9 @@ const createMockService = (selectResult: unknown[]) => {
 describe('OcrParsingService', () => {
   describe('parseOcrOutput', () => {
     it('should extract invoice fields from valid OCR text', async () => {
-      const { service, insertMock, inserted } = createMockService([SAMPLE_RECORD]);
+      const { service, insertMock, inserted } = createMockService([
+        SAMPLE_RECORD,
+      ]);
       const results = await service.parseOcrOutput(SAMPLE_RECORD.id);
       expect(results).toHaveLength(5);
       expect(results.map((r) => r.fieldName)).toEqual([
@@ -87,7 +86,9 @@ describe('OcrParsingService', () => {
         'vendor_name',
         'due_date',
       ]);
-      const invoiceNumber = results.find((r) => r.fieldName === 'invoice_number');
+      const invoiceNumber = results.find(
+        (r) => r.fieldName === 'invoice_number',
+      );
       expect(invoiceNumber).toBeDefined();
       expect(Number(invoiceNumber?.confidence)).toBeGreaterThanOrEqual(0.85);
       expect(insertMock).toHaveBeenCalledTimes(5);
@@ -130,9 +131,9 @@ describe('OcrParsingService', () => {
       const { service } = createMockService([
         { ...SAMPLE_RECORD, status: 'draft' },
       ]);
-      await expect(service.parseOcrOutput(SAMPLE_RECORD.id)).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
+      await expect(
+        service.parseOcrOutput(SAMPLE_RECORD.id),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 
@@ -165,13 +166,21 @@ describe('OcrParsingService', () => {
   describe('calculateConfidence', () => {
     it('should return 0.9 for first pattern match', () => {
       const { service } = createMockService([SAMPLE_RECORD]);
-      const result = service['calculateConfidence']('12345', 'invoice_number', 0);
+      const result = service['calculateConfidence'](
+        '12345',
+        'invoice_number',
+        0,
+      );
       expect(result).toBe(0.9);
     });
 
     it('should boost confidence for valid date format', () => {
       const { service } = createMockService([SAMPLE_RECORD]);
-      const result = service['calculateConfidence']('2024-02-01', 'invoice_date', 1);
+      const result = service['calculateConfidence'](
+        '2024-02-01',
+        'invoice_date',
+        1,
+      );
       expect(result).toBeCloseTo(0.85, 2);
     });
 
@@ -179,7 +188,11 @@ describe('OcrParsingService', () => {
       const { service } = createMockService([SAMPLE_RECORD]);
       const originalDate = service['isValidDateFormat'];
       service['isValidDateFormat'] = () => true;
-      const result = service['calculateConfidence']('1,234.56', 'total_amount', 0);
+      const result = service['calculateConfidence'](
+        '1,234.56',
+        'total_amount',
+        0,
+      );
       expect(result).toBe(1);
       service['isValidDateFormat'] = originalDate;
     });

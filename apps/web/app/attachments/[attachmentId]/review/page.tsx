@@ -2,16 +2,20 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import NotificationToast, { type Notification } from '@/app/components/NotificationToast';
-import PdfDocumentViewer from '@/app/components/ocr/PdfDocumentViewer';
+const PdfDocumentViewer = dynamic(() => import('@/app/components/ocr/PdfDocumentViewer'), { ssr: false });
 import OcrCorrectionHistoryModal from '@/app/components/ocr/OcrCorrectionHistoryModal';
 import OcrFieldEditModal from '@/app/components/ocr/OcrFieldEditModal';
+import OcrFieldCreateModal from '@/app/components/ocr/OcrFieldCreateModal';
 import OcrFieldList from '@/app/components/ocr/OcrFieldList';
 import Layout from '@/app/components/Layout';
 
 import { API_BASE_URL, apiFetchJson, isUnauthorized } from '@/app/lib/api';
 import {
   createOcrCorrection,
+  createManualOcrField,
+  deleteOcrField,
   fetchAttachmentOcrResults,
   fetchOcrCorrectionHistory,
   type OcrCorrectionHistoryItem,
@@ -50,6 +54,9 @@ export default function AttachmentOcrReviewPage() {
   const [historyEntries, setHistoryEntries] = useState<OcrCorrectionHistoryItem[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [creatingField, setCreatingField] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [documentError, setDocumentError] = useState<string | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
@@ -89,7 +96,7 @@ export default function AttachmentOcrReviewPage() {
       try {
         const meJson = (await apiFetchJson('/auth/me')) as Me;
         setMe(meJson);
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (isUnauthorized(e)) {
           setMe(null);
         }
@@ -113,8 +120,8 @@ export default function AttachmentOcrReviewPage() {
         }
         return data.parsedFields[0]?.id ?? null;
       });
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load extraction review data');
+    } catch (err: unknown) {
+      setError((err as Error)?.message || 'Failed to load extraction review data');
     } finally {
       setLoading(false);
     }
@@ -159,13 +166,68 @@ export default function AttachmentOcrReviewPage() {
           message: `${editField.fieldName.replace(/_/g, ' ')} updated`,
         });
         await fetchData();
-      } catch (err: any) {
-        setCorrectionError(err?.message || 'Unable to save correction');
+      } catch (err: unknown) {
+        setCorrectionError((err as Error)?.message || 'Unable to save correction');
       } finally {
         setSavingCorrection(false);
       }
     },
     [addNotification, editField, fetchData],
+  );
+
+  const handleCreateField = useCallback(
+    async (payload: { fieldName: string; fieldValue: string; reason: string }) => {
+      if (!ocrData?.rawOcr) return;
+      setCreatingField(true);
+      setCreateError(null);
+      try {
+        await createManualOcrField(ocrData.rawOcr.id, payload);
+        setIsCreateOpen(false);
+        addNotification({
+          id: Date.now().toString(),
+          type: 'success',
+          title: 'Field added',
+          message: `${payload.fieldName} added manually`,
+        });
+        await fetchData();
+      } catch (err: unknown) {
+        setCreateError((err as Error)?.message || 'Unable to add field');
+      } finally {
+        setCreatingField(false);
+      }
+    },
+    [addNotification, fetchData, ocrData?.rawOcr],
+  );
+
+  const handleDeleteField = useCallback(
+    async (field: OcrField) => {
+      const reason = window.prompt(`Are you sure you want to delete "${field.fieldName}"? Please provide a reason:`);
+      if (reason === null) return; // Cancelled
+      const trimmedReason = reason.trim();
+      if (!trimmedReason) {
+        alert('Reason is required to delete a field.');
+        return;
+      }
+
+      try {
+        await deleteOcrField(field.id, trimmedReason);
+        addNotification({
+          id: Date.now().toString(),
+          type: 'success',
+          title: 'Field deleted',
+          message: `${field.fieldName} has been removed`,
+        });
+        await fetchData();
+      } catch (err: unknown) {
+        addNotification({
+          id: Date.now().toString(),
+          type: 'error',
+          title: 'Delete failed',
+          message: (err as Error)?.message || 'Unable to delete field',
+        });
+      }
+    },
+    [addNotification, fetchData],
   );
 
   const handleOpenHistory = useCallback((field: OcrField) => {
@@ -178,8 +240,8 @@ export default function AttachmentOcrReviewPage() {
     setHistoryError(null);
     fetchOcrCorrectionHistory(historyField.id)
       .then((entries) => setHistoryEntries(entries))
-      .catch((err: any) => {
-        setHistoryError(err?.message || 'Unable to load history');
+      .catch((err: unknown) => {
+        setHistoryError((err as Error)?.message || 'Unable to load history');
       })
       .finally(() => setHistoryLoading(false));
   }, [historyField]);
@@ -214,6 +276,8 @@ export default function AttachmentOcrReviewPage() {
     return null;
   }
 
+  const badgeStylesValue = ocrData?.rawOcr?.status ? (badgeStyles[ocrData.rawOcr.status] || badgeStyles.draft) : badgeStyles.draft;
+
   return (
     <Layout currentPage="home" userEmail={me.email} userRole={me.role} isAdmin={me.isAdmin} onLogout={logout}>
       {ocrData?.attachment && (
@@ -229,9 +293,9 @@ export default function AttachmentOcrReviewPage() {
                 fontSize: 12,
                 fontWeight: 600,
                 textTransform: 'capitalize',
-                background: badgeStyles[ocrData.rawOcr.status]?.bg || '#f1f5f9',
-                color: badgeStyles[ocrData.rawOcr.status]?.color || '#475569',
-                border: `1px solid ${badgeStyles[ocrData.rawOcr.status]?.border || '#e2e8f0'}`,
+                background: badgeStylesValue.bg,
+                color: badgeStylesValue.color,
+                border: `1px solid ${badgeStylesValue.border}`,
               }}>
                 {ocrData.rawOcr.status}
               </span>
@@ -282,9 +346,9 @@ export default function AttachmentOcrReviewPage() {
             marginBottom: 24,
             padding: '12px 16px',
             borderRadius: 12,
-            background: badgeStyles[ocrData.rawOcr.status]?.bg || '#f1f5f9',
-            border: `1px solid ${badgeStyles[ocrData.rawOcr.status]?.border || '#e2e8f0'}`,
-            color: badgeStyles[ocrData.rawOcr.status]?.color || '#475569',
+            background: badgeStylesValue.bg,
+            border: `1px solid ${badgeStylesValue.border}`,
+            color: badgeStylesValue.color,
             fontSize: 14,
             display: 'flex',
             alignItems: 'center',
@@ -398,8 +462,31 @@ export default function AttachmentOcrReviewPage() {
           )}
         </div>
         <div style={{ flex: '1 1 360px', minWidth: 320 }}>
-          <div style={{ marginBottom: 12, color: '#475569', fontSize: 14 }}>
-            Extracted Fields
+          <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ color: '#475569', fontSize: 14, fontWeight: 500 }}>
+              Extracted Fields
+            </div>
+            {hasOcrOutput && (
+              <button
+                onClick={() => setIsCreateOpen(true)}
+                disabled={!!ocrData?.utilizationType}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 8,
+                  background: ocrData?.utilizationType ? '#f1f5f9' : '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  color: ocrData?.utilizationType ? '#94a3b8' : '#2563eb',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: ocrData?.utilizationType ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6
+                }}
+              >
+                <span>➕</span> Add Field
+              </button>
+            )}
           </div>
           {loading && (
             <div
@@ -449,6 +536,7 @@ export default function AttachmentOcrReviewPage() {
               onEdit={handleOpenEdit}
               onViewHistory={handleOpenHistory}
               onSelect={handleFieldSelect}
+              onDelete={handleDeleteField}
               selectedFieldId={selectedFieldId}
             />
           )}
@@ -484,6 +572,15 @@ export default function AttachmentOcrReviewPage() {
         onClose={() => setIsEditOpen(false)}
         onSave={handleSaveCorrection}
       />
+      {isCreateOpen && (
+        <OcrFieldCreateModal
+          isOpen={isCreateOpen}
+          isSaving={creatingField}
+          error={createError}
+          onClose={() => setIsCreateOpen(false)}
+          onSave={handleCreateField}
+        />
+      )}
       <OcrCorrectionHistoryModal
         field={historyField}
         isOpen={Boolean(historyField)}

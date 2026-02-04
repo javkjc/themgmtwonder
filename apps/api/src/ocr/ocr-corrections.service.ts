@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InferModel, eq } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import {
@@ -24,7 +29,7 @@ export class OcrCorrectionsService {
   constructor(
     private readonly dbs: DbService,
     private readonly auditService: AuditService,
-  ) { }
+  ) {}
 
   /**
    * Stores a new correction for an OCR field and logs the change for audit.

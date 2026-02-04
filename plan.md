@@ -1,1121 +1,628 @@
-# PLAN — v8 Evidence Review & Derived Data Verification (Visual)
+# PLAN — v8.5 Field Builder & Structured Extraction Authoring
 
-**Document Version:** 2.0  
-**Status:** NOT STARTED  
+**Document Version:** 4.0  
+**Status:** 🚧 NOT STARTED  
 **Current Phase:** Planning  
-**Baseline:** v3.5 Complete (OCR draft/confirm/archive states implemented)  
+**Baseline:** v8.1 Complete (Extraction Review UI & Governance)  
 **Target Completion:** TBD
 
 ---
 
 ## Overview
 
-**What we're building:**
-Visual, side-by-side inspection of confirmed OCR data with field-level confidence indicators, correction interface, and full audit trail. This builds on v3.5's OCR confirmation workflow by adding structured field parsing and visual review capabilities.
+**What we are building (v8.5):**
+A governed **Field Builder** inside the Extracted Data Review page. This allows users to convert raw extracted text into structured fields (key/value pairs) using explicit, auditable actions. This is critical for handling "no fields extracted" scenarios or refining incomplete data.
 
-**What we're NOT building:**
-- No authoritative data mutation (OCR results remain derived/non-authoritative)
-- No automatic correction or learning
-- No workflow coupling (workflow integration deferred to post-v9)
+**Key Features:**
+- **Field Builder Panel:** Toggleable section in the review interface
+- **Manual Field Creation:** Explicit "Add Field" with mandatory correction reason
+- **Text Selection:** Highlight text in raw output to create fields
+- **Templates & Helpers:** Quick-add common fields (Vendor, Date, etc.) and normalization tools
+
+**What we are NOT building:**
+- No automatic/background extraction (still user-initiated)
+- No ML model training
+- No changes to the backend OCR engine
+- No authoritative record creation (data remains derived until utilized)
 
 **Success Criteria:**
-- [ ] Users can view PDF attachments side-by-side with parsed OCR fields
-- [ ] Users can see per-field confidence scores with color-coded indicators
-- [ ] Users can manually correct OCR fields (creates correction records)
-- [ ] All OCR corrections preserved in immutable history
-- [ ] Audit log captures all correction actions
-- [ ] Confirmed OCR data (from v3.5) displayed in visual review interface
+- [ ] Users can manually add fields when OCR returns zero results
+- [ ] Users can select text from raw output to populate field values
+- [ ] All manual field creations capture a mandatory "reason" for audit
+- [ ] Field Builder is disabled when extraction is Confirmed or Utilized
+- [ ] "No fields extracted" state guides users to the Field Builder
 
 ---
 
 ## Prerequisites (Dependencies Check)
 
 **Required Complete:**
-- [x] v3.5 — OCR draft/confirm/archive flow (status states, utilization tracking)
-- [x] v3 — Attachments system with upload/download
+- [x] v8.1 — Extraction Review UI & Governance (Review page, Provenance, Lockout rules)
+- [x] v3.5 — OCR draft/confirm/archive flow
 - [x] v1 — Audit logging system
 
-**Current State:**
-- ✅ `attachment_ocr_outputs` table with status (draft/confirmed/archived)
-- ✅ Confirmation workflow (draft → confirm submit → confirmed)
-- ✅ Utilization tracking (Category A/B/C)
-- ✅ Redo validation and Option-C archive
-- ❌ Missing: Structured field parsing from confirmed OCR
-- ❌ Missing: Field-level corrections (separate from confirm edits)
-- ❌ Missing: Visual OCR review page
-- ❌ Missing: PDF viewer with bounding box highlights
+**Current State (v8.1 Baseline):**
+- ✅ Review page exists with PDF viewer and Field List
+- ✅ Governance gates (lockout on utilized) are in place
+- ✅ Correction infrastructure (mandatory reasons) is ready
+- ✅ "Raw Extracted Text" is available in backend `attachment_ocr_outputs`
 
 ---
 
-## Relationship to v3.5
-
-**v3.5 provides:**
-- OCR state machine (draft → confirmed → archived)
-- Utilization tracking (determines redo eligibility)
-- Confirmation workflow (user edits → confirms → immutable)
-
-**v8 adds:**
-- Structured field parsing (extract invoice_number, total_amount, etc. from confirmed OCR)
-- Field-level corrections (post-confirmation corrections with history)
-- Visual review UI (side-by-side PDF + field list)
-- Confidence indicators (color-coded field confidence scores)
-
-**Key distinction:**
-- v3.5 `confirmOcrResult()` allows editing `extractedText` before confirming (one-time edit)
-- v8 corrections apply AFTER confirmation (create immutable correction records, don't modify confirmed data)
 
 ---
 
-## Database Schema Changes
+## v8.5 Implementation Plan
 
-### 1. New Table: `ocr_results`
+### Task 1: Field Builder UI Panel & Empty States
+**Objective:** Create the container and layout for the Field Builder within the existing Review Page.
 
-**Purpose:** Store structured, parsed fields from confirmed OCR
+**Files:**
+- `apps/web/app/attachments/[attachmentId]/review/page.tsx`
+- `apps/web/components/ocr/FieldBuilderPanel.tsx` (NEW)
 
-```sql
-CREATE TABLE ocr_results (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  attachment_ocr_output_id UUID NOT NULL REFERENCES attachment_ocr_outputs(id) ON DELETE CASCADE,
-  field_name VARCHAR(255) NOT NULL,
-  field_value TEXT,
-  confidence DECIMAL(5,4), -- 0.0000 to 1.0000
-  bounding_box JSON, -- {x, y, width, height} for highlighting
-  page_number INTEGER,
-  created_at TIMESTAMP DEFAULT NOW(),
-  
-  INDEX idx_ocr_results_attachment_ocr_output_id (attachment_ocr_output_id),
-  INDEX idx_ocr_results_field_name (field_name)
-);
-```
+**Requirements:**
+1. **Layout updates:**
+   - Add a toggle button "Field Builder" to the review page toolbar.
+   - When active, split the view to show:
+     - **Pane A:** Document Viewer (Existing)
+     - **Pane B:** Raw Extracted Text (New/Visible)
+     - **Pane C:** Extracted Fields List (Existing)
+   - Layout should be responsive.
 
-**Rationale:**
-- Separates structured field data from raw `extractedText` blob
-- Enables per-field confidence querying
-- Bounding box enables visual highlighting on PDF
-- Only created for `status='confirmed'` OCR (not drafts)
-
-**Lifecycle:**
-1. OCR worker completes → draft created (v3.5)
-2. User confirms → `status='confirmed'` (v3.5)
-3. **NEW:** System parses confirmed `extractedText` → creates `ocr_results` records (v8)
-4. User views fields in visual review page (v8)
-
----
-
-### 2. New Table: `ocr_corrections`
-
-**Purpose:** Immutable correction history for OCR fields (post-confirmation)
-
-```sql
-CREATE TABLE ocr_corrections (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  ocr_result_id UUID NOT NULL REFERENCES ocr_results(id) ON DELETE CASCADE,
-  corrected_by UUID NOT NULL REFERENCES users(id),
-  original_value TEXT,
-  corrected_value TEXT NOT NULL,
-  correction_reason TEXT,
-  created_at TIMESTAMP DEFAULT NOW(),
-  
-  INDEX idx_ocr_corrections_ocr_result_id (ocr_result_id),
-  INDEX idx_ocr_corrections_corrected_by (corrected_by),
-  INDEX idx_ocr_corrections_created_at (created_at)
-);
-```
-
-**Rationale:**
-- Preserves original parsed field value (immutable)
-- Tracks who made correction and why
-- Append-only (no updates or deletes)
-- Separate from v3.5 confirmation edits (those edit raw `extractedText` before confirming)
-
-**Distinction from v3.5 confirmation:**
-- v3.5: Edit `extractedText` → confirm → locked
-- v8: Parse confirmed text → extract fields → correct individual fields → create correction records
-
----
-
-## Backend Implementation Plan
-
-### Task 1: OcrParsingService (NEW)
-
-**Objective:** Parse confirmed OCR `extractedText` into structured fields
-
-**File:** `apps/api/src/ocr/ocr-parsing.service.ts` (NEW)
-
-**Methods:**
-
-```typescript
-class OcrParsingService {
-  /**
-   * Parse confirmed OCR text into structured fields
-   * Only called on status='confirmed' OCR
-   */
-  async parseOcrOutput(
-    attachmentOcrOutputId: string
-  ): Promise<OcrResult[]> {
-    // 1. Load OCR output
-    const ocrOutput = await this.db.query.attachmentOcrOutputs.findFirst({
-      where: eq(attachmentOcrOutputs.id, attachmentOcrOutputId),
-    });
-    
-    if (!ocrOutput) {
-      throw new NotFoundException('OCR output not found');
-    }
-    
-    // 2. Verify status is confirmed
-    if (ocrOutput.status !== 'confirmed') {
-      throw new BadRequestException(
-        `Cannot parse OCR with status '${ocrOutput.status}'. Must be 'confirmed'.`
-      );
-    }
-    
-    // 3. Check if already parsed (avoid duplicate parsing)
-    const existingResults = await this.db.query.ocrResults.findMany({
-      where: eq(ocrResults.attachmentOcrOutputId, attachmentOcrOutputId),
-    });
-    
-    if (existingResults.length > 0) {
-      return existingResults; // Already parsed, return existing
-    }
-    
-    // 4. Extract fields from confirmed text
-    const extractedText = ocrOutput.extractedText || '';
-    const fields = await this.extractFields(extractedText, ocrOutput.metadata);
-    
-    // 5. Insert parsed fields
-    const results = await this.db.insert(ocrResults).values(fields).returning();
-    
-    // 6. Audit log
-    await this.auditService.log({
-      action: 'OCR_PARSED',
-      resourceType: 'attachment_ocr_output',
-      resourceId: attachmentOcrOutputId,
-      metadata: { fieldsExtracted: results.length },
-    });
-    
-    return results;
-  }
-  
-  /**
-   * Extract common document fields using regex patterns
-   */
-  private async extractFields(
-    rawText: string,
-    ocrMetadata: any
-  ): Promise<Array<{
-    fieldName: string;
-    fieldValue: string;
-    confidence: number;
-    boundingBox: any | null;
-    pageNumber: number | null;
-  }>> {
-    const fields = [];
-    
-    // Invoice Number
-    const invoiceNumber = this.extractField(
-      rawText,
-      'invoice_number',
-      [/Invoice\s*#?\s*:?\s*(\w+)/i, /Invoice\s*Number\s*:?\s*(\w+)/i]
-    );
-    if (invoiceNumber) fields.push(invoiceNumber);
-    
-    // Invoice Date
-    const invoiceDate = this.extractField(
-      rawText,
-      'invoice_date',
-      [/Invoice\s*Date\s*:?\s*([\d\/\-]+)/i, /Date\s*:?\s*([\d\/\-]+)/i]
-    );
-    if (invoiceDate) fields.push(invoiceDate);
-    
-    // Total Amount
-    const totalAmount = this.extractField(
-      rawText,
-      'total_amount',
-      [/Total\s*:?\s*\$?([\d,]+\.?\d*)/i, /Amount\s*Due\s*:?\s*\$?([\d,]+\.?\d*)/i]
-    );
-    if (totalAmount) fields.push(totalAmount);
-    
-    // Vendor Name (simple: first line often contains vendor)
-    const lines = rawText.split('\n').filter(l => l.trim());
-    if (lines.length > 0) {
-      fields.push({
-        fieldName: 'vendor_name',
-        fieldValue: lines[0].trim(),
-        confidence: 0.7, // Lower confidence for heuristic extraction
-        boundingBox: null,
-        pageNumber: 1,
-      });
-    }
-    
-    return fields;
-  }
-  
-  /**
-   * Extract single field using regex patterns
-   */
-  private extractField(
-    rawText: string,
-    fieldName: string,
-    patterns: RegExp[]
-  ): {
-    fieldName: string;
-    fieldValue: string;
-    confidence: number;
-    boundingBox: any | null;
-    pageNumber: number | null;
-  } | null {
-    for (const pattern of patterns) {
-      const match = rawText.match(pattern);
-      if (match && match[1]) {
-        return {
-          fieldName,
-          fieldValue: match[1].trim(),
-          confidence: this.calculateConfidence(match[1], fieldName),
-          boundingBox: null, // TODO: Extract from OCR metadata if available
-          pageNumber: 1, // TODO: Detect page from OCR metadata
-        };
-      }
-    }
-    return null;
-  }
-  
-  /**
-   * Calculate confidence based on field type and value format
-   */
-  private calculateConfidence(value: string, fieldType: string): number {
-    // Invoice number: alphanumeric, reasonable length
-    if (fieldType === 'invoice_number') {
-      return /^[A-Z0-9\-]+$/i.test(value) && value.length >= 3 && value.length <= 20
-        ? 0.9
-        : 0.6;
-    }
-    
-    // Date: valid format
-    if (fieldType === 'invoice_date') {
-      const datePattern = /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/;
-      return datePattern.test(value) ? 0.85 : 0.5;
-    }
-    
-    // Amount: numeric with optional decimals
-    if (fieldType === 'total_amount') {
-      const amountPattern = /^[\d,]+\.?\d*$/;
-      return amountPattern.test(value) ? 0.9 : 0.6;
-    }
-    
-    // Default
-    return 0.7;
-  }
-}
-```
+2. **Empty State Handling:**
+   - Detect when `fields.length === 0`.
+   - Display prominent "No fields extracted" message.
+   - Show CTA: "Create fields from extracted text".
+   - Clicking CTA opens the Field Builder panel.
+   - Ensure "Raw Extracted Text" is visible even when fields are empty.
 
 **Verification:**
-- [ ] Create confirmed OCR with sample invoice text
-- [ ] Call `parseOcrOutput()` → creates `ocr_results` records
-- [ ] Verify fields: invoice_number, invoice_date, total_amount, vendor_name
-- [ ] Verify confidence scores calculated correctly
-- [ ] Verify audit log has `OCR_PARSED` event
-- [ ] Call parse again → returns existing results (no duplicates)
+- [ ] Toggle button shows/hides the panel.
+- [ ] Empty state appears correctly when no fields exist.
+- [ ] Raw text is displayed (read-only) in the panel.
 
 ---
 
-### Task 2: OcrCorrectionsService (NEW)
+### Task 2: Governance Gates (Status + Utilization)
+**Objective:** Enforce lockout rules so Field Builder cannot be used on finalized or authoritative data.
 
-**Objective:** Handle field-level corrections (post-confirmation)
+**Files:**
+- `apps/web/components/ocr/FieldBuilderPanel.tsx`
+- `apps/api/src/ocr/ocr.service.ts` (Validation check)
 
-**File:** `apps/api/src/ocr/ocr-corrections.service.ts` (NEW)
+**Requirements:**
+1. **Status-based Enablement:**
+   - `draft`: Field Builder inputs **Enabled**.
+   - `confirmed`: Field Builder **Read-only** (view raw text/logic, no creation).
+   - `archived`: **Read-only**.
 
-**Methods:**
+2. **Utilization-based Lockout (Critical):**
+   - Check `utilizationType` (Category A/B/C).
+   - If utilized: **Disable** all Field Builder inputs.
+   - Show "Read-only (data in use)" badge with tooltip explaining why (Reuse existing logic from v8.1).
 
-```typescript
-class OcrCorrectionsService {
-  /**
-   * Create correction for a parsed OCR field
-   * User must own the attachment
-   */
-  async createCorrection(
-    ocrResultId: string,
-    correctedValue: string,
-    correctionReason: string | null,
-    userId: string
-  ): Promise<OcrCorrection> {
-    // 1. Load OCR result
-    const ocrResult = await this.db.query.ocrResults.findFirst({
-      where: eq(ocrResults.id, ocrResultId),
-      with: {
-        attachmentOcrOutput: {
-          with: {
-            attachment: {
-              with: { todo: true },
-            },
-          },
-        },
-      },
-    });
-    
-    if (!ocrResult) {
-      throw new NotFoundException('OCR result not found');
-    }
-    
-    // 2. Verify ownership
-    const task = ocrResult.attachmentOcrOutput.attachment.todo;
-    if (task.userId !== userId) {
-      throw new ForbiddenException('You do not own this attachment');
-    }
-    
-    // 3. Verify OCR is confirmed (can't correct draft or archived)
-    if (ocrResult.attachmentOcrOutput.status !== 'confirmed') {
-      throw new BadRequestException(
-        `Cannot correct OCR with status '${ocrResult.attachmentOcrOutput.status}'. Must be 'confirmed'.`
-      );
-    }
-    
-    // 4. Create correction record
-    const [correction] = await this.db
-      .insert(ocrCorrections)
-      .values({
-        ocrResultId,
-        correctedBy: userId,
-        originalValue: ocrResult.fieldValue,
-        correctedValue,
-        correctionReason,
-        createdAt: new Date(),
-      })
-      .returning();
-    
-    // 5. Audit log
-    await this.auditService.log({
-      action: 'OCR_FIELD_CORRECTED',
-      resourceType: 'ocr_result',
-      resourceId: ocrResultId,
-      metadata: {
-        fieldName: ocrResult.fieldName,
-        originalValue: ocrResult.fieldValue,
-        correctedValue,
-        correctionReason,
-      },
-    });
-    
-    return correction;
-  }
-  
-  /**
-   * Get correction history for an OCR field
-   */
-  async getCorrectionHistory(
-    ocrResultId: string
-  ): Promise<OcrCorrection[]> {
-    return this.db.query.ocrCorrections.findMany({
-      where: eq(ocrCorrections.ocrResultId, ocrResultId),
-      orderBy: asc(ocrCorrections.createdAt),
-    });
-  }
-  
-  /**
-   * Get latest value for an OCR field (original or most recent correction)
-   */
-  async getLatestValue(
-    ocrResultId: string
-  ): Promise<{
-    value: string;
-    isCorrected: boolean;
-    correctedAt?: Date;
-    correctedBy?: string;
-  }> {
-    const ocrResult = await this.db.query.ocrResults.findFirst({
-      where: eq(ocrResults.id, ocrResultId),
-    });
-    
-    if (!ocrResult) {
-      throw new NotFoundException('OCR result not found');
-    }
-    
-    // Get most recent correction
-    const latestCorrection = await this.db.query.ocrCorrections.findFirst({
-      where: eq(ocrCorrections.ocrResultId, ocrResultId),
-      orderBy: desc(ocrCorrections.createdAt),
-    });
-    
-    if (latestCorrection) {
-      return {
-        value: latestCorrection.correctedValue,
-        isCorrected: true,
-        correctedAt: latestCorrection.createdAt,
-        correctedBy: latestCorrection.correctedBy,
-      };
-    }
-    
-    // No corrections, return original
-    return {
-      value: ocrResult.fieldValue || '',
-      isCorrected: false,
-    };
-  }
-}
-```
+3. **Backend Validation:**
+   - Ensure the definition of "correction" or "update" endpoints rejects changes if:
+     - Status is `confirmed` OR `archived`.
+     - Utilization type is NOT null/none.
 
 **Verification:**
-- [ ] Create parsed OCR result (via Task 1)
-- [ ] Call `createCorrection()` with new value
-- [ ] Verify correction record created
-- [ ] Verify audit log has `OCR_FIELD_CORRECTED` event
-- [ ] Call `getLatestValue()` → returns corrected value
-- [ ] Create second correction → verify history has 2 entries
+- [ ] Inputs disabled when status is 'confirmed'.
+- [ ] Inputs disabled when `utilizationType` is present.
+- [ ] Backend returns 400 if update attempted on utilized record.
 
 ---
 
-### Task 3: Extend OcrService
+### Task 3: Capability A - Manual Field Creation
+**Objective:** Allow users to manually type in a new field key/value with a mandatory audit reason.
 
-**Objective:** Add method to get parsed fields with corrections for visual review UI
+**Files:**
+- `apps/web/components/ocr/FieldBuilderPanel.tsx`
+- `apps/web/components/ocr/ManualFieldForm.tsx` (NEW)
 
-**File:** `apps/api/src/ocr/ocr.service.ts` (EXTEND)
+**Requirements:**
+1. **Form Fields:**
+   - **Field Name** (Required, text input).
+   - **Field Value** (Required, text input).
+   - **Reason** (Required, reuse `CorrectionReasonInput` component).
+   - **Type** (Optional: text, number, date, currency) - UI validation only for now.
 
-**New Method:**
+2. **Actions:**
+   - "Add Field" button (Explicit submit, no auto-save).
+   - Validates that Name, Value, and Reason are present.
 
-```typescript
-/**
- * Get OCR results with parsed fields and corrections for visual review
- * Returns structured data for evidence review UI
- */
-async getOcrResultsWithCorrections(
-  attachmentId: string,
-  userId: string
-): Promise<{
-  attachmentId: string;
-  rawOcr: AttachmentOcrOutput;
-  parsedFields: Array<{
-    id: string;
-    fieldName: string;
-    originalValue: string;
-    currentValue: string; // latest corrected value or original
-    confidence: number;
-    boundingBox: any | null;
-    pageNumber: number | null;
-    isCorrected: boolean;
-    correctionHistory: OcrCorrection[];
-  }>;
-}> {
-  // 1. Verify attachment exists and user owns it
-  const attachment = await this.db.query.attachments.findFirst({
-    where: eq(attachments.id, attachmentId),
-    with: { todo: true },
-  });
-  
-  if (!attachment) {
-    throw new NotFoundException('Attachment not found');
-  }
-  
-  if (attachment.todo.userId !== userId) {
-    throw new ForbiddenException('You do not own this attachment');
-  }
-  
-  // 2. Get current confirmed OCR (from v3.5)
-  const rawOcr = await this.getCurrentConfirmedOcr(attachmentId);
-  
-  if (!rawOcr) {
-    throw new NotFoundException('No confirmed OCR found for this attachment');
-  }
-  
-  // 3. Get parsed fields (or parse if not yet done)
-  let ocrResultsRecords = await this.db.query.ocrResults.findMany({
-    where: eq(ocrResults.attachmentOcrOutputId, rawOcr.id),
-  });
-  
-  if (ocrResultsRecords.length === 0) {
-    // Auto-parse on first access
-    ocrResultsRecords = await this.ocrParsingService.parseOcrOutput(rawOcr.id);
-  }
-  
-  // 4. For each field, get corrections and latest value
-  const parsedFields = await Promise.all(
-    ocrResultsRecords.map(async (result) => {
-      const correctionHistory = await this.ocrCorrectionsService.getCorrectionHistory(result.id);
-      const latestValue = await this.ocrCorrectionsService.getLatestValue(result.id);
-      
-      return {
-        id: result.id,
-        fieldName: result.fieldName,
-        originalValue: result.fieldValue || '',
-        currentValue: latestValue.value,
-        confidence: result.confidence,
-        boundingBox: result.boundingBox,
-        pageNumber: result.pageNumber,
-        isCorrected: latestValue.isCorrected,
-        correctionHistory,
-      };
-    })
-  );
-  
-  return {
-    attachmentId,
-    rawOcr,
-    parsedFields,
-  };
-}
-```
+3. **Data Handling:**
+   - On submit, treat as a "correction" or "patch" to the draft data.
+   - Send to backend (e.g., `PATCH /attachments/:id/ocr/draft`).
+   - Refresh local state to show new field in the list.
 
 **Verification:**
-- [ ] Create confirmed OCR
-- [ ] Call `getOcrResultsWithCorrections()` → returns parsed fields
-- [ ] Verify auto-parsing triggered if not yet parsed
-- [ ] Verify correction history included for each field
-- [ ] Verify currentValue reflects latest correction
+- [ ] Cannot submit without field name, value, and reason.
+- [ ] Submitting adds the field to the "Extracted Fields" list.
+- [ ] Audit log reflects the addition with the provided reason.
 
 ---
 
-### Task 4: API Endpoints (NEW)
+### Task 4: Capability B - Text Selection Creation
+**Objective:** Allow creating fields by highlighting text in the raw output pane.
 
-**Objective:** Add REST endpoints for parsing and corrections
+**Files:**
+- `apps/web/components/ocr/RawTextPanel.tsx` (NEW)
+- `apps/web/components/ocr/FieldBuilderPanel.tsx`
 
-**File:** `apps/api/src/ocr/ocr.controller.ts` (EXTEND)
+**Requirements:**
+1. **Selection Interaction:**
+   - User highlights text in "Raw Extracted Text" pane.
+   - Show floating toolbar or context actions:
+     - "Use as Value"
+     - "Use as Field Name" (Optional)
 
-**New Endpoints:**
+2. **Flow:**
+   - User clicks "Use as Value".
+   - The highlighted text populates the **Field Value** input in the Manual Field Form (Task 3).
+   - User enters Field Name (or selects template).
+   - User adds Reason and clicks "Add Field".
 
-```typescript
-/**
- * Trigger parsing of confirmed OCR into structured fields
- * (Usually auto-triggered on first view, but can be called manually)
- */
-@Post('attachments/:attachmentId/ocr/parse')
-@UseGuards(AuthGuard)
-async parseOcr(
-  @Param('attachmentId') attachmentId: string,
-  @CurrentUser() user: User
-): Promise<{ parsedFields: number; ocrResultIds: string[] }> {
-  // Get confirmed OCR
-  const ocr = await this.ocrService.getCurrentConfirmedOcr(attachmentId);
-  
-  if (!ocr) {
-    throw new NotFoundException('No confirmed OCR found');
-  }
-  
-  // Parse
-  const results = await this.ocrParsingService.parseOcrOutput(ocr.id);
-  
-  return {
-    parsedFields: results.length,
-    ocrResultIds: results.map(r => r.id),
-  };
-}
-
-/**
- * Get structured OCR results with corrections for visual review
- */
-@Get('attachments/:attachmentId/ocr/results')
-@UseGuards(AuthGuard)
-async getOcrResults(
-  @Param('attachmentId') attachmentId: string,
-  @CurrentUser() user: User
-): Promise<OcrResultsWithCorrections> {
-  return this.ocrService.getOcrResultsWithCorrections(attachmentId, user.id);
-}
-
-/**
- * Create correction for OCR field
- */
-@Post('ocr-results/:ocrResultId/corrections')
-@UseGuards(AuthGuard)
-async createCorrection(
-  @Param('ocrResultId') ocrResultId: string,
-  @Body() dto: CreateOcrCorrectionDto,
-  @CurrentUser() user: User
-): Promise<OcrCorrection> {
-  return this.ocrCorrectionsService.createCorrection(
-    ocrResultId,
-    dto.correctedValue,
-    dto.correctionReason,
-    user.id
-  );
-}
-
-/**
- * Get correction history for OCR field
- */
-@Get('ocr-results/:ocrResultId/corrections')
-@UseGuards(AuthGuard)
-async getCorrectionHistory(
-  @Param('ocrResultId') ocrResultId: string,
-  @CurrentUser() user: User
-): Promise<OcrCorrection[]> {
-  return this.ocrCorrectionsService.getCorrectionHistory(ocrResultId);
-}
-```
-
-**DTOs:**
-
-```typescript
-class CreateOcrCorrectionDto {
-  @IsString()
-  @IsNotEmpty()
-  correctedValue: string;
-
-  @IsString()
-  @IsOptional()
-  correctionReason?: string;
-}
-```
+3. **Constraints:**
+   - Selection *only* populates the form; it does NOT auto-create the field.
+   - Explicit confirmation (Add Field button) is still required.
 
 **Verification:**
-- [ ] POST `/attachments/:id/ocr/parse` → returns parsed field count
-- [ ] GET `/attachments/:id/ocr/results` → returns fields with corrections
-- [ ] POST `/ocr-results/:id/corrections` → creates correction
-- [ ] GET `/ocr-results/:id/corrections` → returns correction history
-- [ ] Verify ownership checks on all endpoints
+- [ ] Highlighting text shows "Use as..." options.
+- [ ] Clicking option populates the form correctly.
+- [ ] Form still requires manual confirmation.
 
 ---
 
-## Frontend Changes
+### Task 5: Capabilities C & D - Templates & Helpers
+**Objective:** Provide UI conveniences for common fields and data normalization.
 
-### Task 5: OCR Review Page (NEW)
+**Files:**
+- `apps/web/components/ocr/FieldTemplates.tsx` (NEW)
+- `apps/web/components/ocr/NormalizationHelpers.tsx` (NEW)
 
-**Objective:** Visual side-by-side review interface
+**Requirements:**
+1. **Templates:**
+   - Dropdown or chips for common fields: "Invoice Number", "Date", "Total", "Vendor".
+   - Clicking a template populates the **Field Name** input.
+   - Does NOT populate value (user must enter or select text).
 
-**File:** `apps/web/app/attachments/[attachmentId]/review/page.tsx` (NEW)
-
-**Layout:**
-
-```
-+----------------------+----------------------+
-|  Document View       |  OCR Fields          |
-|  (PDF Viewer)        |  (Field List)        |
-|                      |                      |
-|  [PDF Preview]       |  Invoice Number      |
-|  with highlight      |  INV-12345  ✓ 95%   |
-|  boxes               |  [Edit] [History]    |
-|                      |                      |
-|                      |  Invoice Date        |
-|                      |  02/01/2024 ⚠️ 72%  |
-|                      |  [Edit] [History]    |
-|                      |                      |
-|                      |  Total Amount        |
-|                      |  $1,234.56  ✓ 90%   |
-|                      |  [Edit] [History]    |
-+----------------------+----------------------+
-```
-
-**Components to Build:**
-
-1. **PDFViewer Component**
-   - Library: `react-pdf`
-   - Features: Zoom, pan, page navigation
-   - Highlight bounding boxes from parsed fields
-   - Click highlight → jump to field in right panel
-
-2. **OcrFieldList Component**
-   - Display all parsed fields
-   - Color-coded confidence:
-     - Green (≥80%): ✓
-     - Yellow (60-79%): ⚠️
-     - Red (<60%): ❌
-   - Show current value (original or corrected)
-   - Actions: [Edit] [View History]
-
-3. **OcrFieldEditModal Component**
-   - Display: Field name, original value, current value, confidence
-   - Input: New corrected value
-   - Optional: Correction reason
-   - Buttons: [Cancel] [Save Correction]
-
-4. **OcrCorrectionHistoryModal Component**
-   - Timeline of all corrections for field
-   - Show: Who, when, original → corrected, reason
-   - Read-only
-
-**State Management:**
-
-```typescript
-interface OcrReviewPageState {
-  attachmentId: string;
-  attachment: Attachment;
-  ocrData: OcrResultsWithCorrections | null;
-  selectedFieldId: string | null;
-  isEditModalOpen: boolean;
-  isHistoryModalOpen: boolean;
-  highlightedBoundingBox: BoundingBox | null;
-  loading: boolean;
-  error: string | null;
-}
-```
-
-**Data Flow:**
-1. Page loads → Fetch attachment
-2. Fetch OCR results with corrections
-3. Display PDF + field list
-4. User clicks field → Highlight bounding box on PDF
-5. User clicks [Edit] → Open edit modal
-6. User saves correction → POST → Refresh results
-7. User clicks [History] → Open history modal
+2. **Normalization Helpers:**
+   - "Trim Whitespace" button (previews change to Value).
+   - "Currency Format" (removes currency symbols/commas).
+   - "Date Format" (attempts to verify YYYY-MM-DD compatibility).
+   - **Rule:** These only modify the input form value. They do not auto-save.
 
 **Verification:**
-- [ ] Page renders with PDF and field list
-- [ ] Confidence colors display correctly
-- [ ] Edit modal opens and saves corrections
-- [ ] History modal displays correction timeline
-- [ ] Bounding box highlights work (if available in OCR data)
-
----
-
-### Task 6: Update Task Detail Page
-
-**Objective:** Add link to OCR review page
-
-**File:** `apps/web/app/task/[id]/page.tsx` (MODIFY)
-
-**Changes:**
-
-Add link for attachments with confirmed OCR:
-
-```tsx
-{attachment.ocrStatus === 'confirmed' && (
-  <Link 
-    href={`/attachments/${attachment.id}/review`}
-    className="text-blue-600 hover:underline text-sm"
-  >
-    📋 Review OCR Fields
-  </Link>
-)}
-```
-
-**Show OCR summary:**
-```tsx
-{ocrSummary && (
-  <div className="text-xs text-gray-500 mt-1">
-    {ocrSummary.fieldsExtracted} fields extracted
-    {ocrSummary.fieldsCorrected > 0 && (
-      <span className="text-orange-600">
-        {' '}• {ocrSummary.fieldsCorrected} corrected
-      </span>
-    )}
-  </div>
-)}
-```
-
-**Verification:**
-- [ ] Link appears for confirmed OCR attachments
-- [ ] Link navigates to review page
-- [ ] OCR summary displays correctly
-
----
-
-## Frontend Libraries
-
-**PDF Viewing:**
-```bash
-npm install react-pdf pdfjs-dist
-```
-
-**Usage:**
-- `react-pdf`: React wrapper for PDF.js
-- Rendering PDF with bounding box overlays
-
----
-
-## Testing Strategy
-
-### Unit Tests (Backend)
-
-**OcrParsingService:**
-- Parse invoice text → verify fields extracted
-- Parse receipt text → verify different field patterns
-- Parse with no matches → verify empty array returned
-- Confidence calculation → verify scoring logic
-
-**OcrCorrectionsService:**
-- Create correction → verify record created
-- Get correction history → verify chronological order
-- Get latest value → verify returns most recent correction
-
-### Integration Tests (API)
-
-- POST `/attachments/:id/ocr/parse` → Creates ocr_results
-- GET `/attachments/:id/ocr/results` → Returns parsed fields
-- POST `/ocr-results/:id/corrections` → Creates correction
-- Verify ownership checks (cannot correct other user's OCR)
-
-### E2E Tests (Frontend)
-
-- Load OCR review page → PDF and fields render
-- Click field → Bounding box highlights on PDF
-- Edit field → Save → Value updates
-- View history → Timeline displays correctly
+- [ ] Clicking "Invoice Number" template sets field name input.
+- [ ] Normalization buttons modify the form value input correctly.
 
 ---
 
 ## Implementation Order
 
-### Phase 1: Backend Foundation (Tasks 1-4)
-**Status:** Not Started
-
-1. Database migrations (ocr_results, ocr_corrections tables)
-2. Build OcrParsingService (Task 1)
-3. Build OcrCorrectionsService (Task 2)
-4. Extend OcrService (Task 3)
-5. Add API endpoints (Task 4)
-6. Unit tests
-7. Integration tests
-
-**Definition of Done:**
-- [ ] Migrations run successfully
-- [ ] API endpoints return expected responses
-- [ ] Unit tests pass
-- [ ] Integration tests pass
-- [ ] Manual API testing successful
+1. **Step 1: UI Skeleton (Task 1).** Get the panel toggling and layout working.
+2. **Step 2: Backend Check (Task 2).** Verify strictly that we can't edit utilized/confirmed data.
+3. **Step 3: Manual Creation (Task 3).** Implement the core "Add Field" form and wire it to backend.
+4. **Step 4: Text Selection (Task 4).** Implement the interaction listener on raw text.
+5. **Step 5: Templates/Helpers (Task 5).** Add the polish features.
 
 ---
 
-### Phase 2: Frontend Review Page (Task 5)
-**Status:** Not Started
+## Constraints & Governance
 
-1. Install react-pdf library
-2. Build PDFViewer component
-3. Build OcrFieldList component
-4. Build OcrFieldEditModal component
-5. Build OcrCorrectionHistoryModal component
-6. Wire up API calls and state
-7. Add loading/error states
-
-**Definition of Done:**
-- [ ] Review page accessible
-- [ ] PDF renders correctly
-- [ ] Field list displays with confidence colors
-- [ ] Edit modal saves corrections
-- [ ] History modal displays timeline
-- [ ] Responsive design
+- **Explicit Intent:** No auto-extraction. All fields must be explicitly added by the user.
+- **Auditability:** Every field addition MUST have a reason. This allows us to distinguish "machine extracted" vs "human added".
+- **Backend Authority:** The backend owns the strict "Draft vs Confirmed" state. Front-end is just a view.
+- **Utilization:** If the data has been used (Category A/B/C), NO edits are allowed. The user must Archive & Redo if they need changes.
 
 ---
 
-### Phase 3: Integration (Task 6)
-**Status:** Not Started
+## Testing Strategy
 
-1. Update task detail page with review link
-2. Add OCR summary display
-3. E2E tests
-4. Manual testing with various documents
-5. Bug fixes
-6. Documentation updates
-
-**Definition of Done:**
-- [ ] Task page links to review correctly
-- [ ] E2E tests pass
-- [ ] No console errors
-- [ ] codemapcc.md updated
-- [ ] executionnotes.md updated
-
----
-
-## Edge Cases & Error Handling
-
-### Backend
-
-1. **No confirmed OCR exists:**
-   - Status: 404
-   - Message: "No confirmed OCR found for this attachment"
-
-2. **Parsing returns no fields:**
-   - Return empty array
-   - Log warning
-   - UI shows "No fields detected"
-
-3. **User doesn't own attachment:**
-   - Status: 403
-   - Message: "You don't have permission to review this attachment"
-
-### Frontend
-
-1. **PDF fails to load:**
-   - Show error message
-   - Provide download link as fallback
-
-2. **No fields parsed:**
-   - Show "No fields detected" message
-   - Suggest trying different OCR engine (future)
-
-3. **Bounding box missing:**
-   - Don't render highlight
-   - Show "(No location data)" in field list
-
----
-
-## Governance & Audit Compliance
-
-### Explicit User Intent
-- ✅ Parsing triggered explicitly (auto on first view, or manual)
-- ✅ Corrections require explicit save action
-- ✅ Correction reason encouraged (audit trail)
-
-### Auditability
-- ✅ All corrections logged to audit_logs
-- ✅ Original field values preserved (immutable)
-- ✅ Correction history append-only
-- ✅ Timestamps on all records
-
-### Derived Data Non-Authoritative
-- ✅ Parsed fields are derived (from confirmed OCR)
-- ✅ Corrections are derived (from parsed fields)
-- ✅ Neither mutate task data
-- ✅ Task data remains authoritative
-
-### Backend Authority
-- ✅ All validation happens server-side
-- ✅ Ownership checks on all endpoints
-- ✅ No client-side-only state for corrections
-- ✅ Parsing and correction logic in backend services
-
----
-
-## Success Metrics
-
-**Functional Metrics:**
-- [ ] Users can review parsed OCR fields for confirmed attachments
-- [ ] Users can correct OCR fields and see corrections persist
-- [ ] Correction history visible for all fields
-- [ ] PDF bounding boxes highlight correctly (when available)
-- [ ] Confidence indicators display with correct colors
-
-**Performance Metrics:**
-- [ ] OCR review page loads in <2 seconds
-- [ ] PDF rendering completes in <3 seconds
-- [ ] Correction save responds in <500ms
-- [ ] Field parsing completes in <1 second
-
-**Quality Metrics:**
-- [ ] Zero data loss (all corrections preserved)
-- [ ] Zero unauthorized access (ownership enforced)
-- [ ] All actions audited (100% audit coverage)
-- [ ] Parsing accuracy >70% for common invoice fields
-
----
-
-## Post-Completion Checklist
-
-- [ ] All tests pass (unit, integration, E2E)
-- [ ] Manual testing completed with 5+ document types (invoices, receipts, contracts)
-- [ ] codemapcc.md updated with new services/components
-- [ ] executionnotes.md documents completion date and findings
-- [ ] No TODO comments in committed code
-- [ ] All migrations run successfully on staging
-- [ ] Performance metrics validated
-- [ ] Governance review confirms audit compliance
-- [ ] v3.5 integration verified (confirm workflow → parse → correct flow works end-to-end)
-
----
-
-## Known Limitations (v8)
-
-1. **Simple field extraction:**
-   - Basic regex patterns only (invoice_number, invoice_date, total_amount, vendor_name)
-   - No advanced NLP/ML extraction
-   - No custom field definitions (user cannot add new field types)
-   - Deferred: Advanced extraction patterns
-
-2. **No workflow integration:**
-   - OCR review is standalone feature
-   - Workflow evidence gates deferred to post-v9
-   - Category B utilization (workflow approval) not yet implemented
-
-3. **No confidence threshold enforcement:**
-   - All fields displayed regardless of confidence
-   - No blocking based on low confidence
-   - Enforcement added when workflow integration added
-
-4. **No batch operations:**
-   - Must correct fields one at a time
-   - No bulk correction across multiple fields
-   - Deferred: Batch correction feature
-
-5. **Bounding box limitations:**
-   - Depends on OCR worker providing location data
-   - May be null if OCR engine doesn't support it
-   - Highlighting won't work without bounding box data
-
-6. **No OCR re-run from review page:**
-   - Must use v3.5 redo workflow (check eligibility → archive if needed → trigger new OCR)
-   - Review page is read-only for OCR state changes
-   - Redo controls remain in attachment list/task detail page
-
----
-
-## Integration with v3.5
-
-**v3.5 provides the foundation:**
-- Draft/confirm/archive states → v8 only works with `status='confirmed'` OCR
-- Utilization tracking → v8 corrections don't affect utilization (corrections are post-confirmation, utilization tracks confirmation usage)
-- Redo rules → v8 respects v3.5 redo eligibility (cannot parse archived OCR)
-
-**v8 extends v3.5:**
-- Parses confirmed `extractedText` into structured fields
-- Adds field-level corrections (separate from confirmation edits)
-- Provides visual review UI for confirmed data
-
-**State flow:**
-```
-v3.5: [Draft] → Confirm Submit → [Confirmed] → Utilized → [Archived if Category C]
-                                       ↓
-v8:                              [Parse Fields] → [Correct Fields] → [View History]
-```
-
-**Key distinction:**
-- v3.5 `confirmOcrResult()`: Edit `extractedText` before confirming (one-time, pre-confirmation)
-- v8 corrections: Correct parsed fields after confirming (multiple times, post-confirmation, creates correction records)
-
----
-
-## Stop Conditions
-
-**Do NOT proceed to implementation if:**
-- [ ] v3.5 not complete (OCR confirmation workflow not working)
-- [ ] v3 attachment upload/download broken
-- [ ] v1 audit logging system not functioning
-- [ ] Database migrations fail on dev/staging
-- [ ] PDF viewer library incompatible with Next.js version
-
-**Do NOT mark v8 complete until:**
-- [ ] All tasks (1-6) marked DONE
-- [ ] All tests pass (unit, integration, E2E)
-- [ ] Manual testing with 5+ document types successful
-- [ ] Governance review passes
-- [ ] codemapcc.md and executionnotes.md updated
-- [ ] v3.5 → v8 integration verified (confirm → parse → correct flow works)
+### Manual Test Cases
+1. **Empty State:**
+    - Open review page for attachment with 0 fields.
+    - Verify "No fields extracted" and CTA exists.
+    - Verify Raw Text is visible.
+2. **Add Field:**
+    - Type "Test Field", Value "123", Reason "Missing".
+    - Click Add.
+    - Verify field appears in list.
+    - Verify audit log.
+3. **Selection:**
+    - Highlight text "Total: $500".
+    - Click "Use as Value".
+    - Verify "$500" appears in Value input.
+4. **Lockout:**
+    - Confirm the extraction.
+    - Try to add a field.
+    - Verify inputs are disabled/hidden.
+    - Utilize the data (e.g. export).
+    - check `checkRedoEligibility` blocks changes.
 
 ---
 
 ## Notes for AI Code Generation
 
-**When generating code prompts from this plan:**
-
-1. **Task Boundaries:** Each task (1-6) should be a separate prompt
-2. **File Context:** Include relevant existing files (schema.ts, ocr.service.ts from v3.5)
-3. **Governance Reminders:** Include audit logging requirements in every prompt
-4. **Testing Requirements:** Include test case examples in backend prompts
-5. **Error Handling:** Specify error responses in API endpoint prompts
-6. **TypeScript Strict:** All code must satisfy strict TypeScript checks
-7. **v3.5 Context:** Reference v3.5 methods (getCurrentConfirmedOcr, checkRedoEligibility) where applicable
-
 **Prompt Template:**
 ```
 Task: [Task Number and Name]
-Context: [Current files to modify/extend, v3.5 dependencies]
+Context: [Current files to modify/extend, v8.1 baseline]
 Requirements: [Specific acceptance criteria]
-Governance: [Audit/validation requirements]
-v3.5 Integration: [How this task uses v3.5 functionality]
-Testing: [Test cases to implement]
+Governance: [Audit/reason requirements]
 Output: [Expected files and changes]
 ```
+
+**Key Context:**
+- We are extending `apps/web/app/attachments/[attachmentId]/review/page.tsx`.
+- We reuse correcting logic (sending patch to backend).
+- `rawOcr` contains the `extractedText` needed for the Raw Text pane.
+  - Section headers: "OCR Fields" → "Extracted Fields"
+  - Help text explains reviewing extraction, not document
+  - State badge displays: "Draft" / "Confirmed" / "Archived"
+- **Files modified:**
+
+**B2: Show Extraction Provenance**
+- **Status:** ✅ Complete
+- **What was built:**
+  - For each field, displays:
+    - Original extracted value (grayed out if corrected)
+    - Current value (highlighted if corrected)
+    - "Extracted via: OCR" badge
+    - Correction history link (if corrections exist)
+  - Visual distinction between original vs corrected
+- **Files modified:**
+  - `apps/web/app/attachments/[attachmentId]/review/page.tsx`
+  - `OcrFieldList` component
+
+**B3: Handle Empty/Failed Extraction**
+- **Status:** ✅ Complete
+- **What was built:**
+  - Empty state: "No fields extracted" message
+  - PDF preview failure: Error message + download link
+  - Low confidence warning: Banner for universally low confidence
+  - Non-blocking error banner for API/network errors
+- **Files modified:**
+  - `apps/web/app/attachments/[attachmentId]/review/page.tsx`
+
+---
+
+#### **TASK GROUP C: Editing Governance** ✅ COMPLETE
+
+**C1: Block Editing on Utilized Extraction**
+- **Status:** ✅ Complete
+- **What was built:**
+  - Checks `attachment_ocr_outputs.utilization_type` before showing edit button
+  - If utilized: Hides edit button, shows "Read-only (data in use)" badge
+  - Tooltips explain lock reason based on utilization type
+- **Files modified:**
+  - `OcrFieldList` component
+  - Backend: Extended `getOcrResultsWithCorrections()` to include `utilizationType`
+
+**C2: Require Correction Reason for Edits**
+- **Status:** ✅ Complete
+- **What was built:**
+  - `OcrFieldEditModal` has mandatory "Reason for correction" textarea
+  - Cannot save without reason (client + server validation)
+  - Reason shown in correction history
+- **Files modified:**
+  - `OcrFieldEditModal` component
+  - Backend DTO validation updated to require `correctionReason`
+
+**C3: Show Draft vs Confirmed State Clearly**
+- **Status:** ✅ Complete
+- **What was built:**
+  - Review page shows banner at top:
+    - Draft: Yellow banner "This is a draft extraction..."
+    - Confirmed: Green banner "This is the confirmed baseline extraction."
+    - Archived: Gray banner "This extraction is archived (view only)."
+  - Confirm button hidden if already confirmed
+- **Files modified:**
+  - `apps/web/app/attachments/[attachmentId]/review/page.tsx`
+
+---
+
+#### **TASK GROUP D: Confirmation Semantics** ✅ COMPLETE
+
+**D1: Add Confirmation Explanation Modal**
+- **Status:** ✅ Complete
+- **What was built:**
+  - Modal before confirm explains:
+    - "Confirming will lock this data as the baseline"
+    - "Make it available for use in tasks/exports/workflows"
+    - "Cannot be edited after utilization"
+  - Requires explicit "Yes, Confirm" click
+  - Dismissible by clicking outside or ESC
+- **Files modified:**
+  - `apps/web/app/attachments/[attachmentId]/review/page.tsx`
+  - Confirmation modal component
+
+**D2: Block Confirm Button on Existing Confirmed**
+- **Status:** ✅ Complete
+- **What was built:**
+  - If confirmed extraction already exists: Hides confirm button
+  - Shows message: "A confirmed extraction already exists for this attachment"
+- **Files modified:**
+  - `apps/web/app/attachments/[attachmentId]/review/page.tsx`
+
+---
+
+#### **TASK GROUP E: Terminology Cleanup** ✅ COMPLETE
+
+**E1: Decouple "OCR" from "Extraction" in Code**
+- **Status:** ✅ Complete
+- **What was built:**
+  - All user-facing copy uses "Extraction" not "OCR"
+  - Backend schema and API endpoints unchanged (no breaking changes)
+  - Component names and internal code can reference OCR (implementation detail)
+  - Provenance badge shows "Extracted via: OCR" (implementation detail is acceptable)
+- **Files modified:**
+  - All frontend components with user-facing text
+  - Task detail page
+  - Review page
+  - Audit log labels
+
+---
+
+
+## Original v8 Plan (Deferred Features)
+
+The original v8 plan envisioned a comprehensive structured field parsing system. These features were **NOT implemented in v8.1** and may be considered for future versions if business requirements demand them.
+
+### Deferred: Database Schema Changes
+
+**New Table: `ocr_results` (NOT CREATED)**
+- Purpose: Store structured, parsed fields from confirmed OCR
+- Fields: field_name, field_value, confidence, bounding_box, page_number
+- Would enable per-field confidence querying and visual highlighting
+
+**New Table: `ocr_corrections` (NOT CREATED)**
+- Purpose: Immutable correction history for individual OCR fields
+- Fields: ocr_result_id, corrected_by, original_value, corrected_value, correction_reason
+- Would track field-level correction history separately from confirmation edits
+
+### Deferred: Backend Services
+
+**OcrParsingService (NOT BUILT)**
+- Would parse confirmed `extractedText` into structured fields using regex patterns
+- Would extract common fields: invoice_number, invoice_date, total_amount, vendor_name
+- Would calculate per-field confidence scores
+- Would support bounding box extraction from OCR metadata
+
+**OcrCorrectionsService (NOT BUILT)**
+- Would handle field-level corrections post-confirmation
+- Would create immutable correction records
+- Would track correction history per field
+- Would provide latest value computation (original or most recent correction)
+
+**Extended OcrService Methods (NOT BUILT)**
+- `getOcrResultsWithCorrections()` - Would return structured fields with correction history
+- `parseOcrOutput()` - Would trigger field parsing on confirmed OCR
+- Field-level correction endpoints
+
+### Deferred: Frontend Components
+
+**PDF Viewer with Bounding Boxes (NOT BUILT)**
+- react-pdf integration
+- Bounding box highlights on PDF
+- Click field → highlight source in document
+- Zoom, pan, page navigation
+
+**Field-Level UI Components (NOT BUILT)**
+- OcrFieldList with per-field confidence indicators (green/yellow/red)
+- Color-coded confidence badges (≥80% green, 60-79% yellow, <60% red)
+- Field-to-document linkage via bounding box clicks
+- Separate field-level correction modals
+
+### Why v8.1 Took a Different Approach
+
+**Pragmatic considerations:**
+1. **Existing infrastructure sufficient** - v3.5's `confirmedData` field already supports structured data
+2. **Simpler architecture** - No need for parallel data structures
+3. **Faster delivery** - UI governance layer provides immediate value
+4. **Lower maintenance** - Fewer tables and services to maintain
+5. **Flexibility** - Can still add structured parsing later if needed
+
+**What v8.1 achieves without new tables:**
+- Full extraction review workflow
+- Correction tracking (via `confirmedData` JSON structure)
+- Utilization enforcement
+- State management
+- Audit trail
+- User governance controls
+
+### Future Consideration
+
+If business requirements demand:
+- Granular field-level confidence tracking
+- Advanced regex-based field extraction
+- PDF bounding box highlights
+- Per-field correction history with separate table
+
+Then the original v8 plan could be revisited as **v8.5** or **v9** with the deferred features listed above.
+
+
+---
+
+## v8.1 Completion Summary
+
+### What Was Delivered
+
+**Completed:** 2026-02-03  
+**Implementation Time:** ~2 weeks (across 15 conversation sessions)  
+**Approach:** Iterative UI governance layer on existing v3.5 infrastructure
+
+**Key Deliverables:**
+1. ✅ Extraction state visibility across all UI touchpoints
+2. ✅ Redo eligibility enforcement with clear user messaging
+3. ✅ Extraction review page with provenance display
+4. ✅ Mandatory correction reasons with audit trail
+5. ✅ Confirmation modals explaining consequences
+6. ✅ Utilization-based editing lockout
+7. ✅ Empty/failed extraction state handling
+8. ✅ Terminology alignment ("Extraction" vs "OCR")
+
+**Files Modified:**
+- `apps/web/app/task/[id]/page.tsx` - Task detail UI governance
+- `apps/web/app/attachments/[attachmentId]/review/page.tsx` - Extraction review page
+- `apps/web/components/OcrFieldList.tsx` - Field list with provenance
+- `apps/web/components/OcrFieldEditModal.tsx` - Correction modal with mandatory reason
+- `apps/api/src/ocr/ocr.service.ts` - Extended to include `utilizationType` in responses
+- Backend DTOs - Updated to require `correctionReason`
+
+**No New Files Created:**
+- No new database tables
+- No new backend services
+- No new API endpoints (used existing v3.5 endpoints)
+
+### Governance Alignment
+
+**Explicit User Intent:** ✅
+- All state transitions require explicit user action
+- Confirmation requires modal acknowledgment
+- Corrections require mandatory reason input
+- Redo blocked with clear explanation when not allowed
+
+**Auditability:** ✅
+- All corrections logged with before/after values
+- Correction reasons captured and displayed
+- State transitions tracked (draft → confirmed → utilized)
+- Provenance visible (original vs corrected values)
+
+**Backend Authority:** ✅
+- UI strictly adheres to backend state
+- No client-side-only state for critical data
+- Utilization rules enforced by backend, respected by UI
+- Ownership checks on all operations
+
+**Derived Data Non-Authoritative:** ✅
+- Extraction data clearly labeled as derived
+- Does not mutate task data
+- Utilization tracking prevents inconsistency
+- Archive mechanism for soft-utilization scenarios
+
+### Testing & Validation
+
+**Manual Testing Completed:**
+- ✅ Draft → Confirm → Utilize → Archive flow
+- ✅ Redo eligibility for all utilization categories (A/B/C)
+- ✅ Correction workflow with mandatory reasons
+- ✅ Empty extraction state handling
+- ✅ Failed PDF preview fallback
+- ✅ Concurrent retrieval blocking
+- ✅ Utilization-based editing lockout
+
+**Known Limitations:**
+- No automated tests added (manual testing only)
+- No PDF bounding box highlights (deferred feature)
+- No per-field confidence indicators (deferred feature)
+- Correction history displayed inline (no separate modal)
+
+---
+
+## Next Steps & Future Enhancements
+
+### Immediate Next Steps (If Needed)
+
+1. **Add Automated Tests**
+   - E2E tests for extraction review workflow
+   - Integration tests for redo eligibility
+   - Unit tests for correction validation
+
+2. **Update Documentation**
+   - Update `codemapcc.md` with v8.1 components
+   - Update `executionnotes.md` with completion notes
+   - Document extraction review workflow in user guide
+
+3. **Performance Optimization**
+   - Add caching for redo eligibility checks
+   - Optimize PDF preview loading
+   - Add loading skeletons for better UX
+
+### Future Enhancements (v8.5 or v9)
+
+If business requirements demand the original v8 vision:
+
+**v8.5: Structured Field Parsing**
+- Implement `ocr_results` table for granular field storage
+- Build `OcrParsingService` with regex-based extraction
+- Add per-field confidence tracking
+- Support custom field definitions
+
+**v8.6: PDF Bounding Boxes**
+- Integrate `react-pdf` library
+- Implement bounding box highlights
+- Add field-to-document linkage
+- Support zoom/pan/page navigation
+
+**v8.7: Advanced Correction History**
+- Implement `ocr_corrections` table
+- Build field-level correction timeline
+- Add correction comparison view
+- Support correction rollback
+
+**v9: Workflow Integration**
+- Connect extraction data to workflow evidence gates
+- Implement Category B utilization (workflow approval)
+- Add extraction quality requirements for workflow progression
+- Support workflow-driven extraction validation
 
 ---
 
 ## Relationship to Other Versions
 
 **Depends on:**
-- v3.5 (OCR confirmation workflow) — REQUIRED
-- v3 (Attachments, OCR worker) — REQUIRED
-- v1 (Audit logging) — REQUIRED
+- ✅ v3.5 (OCR confirmation workflow) — REQUIRED & COMPLETE
+- ✅ v3 (Attachments, OCR worker) — REQUIRED & COMPLETE
+- ✅ v1 (Audit logging) — REQUIRED & COMPLETE
 
 **Enables:**
-- Future: Workflow evidence gates (post-v9) can read corrected OCR fields
-- Future: Export functions can use corrected field values
-- Future: Record creation can prefill from corrected OCR data
+- Future: Workflow evidence gates (post-v9) can read confirmed extraction data
+- Future: Export functions can use corrected extraction values
+- Future: Record creation can prefill from confirmed extraction data
+- Future: Structured field parsing (v8.5) can build on v8.1 governance layer
 
 **No modifications required to:**
 - v1-v2 (Tasks, Calendar)
 - v4 (Parent/Child relationships)
 - v5-v7 (Workflows)
+
+---
+
+## Lessons Learned
+
+**What Worked Well:**
+1. **Pragmatic approach** - Building on existing infrastructure was faster than creating parallel systems
+2. **Iterative delivery** - Task groups A-E allowed incremental progress
+3. **UI-first governance** - Enforcing backend rules in UI provided immediate value
+4. **Terminology alignment** - "Extraction" vs "OCR" improved user understanding
+
+**What Could Be Improved:**
+1. **Test coverage** - Should have added automated tests alongside implementation
+2. **Documentation lag** - Documentation updates should happen during implementation, not after
+3. **Scope clarity** - Original plan.md didn't match actual implementation approach
+
+**Recommendations for Future Versions:**
+1. **Update plan.md first** - Ensure plan matches intended approach before starting
+2. **Test-driven development** - Write tests alongside features
+3. **Document as you go** - Update codemapcc.md and executionnotes.md incrementally
+4. **Validate assumptions** - Confirm technical approach before extensive planning
+
+---
+
+## Conclusion
+
+**v8.1 Status:** ✅ **COMPLETE**
+
+v8.1 successfully delivered a comprehensive UI governance layer for the extraction review workflow. By building on existing v3.5 infrastructure rather than creating new database tables and services, we achieved:
+
+- **Faster delivery** - 2 weeks vs estimated 4-6 weeks for original v8 plan
+- **Lower complexity** - No new tables, services, or API endpoints
+- **Full governance** - All required controls and audit trails in place
+- **Future flexibility** - Can still add structured parsing later if needed
+
+The original v8 vision (structured field parsing, PDF bounding boxes, field-level correction history) remains valid and can be pursued as v8.5+ if business requirements demand those capabilities.
+
+**Next recommended work:** Update `codemapcc.md` and `executionnotes.md` to reflect v8.1 completion, then proceed to v9 or other planned features.

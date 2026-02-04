@@ -380,7 +380,11 @@ export class TodosService {
 
       const [row] = await txDb
         .update(todos)
-        .set({ ...patch, updatedAt: new Date(), durationMin: patch.durationMin })
+        .set({
+          ...patch,
+          updatedAt: new Date(),
+          durationMin: patch.durationMin,
+        })
         .where(eq(todos.id, todoId))
         .returning();
 
@@ -672,7 +676,9 @@ export class TodosService {
 
       // v4 constraint: must have a parent to disassociate
       if (!child.parentId) {
-        throw new BadRequestException('Task has no parent to disassociate from');
+        throw new BadRequestException(
+          'Task has no parent to disassociate from',
+        );
       }
 
       // Capture before state

@@ -1,0 +1,45 @@
+﻿
+Running 1 test using 1 worker
+
+[1A[2K[1/1] [chromium] ΓÇ║ tests\features_v1_to_v8_1.spec.ts:144:9 ΓÇ║ Full System Feature Coverage (v1 - v8.1) ΓÇ║ v3-v8.1: OCR Review Flow (Mocked)
+[1A[2K[chromium] ΓÇ║ tests\features_v1_to_v8_1.spec.ts:144:9 ΓÇ║ Full System Feature Coverage (v1 - v8.1) ΓÇ║ v3-v8.1: OCR Review Flow (Mocked)
+Navigating to login page...
+
+[1A[2KCurrent URL: http://localhost:3001/
+
+[1A[2KState Check: LoginVisible=false, DashboardVisible=true
+
+[1A[2KAlready logged in.
+
+[1A[2K  1) [chromium] ΓÇ║ tests\features_v1_to_v8_1.spec.ts:144:9 ΓÇ║ Full System Feature Coverage (v1 - v8.1) ΓÇ║ v3-v8.1: OCR Review Flow (Mocked) 
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: getByText('Correction Reason')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 5000ms[22m
+    [2m  - waiting for getByText('Correction Reason')[22m
+
+
+      180 |         // Test Edit Modal
+      181 |         await page.getByRole('button', { name: /edit/i }).first().click();
+    > 182 |         await expect(page.getByText('Correction Reason')).toBeVisible();
+          |                                                           ^
+      183 |
+      184 |         const saveBtn = page.getByRole('button', { name: /save/i }).last();
+      185 |         await expect(saveBtn).toBeDisabled();
+        at C:\todo-docker\tests\features_v1_to_v8_1.spec.ts:182:59
+
+    attachment #1: screenshot (image/png) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    test-results\features_v1_to_v8_1-Full-S-324a3-8-1-OCR-Review-Flow-Mocked--chromium\test-failed-1.png
+    ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+    Error Context: test-results\features_v1_to_v8_1-Full-S-324a3-8-1-OCR-Review-Flow-Mocked--chromium\error-context.md
+
+
+[1A[2K  1 failed
+    [chromium] ΓÇ║ tests\features_v1_to_v8_1.spec.ts:144:9 ΓÇ║ Full System Feature Coverage (v1 - v8.1) ΓÇ║ v3-v8.1: OCR Review Flow (Mocked) 

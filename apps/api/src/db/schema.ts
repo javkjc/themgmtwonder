@@ -9,6 +9,7 @@
   jsonb,
   varchar,
   numeric,
+  pgEnum,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { DEFAULT_TASK_STAGE_KEY } from '../common/constants';
@@ -245,7 +246,9 @@ export const ocrCorrections = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (t) => ({
-    ocrResultIdIdx: index('idx_ocr_corrections_ocr_result_id').on(t.ocrResultId),
+    ocrResultIdIdx: index('idx_ocr_corrections_ocr_result_id').on(
+      t.ocrResultId,
+    ),
     correctedByIdx: index('idx_ocr_corrections_corrected_by').on(t.correctedBy),
     createdAtIdx: index('idx_ocr_corrections_created_at').on(t.createdAt),
   }),
@@ -530,3 +533,57 @@ export const workflowElementTemplates = pgTable(
     ),
   }),
 );
+
+// ============================================================================
+// v8.6.4 — Extraction Baselines (Baseline Data Model)
+// ============================================================================
+
+// Baseline lifecycle status enum
+export const baselineStatusEnum = pgEnum('baseline_status', [
+  'draft',
+  'reviewed',
+  'confirmed',
+  'archived',
+]);
+
+// Baseline utilization type enum
+export const baselineUtilizationTypeEnum = pgEnum('baseline_utilization_type', [
+  'record_created',
+  'workflow_committed',
+  'data_exported',
+]);
+
+// Extraction baselines table
+export const extractionBaselines = pgTable(
+  'extraction_baselines',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    attachmentId: uuid('attachment_id')
+      .notNull()
+      .references(() => attachments.id, { onDelete: 'cascade' }),
+    status: baselineStatusEnum('status').notNull().default('draft'),
+    confirmedAt: timestamp('confirmed_at'),
+    confirmedBy: uuid('confirmed_by').references(() => users.id),
+    utilizedAt: timestamp('utilized_at'),
+    utilizationType: baselineUtilizationTypeEnum('utilization_type'),
+    archivedAt: timestamp('archived_at'),
+    archivedBy: uuid('archived_by').references(() => users.id),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    // Standard indexes
+    attachmentIdIdx: index('extraction_baselines_attachment_id_idx').on(
+      table.attachmentId,
+    ),
+    statusIdx: index('extraction_baselines_status_idx').on(table.status),
+    // NOTE: Partial unique index (WHERE status = 'confirmed') must be added via SQL migration
+    // Drizzle does not support partial unique indexes in schema definition
+    // See migration file for: CREATE UNIQUE INDEX extraction_baselines_confirmed_unique ON extraction_baselines(attachment_id) WHERE status = 'confirmed';
+  }),
+);
+
+// Export types for extraction baselines
+export type ExtractionBaseline = typeof extractionBaselines.$inferSelect;
+export type NewExtractionBaseline = typeof extractionBaselines.$inferInsert;
+
+export * from '../field-library/schema';

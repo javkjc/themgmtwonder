@@ -139,7 +139,7 @@ const createMockOcrCorrectionsService = (corrections: unknown[]) => ({
 const createMockAuditService = () =>
   ({
     log: jest.fn().mockResolvedValue(undefined),
-  } as unknown as AuditService);
+  }) as unknown as AuditService;
 
 const buildOcrService = (
   dbService: DbService,
@@ -150,8 +150,8 @@ const buildOcrService = (
   const service = new OcrService(
     dbService,
     auditService,
-    parsingService as unknown as OcrParsingService,
-    correctionsService as unknown as OcrCorrectionsService,
+    parsingService as OcrParsingService,
+    correctionsService as OcrCorrectionsService,
   );
   return { service, auditService };
 };
@@ -321,10 +321,7 @@ describe('OcrService', () => {
     });
 
     it('should throw ForbiddenException when user does not own attachment', async () => {
-      const { service: dbService } = createMockDbService(
-        [mockAttachment],
-        [],
-      );
+      const { service: dbService } = createMockDbService([mockAttachment], []);
       const parsingService = createMockOcrParsingService([]);
       const correctionsService = createMockOcrCorrectionsService([]);
 

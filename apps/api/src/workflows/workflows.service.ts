@@ -14,7 +14,16 @@ import {
   workflowElementTemplates,
   todos,
 } from '../db/schema';
-import { StartWorkflowDto, StepActionDto, CreateWorkflowDto, UpdateWorkflowDto, CreateVersionDto, CreateElementTemplateDto, UpdateElementTemplateDto, DeprecateElementTemplateDto } from './dto';
+import {
+  StartWorkflowDto,
+  StepActionDto,
+  CreateWorkflowDto,
+  UpdateWorkflowDto,
+  CreateVersionDto,
+  CreateElementTemplateDto,
+  UpdateElementTemplateDto,
+  DeprecateElementTemplateDto,
+} from './dto';
 
 @Injectable()
 export class WorkflowsService {
@@ -119,7 +128,11 @@ export class WorkflowsService {
    * Replaces all steps with new step definitions
    * Does NOT change version or activation status
    */
-  async updateWorkflow(id: string, dto: UpdateWorkflowDto, adminUserId: string) {
+  async updateWorkflow(
+    id: string,
+    dto: UpdateWorkflowDto,
+    adminUserId: string,
+  ) {
     // 1. Verify workflow exists
     const [existingWorkflow] = await this.dbs.db
       .select()
@@ -262,7 +275,9 @@ export class WorkflowsService {
       .limit(1);
 
     if (!execution) {
-      throw new NotFoundException(`Workflow execution ${executionId} not found`);
+      throw new NotFoundException(
+        `Workflow execution ${executionId} not found`,
+      );
     }
 
     return execution;
@@ -348,9 +363,7 @@ export class WorkflowsService {
       .limit(1);
 
     if (existingStepExecution && existingStepExecution.status === 'completed') {
-      throw new BadRequestException(
-        'This step has already been completed',
-      );
+      throw new BadRequestException('This step has already been completed');
     }
 
     // 4. Create or update step execution record
@@ -442,69 +455,82 @@ export class WorkflowsService {
 
       const pendingSteps: PendingStepItem[] = [];
 
-    for (const execution of executions) {
-      // Get all steps for this execution's workflow
-      const steps = await this.dbs.db
-        .select()
-        .from(workflowSteps)
-        .where(eq(workflowSteps.workflowDefinitionId, execution.workflowDefinitionId))
-        .orderBy(workflowSteps.stepOrder);
+      for (const execution of executions) {
+        // Get all steps for this execution's workflow
+        const steps = await this.dbs.db
+          .select()
+          .from(workflowSteps)
+          .where(
+            eq(
+              workflowSteps.workflowDefinitionId,
+              execution.workflowDefinitionId,
+            ),
+          )
+          .orderBy(workflowSteps.stepOrder);
 
-      for (const step of steps) {
-        // Check if step is assigned to this user
-        if (step.assignedTo) {
-          try {
-            const assignment = JSON.parse(step.assignedTo);
-            if (assignment.type === 'user' && assignment.value === userId) {
-              // Check if this step has already been acted upon
-              const [existingStepExecution] = await this.dbs.db
-                .select()
-                .from(workflowStepExecutions)
-                .where(
-                  and(
-                    eq(workflowStepExecutions.workflowExecutionId, execution.id),
-                    eq(workflowStepExecutions.workflowStepId, step.id),
-                  ),
-                )
-                .limit(1);
+        for (const step of steps) {
+          // Check if step is assigned to this user
+          if (step.assignedTo) {
+            try {
+              const assignment = JSON.parse(step.assignedTo);
+              if (assignment.type === 'user' && assignment.value === userId) {
+                // Check if this step has already been acted upon
+                const [existingStepExecution] = await this.dbs.db
+                  .select()
+                  .from(workflowStepExecutions)
+                  .where(
+                    and(
+                      eq(
+                        workflowStepExecutions.workflowExecutionId,
+                        execution.id,
+                      ),
+                      eq(workflowStepExecutions.workflowStepId, step.id),
+                    ),
+                  )
+                  .limit(1);
 
-              // Only include if not yet acted upon
-              if (!existingStepExecution || existingStepExecution.status !== 'completed') {
-                pendingSteps.push({
-                  executionId: execution.id,
-                  stepId: step.id,
-                  workflowName: '', // Will be populated below
-                  stepName: step.name,
-                  stepType: step.stepType,
-                  stepOrder: step.stepOrder,
-                  assignedAt: execution.startedAt,
-                  resourceType: execution.resourceType,
-                  resourceId: execution.resourceId,
-                });
+                // Only include if not yet acted upon
+                if (
+                  !existingStepExecution ||
+                  existingStepExecution.status !== 'completed'
+                ) {
+                  pendingSteps.push({
+                    executionId: execution.id,
+                    stepId: step.id,
+                    workflowName: '', // Will be populated below
+                    stepName: step.name,
+                    stepType: step.stepType,
+                    stepOrder: step.stepOrder,
+                    assignedAt: execution.startedAt,
+                    resourceType: execution.resourceType,
+                    resourceId: execution.resourceId,
+                  });
+                }
               }
+            } catch (e) {
+              // Skip steps with invalid assignedTo JSON
+              continue;
             }
-          } catch (e) {
-            // Skip steps with invalid assignedTo JSON
-            continue;
           }
         }
       }
-    }
 
-    // Populate workflow names
-    for (const pendingStep of pendingSteps) {
-      const execution = executions.find((e) => e.id === pendingStep.executionId);
-      if (execution) {
-        const [workflow] = await this.dbs.db
-          .select({ name: workflowDefinitions.name })
-          .from(workflowDefinitions)
-          .where(eq(workflowDefinitions.id, execution.workflowDefinitionId))
-          .limit(1);
-        if (workflow) {
-          pendingStep.workflowName = workflow.name;
+      // Populate workflow names
+      for (const pendingStep of pendingSteps) {
+        const execution = executions.find(
+          (e) => e.id === pendingStep.executionId,
+        );
+        if (execution) {
+          const [workflow] = await this.dbs.db
+            .select({ name: workflowDefinitions.name })
+            .from(workflowDefinitions)
+            .where(eq(workflowDefinitions.id, execution.workflowDefinitionId))
+            .limit(1);
+          if (workflow) {
+            pendingStep.workflowName = workflow.name;
+          }
         }
       }
-    }
 
       return pendingSteps;
     } catch (error) {
@@ -566,7 +592,9 @@ export class WorkflowsService {
     // Build ordered step history
     const stepHistory: ExecutionStepHistoryItem[] = [];
     for (const step of steps) {
-      const stepExecution = stepExecutions.find((se) => se.workflowStepId === step.id);
+      const stepExecution = stepExecutions.find(
+        (se) => se.workflowStepId === step.id,
+      );
 
       stepHistory.push({
         stepId: step.id,
@@ -620,7 +648,8 @@ export class WorkflowsService {
       .orderBy(desc(workflowDefinitions.version))
       .limit(1);
 
-    const nextVersion = groupWorkflows.length > 0 ? groupWorkflows[0].version + 1 : 1;
+    const nextVersion =
+      groupWorkflows.length > 0 ? groupWorkflows[0].version + 1 : 1;
 
     // 3. Create new workflow definition (inactive by default)
     const [newWorkflow] = await this.dbs.db
@@ -780,7 +809,10 @@ export class WorkflowsService {
    * Create a new element template.
    * v6: Admin-only operation. Creates version 1 of a new template.
    */
-  async createElementTemplate(dto: CreateElementTemplateDto, adminUserId: string) {
+  async createElementTemplate(
+    dto: CreateElementTemplateDto,
+    adminUserId: string,
+  ) {
     // 1. Create element template (version 1)
     const [template] = await this.dbs.db
       .insert(workflowElementTemplates)
@@ -813,7 +845,10 @@ export class WorkflowsService {
    * v6: Clones template with incremented version number.
    * Admin-only operation.
    */
-  async createElementTemplateVersion(sourceTemplateId: string, adminUserId: string) {
+  async createElementTemplateVersion(
+    sourceTemplateId: string,
+    adminUserId: string,
+  ) {
     // 1. Load source template
     const sourceTemplate = await this.getElementTemplateById(sourceTemplateId);
 
@@ -828,7 +863,8 @@ export class WorkflowsService {
       .orderBy(desc(workflowElementTemplates.templateVersion))
       .limit(1);
 
-    const nextVersion = groupTemplates.length > 0 ? groupTemplates[0].templateVersion + 1 : 1;
+    const nextVersion =
+      groupTemplates.length > 0 ? groupTemplates[0].templateVersion + 1 : 1;
 
     // 3. Create new template version
     const [newTemplate] = await this.dbs.db
@@ -855,7 +891,11 @@ export class WorkflowsService {
    * v6: Updating a template creates a NEW version, does NOT mutate existing.
    * Admin-only operation.
    */
-  async updateElementTemplate(id: string, dto: UpdateElementTemplateDto, adminUserId: string) {
+  async updateElementTemplate(
+    id: string,
+    dto: UpdateElementTemplateDto,
+    adminUserId: string,
+  ) {
     // 1. Load source template
     const sourceTemplate = await this.getElementTemplateById(id);
 
@@ -870,7 +910,8 @@ export class WorkflowsService {
       .orderBy(desc(workflowElementTemplates.templateVersion))
       .limit(1);
 
-    const nextVersion = groupTemplates.length > 0 ? groupTemplates[0].templateVersion + 1 : 1;
+    const nextVersion =
+      groupTemplates.length > 0 ? groupTemplates[0].templateVersion + 1 : 1;
 
     // 3. Create new template version with updated fields
     const [newTemplate] = await this.dbs.db
@@ -881,7 +922,8 @@ export class WorkflowsService {
         stepType: dto.stepType ?? sourceTemplate.stepType,
         defaultConfig: dto.defaultConfig ?? sourceTemplate.defaultConfig,
         editableFields: dto.editableFields ?? sourceTemplate.editableFields,
-        validationConstraints: dto.validationConstraints ?? sourceTemplate.validationConstraints,
+        validationConstraints:
+          dto.validationConstraints ?? sourceTemplate.validationConstraints,
         templateVersion: nextVersion,
         templateGroupId: templateGroupId,
         isDeprecated: false,
@@ -897,7 +939,11 @@ export class WorkflowsService {
    * v6: Templates are never deleted, only deprecated.
    * Admin-only operation.
    */
-  async deprecateElementTemplate(id: string, dto: DeprecateElementTemplateDto, adminUserId: string) {
+  async deprecateElementTemplate(
+    id: string,
+    dto: DeprecateElementTemplateDto,
+    adminUserId: string,
+  ) {
     // 1. Verify template exists
     await this.getElementTemplateById(id);
 

@@ -7,14 +7,15 @@ import GlobalSearch from './GlobalSearch';
 type LayoutProps = {
   children: ReactNode;
   currentPage:
-    | 'home'
-    | 'calendar'
-    | 'profile'
-    | 'customizations'
-    | 'admin'
-    | 'activity'
-    | 'workflows'
-    | 'workflowInbox';
+  | 'home'
+  | 'calendar'
+  | 'profile'
+  | 'customizations'
+  | 'admin'
+  | 'adminFields'
+  | 'activity'
+  | 'workflows'
+  | 'workflowInbox';
   userEmail?: string;
   userRole?: string;
   isAdmin?: boolean;
@@ -234,6 +235,26 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
                 <span style={{ fontSize: 18 }}>👥</span>
                 {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>User Management</span>}
               </Link>
+
+              <Link
+                href="/admin/fields"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: isCollapsed ? '12px 0' : '12px 20px',
+                  justifyContent: isCollapsed ? 'center' : 'flex-start',
+                  textDecoration: 'none',
+                  color: currentPage === 'adminFields' ? 'var(--sidebar-text)' : 'var(--sidebar-text-muted)',
+                  background: currentPage === 'adminFields' ? 'var(--sidebar-link-active)' : 'transparent',
+                  borderLeft: currentPage === 'adminFields' ? '3px solid var(--sidebar-link-border)' : '3px solid transparent',
+                  transition: 'all 0.2s',
+                }}
+                title="Field Library"
+              >
+                <span style={{ fontSize: 18 }}>📝</span>
+                {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>Fields</span>}
+              </Link>
             </>
           )}
         </nav>
@@ -283,7 +304,7 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
                     borderRadius: 6,
                     border: '1px solid var(--sidebar-border)',
                     background: 'transparent',
-                  color: 'var(--sidebar-text)',
+                    color: 'var(--sidebar-text)',
                     fontSize: 13,
                     cursor: 'pointer',
                     transition: 'all 0.2s',

@@ -1,0 +1,163 @@
+﻿
+Running 5 tests using 1 worker
+
+[1A[2K[1/5] [chromium] ΓÇ║ tests\features_v1_to_v8_1.spec.ts:95:9 ΓÇ║ Full System Feature Coverage (v1 - v8.1) ΓÇ║ v1: Task Lifecycle (Create, Edit, Pin, Remark)
+[1A[2K[chromium] ΓÇ║ tests\features_v1_to_v8_1.spec.ts:95:9 ΓÇ║ Full System Feature Coverage (v1 - v8.1) ΓÇ║ v1: Task Lifecycle (Create, Edit, Pin, Remark)
+Navigating to login page...
+
+[1A[2KCurrent URL: http://localhost:3001/
+
+[1A[2KState Check: LoginVisible=false, DashboardVisible=true
+
+[1A[2KAlready logged in.
+
+[1A[2K  1) [chromium] ΓÇ║ tests\features_v1_to_v8_1.spec.ts:95:9 ΓÇ║ Full System Feature Coverage (v1 - v8.1) ΓÇ║ v1: Task Lifecycle (Create, Edit, Pin, Remark) 
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: getByText('Remarks')
+    Expected: visible
+    Error: strict mode violation: getByText('Remarks') resolved to 2 elements:
+        1) <h2>Remarks (0)</h2> aka getByRole('heading', { name: 'Remarks (0)' })
+        2) <p>No remarks yet</p> aka getByText('No remarks yet')
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 5000ms[22m
+    [2m  - waiting for getByText('Remarks')[22m
+
+
+      128 |         // Open detail page
+      129 |         await page.getByText(newTitle).first().click();
+    > 130 |         await expect(page.getByText('Remarks')).toBeVisible();
+          |                                                 ^
+      131 |
+      132 |         await page.getByTestId('remark-input').fill('Full feature coverage remark');
+      133 |         await page.getByTestId('remark-submit').click();
+        at C:\todo-docker\tests\features_v1_to_v8_1.spec.ts:130:49
+
+    attachment #1: screenshot (image/png) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    test-results\features_v1_to_v8_1-Full-S-bccef-cle-Create-Edit-Pin-Remark--chromium\test-failed-1.png
+    ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+    Error Context: test-results\features_v1_to_v8_1-Full-S-bccef-cle-Create-Edit-Pin-Remark--chromium\error-context.md
+
+
+[1A[2K[2/5] [chromium] ΓÇ║ tests\features_v1_to_v8_1.spec.ts:138:9 ΓÇ║ Full System Feature Coverage (v1 - v8.1) ΓÇ║ v2: Calendar View Accessibility
+[1A[2K[chromium] ΓÇ║ tests\features_v1_to_v8_1.spec.ts:138:9 ΓÇ║ Full System Feature Coverage (v1 - v8.1) ΓÇ║ v2: Calendar View Accessibility
+Navigating to login page...
+
+[1A[2KCurrent URL: http://localhost:3001/
+
+[1A[2KState Check: LoginVisible=false, DashboardVisible=true
+
+[1A[2KAlready logged in.
+
+[1A[2K[3/5] [chromium] ΓÇ║ tests\features_v1_to_v8_1.spec.ts:144:9 ΓÇ║ Full System Feature Coverage (v1 - v8.1) ΓÇ║ v3-v8.1: OCR Review Flow (Mocked)
+[1A[2K  2) [chromium] ΓÇ║ tests\features_v1_to_v8_1.spec.ts:144:9 ΓÇ║ Full System Feature Coverage (v1 - v8.1) ΓÇ║ v3-v8.1: OCR Review Flow (Mocked) 
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: getByRole('heading', { name: 'Extracted Data Review' })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 5000ms[22m
+    [2m  - waiting for getByRole('heading', { name: 'Extracted Data Review' })[22m
+
+
+      171 |         await page.goto(`/attachments/${attId}/review?taskId=${taskId}`);
+      172 |
+    > 173 |         await expect(page.getByRole('heading', { name: 'Extracted Data Review' })).toBeVisible();
+          |                                                                                    ^
+      174 |         await expect(page.getByText('draft', { exact: false }).first()).toBeVisible();
+      175 |         await expect(page.getByText('Total').first()).toBeVisible();
+      176 |         await expect(page.getByText('500.00').first()).toBeVisible();
+        at C:\todo-docker\tests\features_v1_to_v8_1.spec.ts:173:84
+
+    attachment #1: screenshot (image/png) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    test-results\features_v1_to_v8_1-Full-S-324a3-8-1-OCR-Review-Flow-Mocked--chromium\test-failed-1.png
+    ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+    Error Context: test-results\features_v1_to_v8_1-Full-S-324a3-8-1-OCR-Review-Flow-Mocked--chromium\error-context.md
+
+
+[1A[2K[4/5] [chromium] ΓÇ║ tests\features_v1_to_v8_1.spec.ts:189:9 ΓÇ║ Full System Feature Coverage (v1 - v8.1) ΓÇ║ v4: Parent/Child Linking
+[1A[2K[chromium] ΓÇ║ tests\features_v1_to_v8_1.spec.ts:189:9 ΓÇ║ Full System Feature Coverage (v1 - v8.1) ΓÇ║ v4: Parent/Child Linking
+Navigating to login page...
+
+[1A[2KCurrent URL: http://localhost:3001/
+
+[1A[2KState Check: LoginVisible=false, DashboardVisible=true
+
+[1A[2KAlready logged in.
+
+[1A[2K  3) [chromium] ΓÇ║ tests\features_v1_to_v8_1.spec.ts:189:9 ΓÇ║ Full System Feature Coverage (v1 - v8.1) ΓÇ║ v4: Parent/Child Linking 
+
+    Error: locator.selectOption: Error: strict mode violation: locator('select') resolved to 3 elements:
+        1) <select id="stage-selector" data-testid="stage-selector">ΓÇª</select> aka getByTestId('stage-selector')
+        2) <select>ΓÇª</select> aka getByRole('combobox').nth(1)
+        3) <select>ΓÇª</select> aka getByRole('combobox').nth(2)
+
+    Call log:
+    [2m  - waiting for locator('select')[22m
+
+
+      211 |         await page.getByRole('button', { name: 'Set Parent' }).click();
+      212 |
+    > 213 |         await page.locator('select').selectOption({ label: parentTitle });
+          |                                      ^
+      214 |         await page.getByPlaceholder(/Why is this task a child/i).fill('Linking for v4 coverage');
+      215 |         await page.getByRole('button', { name: 'Associate' }).click();
+      216 |
+        at C:\todo-docker\tests\features_v1_to_v8_1.spec.ts:213:38
+
+    attachment #1: screenshot (image/png) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    test-results\features_v1_to_v8_1-Full-S-627d8-8-1-v4-Parent-Child-Linking-chromium\test-failed-1.png
+    ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+    Error Context: test-results\features_v1_to_v8_1-Full-S-627d8-8-1-v4-Parent-Child-Linking-chromium\error-context.md
+
+
+[1A[2K[5/5] [chromium] ΓÇ║ tests\features_v1_to_v8_1.spec.ts:221:9 ΓÇ║ Full System Feature Coverage (v1 - v8.1) ΓÇ║ v5-v7: Workflow Menu Access
+[1A[2K[chromium] ΓÇ║ tests\features_v1_to_v8_1.spec.ts:221:9 ΓÇ║ Full System Feature Coverage (v1 - v8.1) ΓÇ║ v5-v7: Workflow Menu Access
+Navigating to login page...
+
+[1A[2KCurrent URL: http://localhost:3001/
+
+[1A[2KState Check: LoginVisible=false, DashboardVisible=true
+
+[1A[2KAlready logged in.
+
+[1A[2K  4) [chromium] ΓÇ║ tests\features_v1_to_v8_1.spec.ts:221:9 ΓÇ║ Full System Feature Coverage (v1 - v8.1) ΓÇ║ v5-v7: Workflow Menu Access 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: locator.click: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - waiting for getByRole('link', { name: /Workflows/i }).first()[22m
+
+
+      227 |         }
+      228 |
+    > 229 |         await page.getByRole('link', { name: /Workflows/i }).first().click();
+          |                                                                      ^
+      230 |         await expect(page).toHaveURL(/.*workflows/);
+      231 |     });
+      232 | });
+        at C:\todo-docker\tests\features_v1_to_v8_1.spec.ts:229:70
+
+    attachment #1: screenshot (image/png) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    test-results\features_v1_to_v8_1-Full-S-91d56--v5-v7-Workflow-Menu-Access-chromium\test-failed-1.png
+    ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+    Error Context: test-results\features_v1_to_v8_1-Full-S-91d56--v5-v7-Workflow-Menu-Access-chromium\error-context.md
+
+
+[1A[2K  4 failed
+    [chromium] ΓÇ║ tests\features_v1_to_v8_1.spec.ts:95:9 ΓÇ║ Full System Feature Coverage (v1 - v8.1) ΓÇ║ v1: Task Lifecycle (Create, Edit, Pin, Remark) 
+    [chromium] ΓÇ║ tests\features_v1_to_v8_1.spec.ts:144:9 ΓÇ║ Full System Feature Coverage (v1 - v8.1) ΓÇ║ v3-v8.1: OCR Review Flow (Mocked) 
+    [chromium] ΓÇ║ tests\features_v1_to_v8_1.spec.ts:189:9 ΓÇ║ Full System Feature Coverage (v1 - v8.1) ΓÇ║ v4: Parent/Child Linking 
+    [chromium] ΓÇ║ tests\features_v1_to_v8_1.spec.ts:221:9 ΓÇ║ Full System Feature Coverage (v1 - v8.1) ΓÇ║ v5-v7: Workflow Menu Access 
+  1 passed (1.5m)

@@ -117,11 +117,23 @@ export async function fetchOcrCorrectionHistory(
   });
 }
 
+export interface AttachmentOcrOutput {
+  id: string;
+  attachmentId: string;
+  extractedText: string | null;
+  status: 'draft' | 'confirmed' | 'archived';
+  processingStatus: 'pending' | 'completed' | 'failed';
+  utilizationType: string | null;
+  createdAt: string;
+}
+
 /**
  * Fetch current confirmed OCR output for an attachment.
  * Calls GET /attachments/:attachmentId/ocr/current
  */
-export async function fetchCurrentConfirmedOcr(attachmentId: string): Promise<any> {
+export async function fetchCurrentConfirmedOcr(
+  attachmentId: string
+): Promise<AttachmentOcrOutput | null> {
   return apiFetchJson(`/attachments/${attachmentId}/ocr/current`, {
     method: 'GET',
   });
@@ -131,12 +143,42 @@ export async function fetchCurrentConfirmedOcr(attachmentId: string): Promise<an
  * Check redo eligibility for an attachment.
  * Calls GET /attachments/:attachmentId/ocr/redo-eligibility
  */
-export async function fetchOcrRedoEligibility(attachmentId: string): Promise<{
+export async function fetchOcrRedoEligibility(
+  attachmentId: string
+): Promise<{
   allowed: boolean;
   reason?: string;
-  currentOcr?: any;
+  currentOcr?: AttachmentOcrOutput | null;
 }> {
   return apiFetchJson(`/attachments/${attachmentId}/ocr/redo-eligibility`, {
     method: 'GET',
+  });
+}
+
+/**
+ * Manually add a structured field to an OCR output.
+ * Calls POST /ocr/:ocrId/fields
+ */
+export async function createManualOcrField(
+  ocrId: string,
+  payload: { fieldName: string; fieldValue: string; reason: string }
+): Promise<OcrField> {
+  return apiFetchJson(`/ocr/${ocrId}/fields`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * Manually delete a structured field from an OCR output.
+ * Calls DELETE /ocr-results/:fieldId
+ */
+export async function deleteOcrField(
+  fieldId: string,
+  reason: string
+): Promise<{ success: boolean }> {
+  return apiFetchJson(`/ocr-results/${fieldId}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ reason }),
   });
 }
