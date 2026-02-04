@@ -6216,3 +6216,19 @@ The implementation simply enables the **reverse transition** for the existing `h
 
 **Implementation Complete**: 2026-02-04  
 **Scope**: Admin Field Visibility Toggle (Unhide) ✅
+## 2026-02-04 - v8.6 Milestone 8.6.6: Baseline Confirmation UI (Review Page - Projection)
+
+- Endpoints added:
+  - GET /attachments/:attachmentId/baseline
+  - POST /attachments/:attachmentId/baseline/draft
+  - POST /baselines/:baselineId/review
+  - POST /baselines/:baselineId/confirm
+- UI changes:
+  - Baseline status badge and action buttons on /attachments/[attachmentId]/review
+  - Confirmation modal with static assignment message; success toast plus post-confirm redirect to task detail
+  - Draft baseline auto-creation on review page load via baseline API client
+- Explicitly not implemented: baseline assignments UI, utilization locking UI, archive/redo UX beyond confirm auto-archive, ML suggestions, extracted text pool changes.
+- Execution report:
+  - Files changed: apps/api/src/baseline/baseline.controller.ts; apps/api/src/baseline/baseline.module.ts; apps/api/src/app.module.ts; apps/web/app/lib/api/baselines.ts; apps/web/app/components/baseline/BaselineStatusBadge.tsx; apps/web/app/attachments/[attachmentId]/review/page.tsx
+  - Routes added: GET /attachments/:attachmentId/baseline; POST /attachments/:attachmentId/baseline/draft; POST /baselines/:baselineId/review; POST /baselines/:baselineId/confirm
+  - Manual verification: Not run (UI/API smoke tests deferred; endpoints wired per spec)

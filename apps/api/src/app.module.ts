@@ -14,6 +14,7 @@ import { OcrModule } from './ocr/ocr.module';
 import { BootstrapModule } from './bootstrap/bootstrap.module';
 import { WorkflowsModule } from './workflows/workflows.module';
 import { FieldLibraryModule } from './field-library/field-library.module';
+import { BaselineModule } from './baseline/baseline.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { FieldLibraryModule } from './field-library/field-library.module';
     RemarksModule,
     WorkflowsModule,
     FieldLibraryModule,
+    BaselineModule,
   ],
 })
 export class AppModule {}

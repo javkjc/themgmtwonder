@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { BaselineManagementService } from './baseline-management.service';
 import { DbModule } from '../db/db.module';
 import { AuditModule } from '../audit/audit.module';
+import { BaselineController } from './baseline.controller';
 
 /**
  * BaselineModule
@@ -11,6 +12,7 @@ import { AuditModule } from '../audit/audit.module';
  */
 @Module({
     imports: [DbModule, AuditModule],
+    controllers: [BaselineController],
     providers: [BaselineManagementService],
     exports: [BaselineManagementService],
 })
