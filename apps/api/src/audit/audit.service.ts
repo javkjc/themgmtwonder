@@ -56,7 +56,21 @@ export type AuditAction =
   | 'ocr.field_corrected'
   | 'OCR_ARCHIVED'
   | 'OCR_REDO_BLOCKED'
-  | 'OCR_REDO_ALLOWED';
+  | 'OCR_REDO_ALLOWED'
+  | 'ocr.field_added_manually'
+  | 'ocr.field_deleted_manually'
+  | 'OCR_UTILIZED_RECORD'
+  | 'OCR_UTILIZED_WORKFLOW'
+  | 'OCR_UTILIZED_EXPORT'
+  | 'field_library.create'
+  | 'field_library.update'
+  | 'field_library.hide'
+  | 'field_library.unhide'
+  | 'field_library.archive'
+  | 'baseline.create'
+  | 'baseline.review'
+  | 'baseline.confirm'
+  | 'baseline.archive';
 
 export type AuditModule =
   | 'auth'
@@ -66,7 +80,9 @@ export type AuditModule =
   | 'category'
   | 'settings'
   | 'admin'
-  | 'workflow';
+  | 'workflow'
+  | 'field_library'
+  | 'baseline';
 
 export type CreateAuditLogDto = {
   userId?: string | null;
@@ -90,7 +106,7 @@ export type ListAuditLogsQuery = {
 
 @Injectable()
 export class AuditService {
-  constructor(private readonly dbs: DbService) {}
+  constructor(private readonly dbs: DbService) { }
 
   async log(dto: CreateAuditLogDto) {
     try {
