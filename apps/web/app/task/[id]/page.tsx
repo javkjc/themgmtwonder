@@ -214,7 +214,7 @@ export default function TaskDetailsPage() {
   const [pendingOcrConfirmation, setPendingOcrConfirmation] = useState<{ attachmentId: string, outputId: string, text?: string } | null>(null);
   // v3.5 / v8 Task A1: Extraction State Handling
   const [ocrEligibility, setOcrEligibility] = useState<
-    Record<string, { loading: boolean; allowed: boolean; reason?: string; hasConfirmed: boolean; utilizationType?: string }>
+    Record<string, { loading: boolean; allowed: boolean; reason?: string; hasConfirmed: boolean; utilizationType?: string | null }>
   >({});
 
   // History

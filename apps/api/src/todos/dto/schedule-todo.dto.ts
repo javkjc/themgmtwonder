@@ -4,7 +4,6 @@ import {
   Max,
   Min,
   IsISO8601,
-  ValidateIf,
 } from 'class-validator';
 
 export class ScheduleTodoDto {
@@ -13,9 +12,9 @@ export class ScheduleTodoDto {
   @IsISO8601({ strict: true })
   startAt?: string | null;
 
-  @ValidateIf((o) => o.startAt !== null && o.startAt !== undefined)
+  @IsOptional()
   @IsInt()
   @Min(1)
-  @Max(10000)
+  @Max(7200)
   durationMin?: number;
 }

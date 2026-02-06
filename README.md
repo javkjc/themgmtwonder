@@ -72,10 +72,10 @@ Core philosophy:
   - `src/audit/` — Audit logging service
 - `apps/web` — Next.js web app
 - `apps/ocr-worker` — OCR worker service (FastAPI + PaddleOCR CPU)
-- `plan.md` — authoritative execution contract
-- `features.md` — product intent/pipeline (non-authoritative ordering)
-- `executionnotes.md` — append-only evidence of completed work
-- `codemapcc.md` — navigation/index to avoid repo-scanning
+- `tasks/plan.md` — authoritative execution contract
+- `tasks/features.md` — product intent/pipeline (non-authoritative ordering)
+- `tasks/executionnotes.md` — append-only evidence of completed work
+- `tasks/codemapcc.md` — navigation/index to avoid repo-scanning
 
 ---
 
@@ -124,7 +124,7 @@ If your local database is missing tables or columns (e.g. after volume resets or
 
 ## Documentation
 
-- **[plan.md](./plan.md)** — Authoritative implementation plan (single source of truth)
-- **[features.md](./features.md)** — Feature roadmap and capability reference
-- **[executionnotes.md](./executionnotes.md)** — Execution evidence (append-only)
-- **[codemapcc.md](./codemapcc.md)** — Codebase navigation and file ownership
+- **[plan.md](./tasks/plan.md)** — Authoritative implementation plan (single source of truth)
+- **[features.md](./tasks/features.md)** — Feature roadmap and capability reference
+- **[executionnotes.md](./tasks/executionnotes.md)** — Execution evidence (append-only)
+- **[codemapcc.md](./tasks/codemapcc.md)** — Codebase navigation and file ownership

@@ -4,9 +4,28 @@ export type BaselineStatus = 'draft' | 'reviewed' | 'confirmed' | 'archived';
 
 export type BaselineUtilizationType =
   | 'record_created'
-  | 'workflow_committed'
+  | 'process_committed'
   | 'data_exported'
   | null;
+
+export interface Assignment {
+  id: string;
+  fieldKey: string;
+  assignedValue: string | null;
+  sourceSegmentId: string | null;
+  assignedBy: string;
+  assignedAt: string;
+  correctedFrom: string | null;
+  correctionReason: string | null;
+}
+
+export interface Segment {
+  id: string;
+  text: string;
+  confidence: string | null;
+  boundingBox: any;
+  pageNumber: number | null;
+}
 
 export interface Baseline {
   id: string;
@@ -19,6 +38,29 @@ export interface Baseline {
   archivedAt: string | null;
   archivedBy: string | null;
   createdAt: string;
+  assignments?: Assignment[];
+  segments?: Segment[];
+}
+
+export interface AssignPayload {
+  fieldKey: string;
+  assignedValue: string;
+  sourceSegmentId?: string;
+  correctionReason?: string;
+}
+
+export async function upsertAssignment(baselineId: string, payload: AssignPayload): Promise<any> {
+  return apiFetchJson(`/baselines/${baselineId}/assign`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteAssignment(baselineId: string, fieldKey: string, reason: string): Promise<any> {
+  return apiFetchJson(`/baselines/${baselineId}/assign/${fieldKey}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ correctionReason: reason }),
+  });
 }
 
 export async function fetchBaselineForAttachment(

@@ -12,6 +12,7 @@ import { AuditService, type AuditAction } from '../audit/audit.service';
 import {
   attachmentOcrOutputs,
   attachments,
+  extractedTextSegments,
   ocrResults,
   todos,
 } from '../db/schema';
@@ -24,7 +25,7 @@ type DerivedOcrProcessingStatus = 'completed' | 'failed';
 export type OcrWorkerMeta = Record<string, unknown> | null;
 export type OcrUtilizationType =
   | 'authoritative_record'
-  | 'workflow_approval'
+  | 'human_approval'
   | 'data_export';
 
 type AttachmentOcrOutputRecord = typeof attachmentOcrOutputs.$inferSelect;
@@ -44,13 +45,13 @@ type OcrWorkerResult = {
 
 const utilizationSeverityRank: Record<OcrUtilizationType, number> = {
   data_export: 1,
-  workflow_approval: 2,
+  human_approval: 2,
   authoritative_record: 3,
 };
 
 const utilizationAuditEventMap: Record<OcrUtilizationType, string> = {
   authoritative_record: 'OCR_UTILIZED_RECORD',
-  workflow_approval: 'OCR_UTILIZED_WORKFLOW',
+  human_approval: 'OCR_UTILIZED_HUMAN_APPROVAL',
   data_export: 'OCR_UTILIZED_EXPORT',
 };
 
@@ -98,7 +99,7 @@ export class OcrService {
     private readonly auditService: AuditService,
     private readonly ocrParsingService: OcrParsingService,
     private readonly ocrCorrectionsService: OcrCorrectionsService,
-  ) {}
+  ) { }
 
   async createDerivedOutput({
     userId,
@@ -139,6 +140,8 @@ export class OcrService {
         isCurrent: true,
       })
       .returning();
+
+    await this.replaceTextSegments(record.id, extractedText);
 
     await this.auditService.log({
       action: 'OCR_DRAFT_CREATED',
@@ -329,7 +332,7 @@ export class OcrService {
 
     const reasons: Record<OcrUtilizationType, string> = {
       authoritative_record: 'Authoritative record created from this data',
-      workflow_approval: 'Workflow approval committed',
+      human_approval: 'Human approval committed',
       data_export: 'Data has been exported – must archive first',
     };
 
@@ -408,6 +411,8 @@ export class OcrService {
     if (!confirmedOcr) {
       throw new InternalServerErrorException('Failed to confirm OCR output');
     }
+
+    await this.replaceTextSegments(ocrId, finalExtractedText);
 
     await this.auditService.log({
       userId,
@@ -507,11 +512,27 @@ export class OcrService {
 
     await this.ensureUserOwnsAttachment(userId, ocr.attachmentId);
 
-    // According to C1 rule: blocked if utilized
+    if (ocr.status !== 'draft') {
+      throw new BadRequestException(
+        'Can only add fields to OCR outputs in Draft status',
+      );
+    }
+
     if (ocr.utilizationType) {
       throw new BadRequestException(
         `Cannot add fields to utilized extraction (utilization: ${ocr.utilizationType})`,
       );
+    }
+
+    const normalizedValue = dto.fieldValue.trim();
+    const normalizedReason = dto.reason.trim();
+
+    if (!normalizedValue) {
+      throw new BadRequestException('Field value cannot be empty or whitespace');
+    }
+
+    if (!normalizedReason) {
+      throw new BadRequestException('Reason cannot be empty or whitespace');
     }
 
     const [newField] = await this.dbs.db
@@ -519,11 +540,19 @@ export class OcrService {
       .values({
         attachmentOcrOutputId: ocrId,
         fieldName: dto.fieldName,
-        fieldValue: dto.fieldValue,
+        fieldType: dto.fieldType,
+        fieldValue: normalizedValue,
         confidence: '1.0000', // Manual fields have 100% confidence by definition
         createdAt: new Date(),
       })
       .returning();
+
+    await this.ocrCorrectionsService.logManualFieldAddition(
+      newField.id,
+      normalizedValue,
+      normalizedReason,
+      userId,
+    );
 
     await this.auditService.log({
       userId,
@@ -534,9 +563,11 @@ export class OcrService {
       resourceId: newField.id,
       details: {
         ocrId,
-        fieldName: dto.fieldName,
-        fieldValue: dto.fieldValue,
-        reason: dto.reason,
+        fieldKey: dto.fieldName,
+        fieldType: dto.fieldType,
+        before: null,
+        after: normalizedValue,
+        reason: normalizedReason,
       },
     });
 
@@ -614,7 +645,7 @@ export class OcrService {
     if (ocr.utilizationType !== 'data_export') {
       throw new BadRequestException(
         `Can only archive OCR with Category C utilization (data_export). ` +
-          `Current utilization: ${ocr.utilizationType ?? 'none'}.`,
+        `Current utilization: ${ocr.utilizationType ?? 'none'}.`,
       );
     }
 
@@ -681,6 +712,7 @@ export class OcrService {
         return {
           id: result.id,
           fieldName: result.fieldName,
+          fieldType: result.fieldType ?? 'text',
           originalValue: result.fieldValue || '',
           currentValue:
             latestCorrection?.correctedValue || result.fieldValue || '',
@@ -719,11 +751,11 @@ export class OcrService {
       },
       rawOcr: rawOcrOutput
         ? {
-            id: rawOcrOutput.id,
-            extractedText: rawOcrOutput.extractedText || '',
-            status: rawOcrOutput.status,
-            createdAt: rawOcrOutput.createdAt,
-          }
+          id: rawOcrOutput.id,
+          extractedText: rawOcrOutput.extractedText || '',
+          status: rawOcrOutput.status,
+          createdAt: rawOcrOutput.createdAt,
+        }
         : null,
       utilizationType: rawOcrOutput?.utilizationType || null,
       parsedFields,
@@ -758,5 +790,40 @@ export class OcrService {
       );
     }
     return configured.replace(/\/+$/, '');
+  }
+
+  private async replaceTextSegments(
+    attachmentOcrOutputId: string,
+    extractedText: string | null | undefined,
+  ) {
+    // Clear any existing segments for this OCR output (e.g., re-confirm with edited text)
+    await this.dbs.db
+      .delete(extractedTextSegments)
+      .where(eq(extractedTextSegments.attachmentOcrOutputId, attachmentOcrOutputId));
+
+    const normalized = (extractedText ?? '').trim();
+    if (!normalized) {
+      return;
+    }
+
+    const lines = normalized
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    if (!lines.length) {
+      return;
+    }
+
+    await this.dbs.db.insert(extractedTextSegments).values(
+      lines.map((text) => ({
+        attachmentOcrOutputId,
+        text,
+        confidence: null,
+        boundingBox: null,
+        pageNumber: 1, // Worker does not provide page numbers; default to first page
+        createdAt: new Date(),
+      })),
+    );
   }
 }

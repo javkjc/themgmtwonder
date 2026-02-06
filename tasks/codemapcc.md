@@ -1,8 +1,8 @@
 # CodeMap (codemapcc.md)
 
 ## 0) Repo Index
-- Root: docker-compose.yml, .env, prompt_guidelines.md, README.md
-- tasks/: plan.md, features.md, executionnotes.md, codemapcc.md (this file)
+- Root: docker-compose.yml, .env, README.md
+- tasks/: plan.md, features.md, executionnotes.md, codemapcc.md (this file), prompt_guidelines.md
 - Root: .claude/, node_modules/, apps/
 - apps/web (Next.js App Router, frontend)
   - app/{page.tsx,layout.tsx,globals.css,types.ts,activity/,admin/,calendar/,components/,context/,customizations/,hooks/,lib/,profile/,settings/,task/[id]}
@@ -244,12 +244,21 @@
     - POST /attachments/:attachmentId/baseline/draft ? createDraft() ? BaselineManagementService.createDraftBaseline()
     - POST /baselines/:baselineId/review ? markReviewed() ? BaselineManagementService.markReviewed()
     - POST /baselines/:baselineId/confirm ? confirmBaseline() ? BaselineManagementService.confirmBaseline()
+    - GET /baselines/:baselineId/assignments ? listAssignments() ? BaselineAssignmentsService.listAssignments()
+    - POST /baselines/:baselineId/assign ? assignField() ? BaselineAssignmentsService.upsertAssignment()
+    - DELETE /baselines/:baselineId/assign/:fieldKey ? deleteAssignment() ? BaselineAssignmentsService.deleteAssignment()
   - Guards/errors: JwtAuthGuard; attachment ownership enforced; lifecycle transitions validated (400 on invalid state)
 - Service: BaselineManagementService
   - Path: apps/api/src/baseline/baseline-management.service.ts
   - Lifecycle: draft → reviewed → confirmed → archived (strict state machine)
   - confirmBaseline is transactional: confirms target + auto-archives previous confirmed (atomic)
   - Audit: all transitions emit baseline.create/review/confirm/archive events
+- Service: FieldAssignmentValidatorService
+  - Path: apps/api/src/baseline/field-assignment-validator.service.ts
+  - Purpose: validate assigned values against field types (varchar/int/decimal/date/currency) and suggest corrections.
+- Service: BaselineAssignmentsService
+  - Path: apps/api/src/baseline/baseline-assignments.service.ts
+  - Responsibilities: enforce ownership + not-archived/not-utilized guards, validate via FieldAssignmentValidatorService, upsert/delete/list baseline_field_assignments, require correctionReason on overwrite/delete, emit baseline.assignment.upsert/delete audits with correctedFrom/correctionReason details.
 - Controller: App bootstrap modules
   - Path: apps/api/src/bootstrap/bootstrap.service.ts (OnModuleInit)
   - Purpose: ensure systemSettings row exists, ensure admin user exists/promoted
@@ -267,12 +276,13 @@ Overlap logic:
   - categories ? id (uuid pk), userId fk users.id, name, color, sortOrder, createdAt
   - attachments ? id (uuid pk), todoId fk todos.id, userId fk users.id, filename, storedFilename, mimeType, size, createdAt
   - attachment_ocr_outputs ? id (uuid pk), attachmentId fk attachments.id cascade, extractedText (text), metadata (text, JSON string), processing_status (text), status (enum: draft/confirmed/archived), confirmed_at/confirmed_by (timestamp/uuid fk users), utilized_at/utilization_type/utilization_metadata (utilization tracking), archived_at/archived_by/archive_reason (archive tracking), createdAt; defined in apps/api/src/db/schema.ts; migrations apps/api/drizzle/0018_attachment_ocr_outputs.sql + apps/api/src/db/migrations/20260202142000-v3.5-ocr-states.sql (forward) and apps/api/src/db/migrations/20260202142000-v3.5-ocr-states-rollback.sql
-  - Indexes: idx_ocr_status, idx_ocr_attachment_status, idx_ocr_utilization (partial WHERE utilization_type IS NOT NULL), plus attachment_ocr_outputs_attachment_id_idx
-  - ocr_results ? id (uuid pk), attachmentOcrOutputId fk attachment_ocr_outputs.id, fieldName, value, confidence (float), boundingBox (json nullable), pageNumber (int nullable), createdAt; indexes on attachmentOcrOutputId and fieldName; populated by OcrParsingService.parseOcrOutput() only when parent output is confirmed
+  - extracted_text_segments ? id (uuid pk), attachmentOcrOutputId fk attachment_ocr_outputs.id cascade, text (text), confidence (float), boundingBox (jsonb nullable), pageNumber (int nullable), createdAt; index on attachmentOcrOutputId; defined in apps/api/src/db/schema.ts
+  - Indexes: idx_ocr_status, idx_ocr_attachment_status, idx_ocr_utilization (partial WHERE utilization_type IS NOT NULL), plus attachment_ocr_outputs_attachment_id_idx and idx_extracted_text_segments_output_id
+  - ocr_results ? id (uuid pk), attachmentOcrOutputId fk attachment_ocr_outputs.id, fieldName, fieldType (text|number|date|currency, defaults to text), value, confidence (float), boundingBox (json nullable), pageNumber (int nullable), createdAt; indexes on attachmentOcrOutputId and fieldName; populated by OcrParsingService.parseOcrOutput() only when parent output is confirmed
   - ocr_corrections ? id (uuid pk), ocrResultId fk ocr_results.id, correctedValue, correctionReason, correctedBy fk users.id, createdAt; append-only (corrections never deleted); loaded via OcrCorrectionsService.getCorrectionHistory()
   - field_library ? id (uuid pk), fieldKey (text unique), label, characterType (enum: varchar/int/decimal/date/boolean), characterLimit (int nullable, varchar only), status (enum: active/hidden/archived), version (int, increments on characterType change), createdAt, updatedAt; admin-managed via FieldLibraryController
   - extraction_baselines ? id (uuid pk), attachmentId fk attachments.id (cascade), status (enum: draft/reviewed/confirmed/archived), confirmedAt, confirmedBy fk users.id, utilizedAt, utilizationType (enum: record_created/workflow_committed/data_exported nullable), archivedAt, archivedBy fk users.id, createdAt; partial unique index on (attachmentId) WHERE status='confirmed' enforces one confirmed baseline per attachment
-  - baseline_field_assignments ? (schema defined, table pending migration — Milestone 8.6.9): id, baselineId fk extraction_baselines.id, fieldId fk field_library.id, assignedValue, sourceSegmentId (nullable), correctedFrom, correctionReason, assignedBy fk users.id, createdAt; unique(baselineId, fieldId)
+  - baseline_field_assignments ? id (uuid pk), baselineId fk extraction_baselines.id (cascade), fieldKey fk field_library.fieldKey, assignedValue, sourceSegmentId (uuid fk extracted_text_segments.id, set null), correctedFrom, correctionReason, assignedBy fk users.id, assignedAt; unique(baselineId, fieldKey); indexes on baselineId, fieldKey, sourceSegmentId; defined in apps/api/src/db/schema.ts
   - remarks ? id (uuid pk), todoId fk todos.id, userId fk users.id, content (text max 150 chars), createdAt
   - audit_logs ? id (uuid pk), userId fk users.id nullable, action, resourceType, resourceId, details json string, ipAddress, userAgent, createdAt
   - system_settings ? id int pk default 1, minDurationMin, maxDurationMin, defaultDurationMin, createdAt, updatedAt
@@ -284,6 +294,7 @@ Overlap logic:
   - remarks.todoId ? todos.id (cascade); remarks.userId ? users.id (cascade)
   - user_settings.userId ? users.id unique
   - audit_logs.userId ? users.id (set null on delete)
+  - extracted_text_segments.attachmentOcrOutputId ? attachment_ocr_outputs.id (cascade)
   - ocr_results.attachmentOcrOutputId ? attachment_ocr_outputs.id
   - ocr_corrections.ocrResultId ? ocr_results.id; ocr_corrections.correctedBy ? users.id
   - extraction_baselines.attachmentId ? attachments.id (cascade); extraction_baselines.confirmedBy/archivedBy ? users.id

@@ -18,6 +18,7 @@ type LoginFormProps = {
   error: string | null;
   loading: boolean;
   onClearError: () => void;
+  initialLoad?: boolean;
 };
 
 export default function LoginForm({
@@ -28,6 +29,7 @@ export default function LoginForm({
   error,
   loading,
   onClearError,
+  initialLoad = false,
 }: LoginFormProps) {
   const { showToast } = useToast();
   const [email, setEmail] = useState('');
@@ -45,12 +47,14 @@ export default function LoginForm({
 
   // Check for password change success message from sessionStorage
   useEffect(() => {
+    if (initialLoad) return;
+
     const passwordChangeSuccess = sessionStorage.getItem('passwordChangeSuccess');
     if (passwordChangeSuccess) {
       showToast('Password changed successfully! Please log in with your new password.', 'success');
       sessionStorage.removeItem('passwordChangeSuccess');
     }
-  }, [showToast]);
+  }, [showToast, initialLoad]);
 
   const handleSubmit = async () => {
     if (authMode === 'login') {

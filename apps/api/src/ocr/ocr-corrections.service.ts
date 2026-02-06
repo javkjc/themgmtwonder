@@ -181,4 +181,24 @@ export class OcrCorrectionsService {
       (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
     );
   }
+
+  async logManualFieldAddition(
+    ocrResultId: string,
+    correctedValue: string,
+    correctionReason: string,
+    userId: string,
+  ): Promise<OcrCorrection> {
+    const [correction] = await this.dbs.db
+      .insert(ocrCorrections)
+      .values({
+        ocrResultId,
+        correctedBy: userId,
+        originalValue: null,
+        correctedValue,
+        correctionReason,
+      })
+      .returning();
+
+    return correction;
+  }
 }

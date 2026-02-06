@@ -49,7 +49,7 @@ export default function PdfDocumentViewer({
 
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
-  const [scale, setScale] = useState(1.5);
+  const [scale, setScale] = useState(1);
   const [renderError, setRenderError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -86,6 +86,8 @@ export default function PdfDocumentViewer({
       return next;
     });
   };
+
+  const documentOptions = useMemo(() => ({ withCredentials: true }), []);
 
   const highlightStyles = useMemo(() => {
     if (!highlightedField || !highlightedField.boundingBox) {
@@ -197,7 +199,7 @@ export default function PdfDocumentViewer({
     >
       <Document
         file={documentUrl}
-        options={{ withCredentials: true }}
+        options={documentOptions}
         onLoadSuccess={handleDocumentLoadSuccess}
         onLoadError={handleError}
         loading={<div style={{ padding: 40, textAlign: 'center' }}>Loading...</div>}

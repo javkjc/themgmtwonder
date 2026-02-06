@@ -4,8 +4,15 @@ import {
     NotFoundException,
 } from '@nestjs/common';
 import { DbService } from '../db/db.service';
-import { extractionBaselines } from '../db/schema';
-import { eq, and } from 'drizzle-orm';
+import {
+    attachmentOcrOutputs,
+    baselineFieldAssignments,
+    extractedTextSegments,
+    extractionBaselines,
+    ocrResults,
+} from '../db/schema';
+import { fieldLibrary } from '../field-library/schema';
+import { eq, and, desc } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 
 /**
@@ -42,6 +49,7 @@ export class BaselineManagementService {
         attachmentId: string,
         userId: string,
     ): Promise<any> {
+        // 1. Create baseline record
         const [baseline] = await this.dbs.db
             .insert(extractionBaselines)
             .values({
@@ -50,6 +58,75 @@ export class BaselineManagementService {
                 createdAt: new Date(),
             })
             .returning();
+
+        // 2. Fetch current OCR Output
+        const [currentOcr] = await this.dbs.db
+            .select()
+            .from(attachmentOcrOutputs)
+            .where(
+                and(
+                    eq(attachmentOcrOutputs.attachmentId, attachmentId),
+                    eq(attachmentOcrOutputs.isCurrent, true),
+                ),
+            )
+            .orderBy(desc(attachmentOcrOutputs.createdAt))
+            .limit(1);
+
+        if (currentOcr) {
+            // 3. Ensure segments exist for this OCR output
+            const existingSegments = await this.dbs.db
+                .select()
+                .from(extractedTextSegments)
+                .where(eq(extractedTextSegments.attachmentOcrOutputId, currentOcr.id))
+                .limit(1);
+
+            if (existingSegments.length === 0 && currentOcr.extractedText) {
+                const lines = currentOcr.extractedText
+                    .split(/\r?\n/)
+                    .map((l) => l.trim())
+                    .filter(Boolean);
+                if (lines.length > 0) {
+                    await this.dbs.db.insert(extractedTextSegments).values(
+                        lines.map((text) => ({
+                            attachmentOcrOutputId: currentOcr.id,
+                            text,
+                            pageNumber: 1,
+                        })),
+                    );
+                }
+            }
+
+            // 4. Populate assignments from parsed fields if they match library fields
+            const results = await this.dbs.db
+                .select()
+                .from(ocrResults)
+                .where(eq(ocrResults.attachmentOcrOutputId, currentOcr.id));
+
+            if (results.length > 0) {
+                const activeLibraryFields = await this.dbs.db
+                    .select()
+                    .from(fieldLibrary)
+                    .where(eq(fieldLibrary.status, 'active'));
+
+                const validKeys = new Set(activeLibraryFields.map((f) => f.fieldKey));
+
+                const assignmentsToInsert = results
+                    .filter((r) => validKeys.has(r.fieldName))
+                    .map((r) => ({
+                        baselineId: baseline.id,
+                        fieldKey: r.fieldName,
+                        assignedValue: r.fieldValue,
+                        assignedBy: userId,
+                    }));
+
+                if (assignmentsToInsert.length > 0) {
+                    await this.dbs.db
+                        .insert(baselineFieldAssignments)
+                        .values(assignmentsToInsert)
+                        .onConflictDoNothing();
+                }
+            }
+        }
 
         // Audit log
         await this.auditService.log({

@@ -35,10 +35,10 @@ export function useDragContext() {
 type DragProviderProps = {
   children: ReactNode;
   onSchedule: (taskId: string, startAt: Date, durationMin: number) => Promise<void>;
-  onUnschedule: (taskId: string) => Promise<void>;
+  onUnschedule: (taskId: string, durationMin: number) => Promise<void>;
   onReschedule: (taskId: string, startAt: Date, durationMin: number) => Promise<void>;
   getDropTime: (x: number, y: number) => Date | null;
-  getEventDuration: (taskId: string) => number;
+  getTaskDuration: (taskId: string, source: 'unscheduled' | 'calendar') => number;
   calendarRef?: React.RefObject<HTMLDivElement>;
 };
 
@@ -48,7 +48,7 @@ export function DragProvider({
   onUnschedule,
   onReschedule,
   getDropTime,
-  getEventDuration,
+  getTaskDuration,
   calendarRef,
 }: DragProviderProps) {
   const [activeItem, setActiveItem] = useState<DragItem | null>(null);
@@ -111,7 +111,8 @@ export function DragProvider({
     // Drop on unschedule zone
     if (dropTarget === 'unschedule-zone') {
       if (item.source === 'calendar') {
-        await onUnschedule(item.taskId);
+        const duration = getTaskDuration(item.taskId, item.source);
+        await onUnschedule(item.taskId, duration);
       }
       return;
     }
@@ -125,7 +126,7 @@ export function DragProvider({
       const dropTime = getDropTime(finalX, finalY);
       if (!dropTime) return;
 
-      const duration = item.source === 'calendar' ? getEventDuration(item.taskId) : 30;
+      const duration = getTaskDuration(item.taskId, item.source);
 
       if (item.source === 'unscheduled') {
         await onSchedule(item.taskId, dropTime, duration);
@@ -133,7 +134,7 @@ export function DragProvider({
         await onReschedule(item.taskId, dropTime, duration);
       }
     }
-  }, [onSchedule, onUnschedule, onReschedule, getDropTime, getEventDuration, handleNativePointerMove]);
+  }, [onSchedule, onUnschedule, onReschedule, getDropTime, getTaskDuration, handleNativePointerMove]);
 
   const handleDragCancel = useCallback(() => {
     document.removeEventListener('pointermove', handleNativePointerMove);

@@ -259,6 +259,7 @@ export default function Home() {
         error={auth.error}
         loading={auth.loading}
         onClearError={auth.clearError}
+        initialLoad={auth.initialLoad}
       />
     );
   }
@@ -415,9 +416,9 @@ export default function Home() {
         <TasksTable
           todos={(localSearch
             ? todos.todos.filter(t =>
-                t.title.toLowerCase().includes(localSearch.toLowerCase()) ||
-                t.id.toLowerCase().includes(localSearch.toLowerCase())
-              )
+              t.title.toLowerCase().includes(localSearch.toLowerCase()) ||
+              t.id.toLowerCase().includes(localSearch.toLowerCase())
+            )
             : todos.todos
           ).sort((a, b) => {
             // Pinned tasks first
@@ -478,7 +479,7 @@ export default function Home() {
         message={confirmModal.data?.message || ''}
         taskTitle={confirmModal.data?.taskTitle}
         variant={confirmModal.data?.variant}
-        onConfirm={confirmModal.data?.onConfirm || (() => {})}
+        onConfirm={confirmModal.data?.onConfirm || (() => { })}
         onCancel={confirmModal.close}
       />
     </>

@@ -25,7 +25,7 @@ import { TaskStageKey } from '../common/constants';
 
 @Injectable()
 export class TodosService {
-  constructor(private readonly dbs: DbService) {}
+  constructor(private readonly dbs: DbService) { }
 
   /**
    * Check if a task is a parent (has children)
@@ -303,7 +303,7 @@ export class TodosService {
       category: string | null;
       durationMin: number;
       isPinned: boolean;
-      stageKey: TaskStageKey | null;
+      stageKey: TaskStageKey;
       parentId: string | null;
     }>,
   ) {
@@ -462,11 +462,15 @@ export class TodosService {
         }
       }
 
-      // If unscheduling, clear startAt only (preserve durationMin) and set unscheduledAt
+      // If unscheduling, clear startAt only (allow updating durationMin) and set unscheduledAt
       if (startAt === null) {
         const [updated] = await txDb
           .update(todos)
-          .set({ startAt: null, unscheduledAt: new Date() })
+          .set({
+            startAt: null,
+            unscheduledAt: new Date(),
+            durationMin: dto.durationMin ?? undefined,
+          })
           .where(eq(todos.id, todoId))
           .returning();
         return updated;

@@ -34,12 +34,12 @@ If contradictions exist between files:
 
 **For "what was built":**
 1. `tasks/executionnotes.md` (evidence of actual implementation)
-2. `codemapcc.md` (current codebase structure)
+2. `tasks/codemapcc.md` (current codebase structure)
 3. Actual codebase (ground truth if files are stale)
 
 **For "how to build":**
-1. `prompt_guidelines.md` (this file - governance)
-2. `ai-rules.md` (behavioral standards, if exists)
+1. `tasks/prompt_guidelines.md` (this file - governance)
+2. `tasks/ai-rules.md` (behavioral standards, if exists)
 3. User instruction (if it doesn't violate governance)
 
 When in doubt: **STOP and ask which source to trust**.
@@ -71,7 +71,7 @@ Before executing any task, you MUST:
    - `tasks/session-state.md` (where we left off)
    - `tasks/lessons.md` (patterns to avoid)
    - `tasks/plan.md` sections 1-5 (execution contract)
-   - `codemapcc.md` (as needed for navigation)
+   - `tasks/codemapcc.md` (as needed for navigation)
 
 2. **Identify the task**:
    - Find the NEXT TASK pointer in `tasks/plan.md`
@@ -86,7 +86,7 @@ Before executing any task, you MUST:
 4. **Confirm readiness**:
    - All context is clear
    - No ambiguity in requirements
-   - Files referenced exist in `codemapcc.md`
+   - Files referenced exist in `tasks/codemapcc.md`
 
 If ANY step fails → **STOP and ask**
 
@@ -98,7 +98,7 @@ Before closing session, you MUST:
 2. ✅ **Update `tasks/plan.md`** (status checkboxes only - do NOT reword)
 3. ✅ **Rewrite `tasks/session-state.md`** (complete state for next resume)
 4. ✅ **Update `tasks/lessons.md`** (if user made corrections during session)
-5. ✅ **Update `codemapcc.md`** (if files/tables/routes/controllers added)
+5. ✅ **Update `tasks/codemapcc.md`** (if files/tables/routes/controllers added)
 
 Failure to complete session end protocol leaves the project in an inconsistent state.
 
@@ -108,8 +108,8 @@ Failure to complete session end protocol leaves the project in an inconsistent s
 
 If you are starting fresh with no prior context:
 
-1. You MUST read this file (`prompt_guidelines.md`) first
-2. Then read `ai-rules.md` (if it exists) for behavioral standards
+1. You MUST read this file (`tasks/prompt_guidelines.md`) first
+2. Then read `tasks/ai-rules.md` (if it exists) for behavioral standards
 3. Then follow "Session Start Protocol" above
 4. Then execute the task specified by user
 
@@ -155,7 +155,7 @@ Before touching code, you must confirm:
 - [ ] The next incomplete task in `tasks/plan.md` is clearly identified
 - [ ] Task is not blocked by prerequisites or conditions
 - [ ] Required infrastructure is present and running
-- [ ] Relevant files are listed in `codemapcc.md` or marked UNKNOWN
+- [ ] Relevant files are listed in `tasks/codemapcc.md` or marked UNKNOWN
 - [ ] No ambiguity exists in scope or intent
 - [ ] Previous related work is documented in `tasks/executionnotes.md`
 
@@ -168,9 +168,9 @@ If ANY item fails → **STOP and ask**
 - Always read `tasks/plan.md` Sections 1–5
 - Always read `tasks/session-state.md` at session start
 - Always read `tasks/lessons.md` at session start (check for relevant patterns)
-- Use `codemapcc.md` for file paths and module ownership
+- Use `tasks/codemapcc.md` for file paths and module ownership
 - Do NOT repo-scan unless a file is explicitly marked UNKNOWN
-- Do NOT assume files exist unless listed in `codemapcc.md`
+- Do NOT assume files exist unless listed in `tasks/codemapcc.md`
 - Do NOT infer behavior from filenames alone
 - Verify what was built by checking `tasks/executionnotes.md`, not assumptions
 
@@ -183,7 +183,7 @@ If required context is missing → **STOP**
 You MUST NOT assume:
 
 - A file exists because it "should" exist
-- A table exists because it's mentioned in `features.md`
+- A table exists because it's mentioned in `tasks/features.md`
 - A service is implemented because it's in a past milestone
 - Code works because tests passed in a previous session
 - A route is wired because the component exists
@@ -192,7 +192,7 @@ You MUST NOT assume:
 
 You MUST verify against:
 
-- `codemapcc.md` (for files/tables/routes/controllers/services)
+- `tasks/codemapcc.md` (for files/tables/routes/controllers/services)
 - `tasks/executionnotes.md` (for what was actually built)
 - Explicit user confirmation (when unclear)
 
@@ -245,7 +245,7 @@ You MUST verify against:
 - **MUST NOT be modified** unless explicitly instructed by user
 - This is the product spec, not execution tracking
 
-### codemapcc.md
+### tasks/codemapcc.md
 
 - Update when new files/tables/routes/controllers/services are added
 - Keep format consistent with existing entries
@@ -253,7 +253,7 @@ You MUST verify against:
 
 ---
 
-## executionnotes.md Entry Format (Required)
+## tasks/executionnotes.md Entry Format (Required)
 
 Use this structure for all appends:
 ```markdown
@@ -301,7 +301,7 @@ A task is NOT complete until verification is documented.
 **Documentation Verification:**
 - [ ] `tasks/executionnotes.md` entry is complete and factual
 - [ ] `tasks/plan.md` status is updated
-- [ ] `codemapcc.md` reflects any new files/tables/routes
+- [ ] `tasks/codemapcc.md` reflects any new files/tables/routes
 - [ ] All file references are correct and verified
 
 **Functional Verification:**
@@ -309,7 +309,7 @@ A task is NOT complete until verification is documented.
 - [ ] No regressions introduced (check related features)
 - [ ] Edge cases handled as specified
 
-**Document verification in executionnotes.md.**
+**Document verification in tasks/executionnotes.md.**
 
 If verification cannot be completed (e.g., requires manual testing), state:
 `"Verification: Not performed (requires manual [specific action])"`
@@ -423,9 +423,9 @@ When stopping, clearly state which category applies:
 
 ### STOP - Conflicting Source of Truth
 **Examples:**
-- "features.md says field is required, but plan.md marks it optional"
-- "executionnotes.md shows table was created, but codemapcc.md marks it TODO"
-- "plan.md task is marked complete, but no evidence in executionnotes.md"
+- "tasks/features.md says field is required, but plan.md marks it optional"
+- "tasks/executionnotes.md shows table was created, but tasks/codemapcc.md marks it TODO"
+- "tasks/plan.md task is marked complete, but no evidence in tasks/executionnotes.md"
 
 ### STOP - Blocked Task
 **Examples:**
@@ -481,7 +481,7 @@ When explicitly instructed to do documentation-only work, you are in **Documenta
 - Reconcile `tasks/plan.md` status (fix incorrect checkboxes)
 - Reorganize `tasks/executionnotes.md` (maintain chronological order)
 - Fix typos or formatting in documentation files
-- Add missing entries to `codemapcc.md` for existing code
+- Add missing entries to `tasks/codemapcc.md` for existing code
 - Update `tasks/session-state.md` with current state
 - Update `tasks/lessons.md` with historical patterns (if user provides them)
 
@@ -494,7 +494,7 @@ When explicitly instructed to do documentation-only work, you are in **Documenta
 - Refactor or "improve" existing implementations
 - Change application behavior in any way
 
-**Document what you changed** in `executionnotes.md` as:
+**Document what you changed** in `tasks/executionnotes.md` as:
 ```
 ## [Date] - Documentation Update
 
@@ -535,22 +535,22 @@ Stop immediately when:
 When updating files, maintain consistency:
 
 **If you add a file to the codebase:**
-- ✅ Update `codemapcc.md` with file path and purpose
-- ✅ Document in `executionnotes.md` what was added
+- ✅ Update `tasks/codemapcc.md` with file path and purpose
+- ✅ Document in `tasks/executionnotes.md` what was added
 - ✅ Check `tasks/plan.md` box for the task
 
 **If you add a table/column:**
-- ✅ Update `codemapcc.md` data model section
-- ✅ Document schema in `executionnotes.md`
+- ✅ Update `tasks/codemapcc.md` data model section
+- ✅ Document schema in `tasks/executionnotes.md`
 - ✅ Note migration details
 
 **If you add a route:**
-- ✅ Update `codemapcc.md` frontend map (if frontend) or backend map (if API)
+- ✅ Update `tasks/codemapcc.md` frontend map (if frontend) or backend map (if API)
 - ✅ Document components/controllers involved
 - ✅ List mutations and hooks used
 
 **If you add a controller/service:**
-- ✅ Update `codemapcc.md` backend map
+- ✅ Update `tasks/codemapcc.md` backend map
 - ✅ Document endpoints and DTOs
 - ✅ Note guards and validation
 
@@ -582,7 +582,7 @@ These principles override all other considerations:
 
 1. **Immutable data**: Never modify historical records, only append corrections
 2. **Explicit user intent**: Never take action without explicit user confirmation
-3. **Audit-first**: All changes must be traceable through executionnotes.md
+3. **Audit-first**: All changes must be traceable through tasks/executionnotes.md
 4. **No background automation**: All state changes are user-initiated
 5. **Deterministic behavior**: Same input must produce same output
 6. **Manual verification ownership**: User owns verification, AI documents results
@@ -599,12 +599,12 @@ If context becomes too large:
    - `tasks/plan.md` (always required)
    - `tasks/session-state.md` (always required)
    - `tasks/lessons.md` (always required)
-   - `codemapcc.md` (reference sections as needed)
+   - `tasks/codemapcc.md` (reference sections as needed)
 
 2. **Use selective reading**:
-   - Don't load entire `executionnotes.md` - use index
-   - Don't load entire `features.md` - load relevant version only
-   - Don't load full codebase - use `codemapcc.md` for paths
+   - Don't load entire `tasks/executionnotes.md` - use index
+   - Don't load entire `tasks/features.md` - load relevant version only
+   - Don't load full codebase - use `tasks/codemapcc.md` for paths
 
 3. **If still too large**:
    - **STOP and request**: "Context too large. Please provide only [specific sections needed]."
@@ -634,13 +634,13 @@ If you realize mid-task that you made an error:
 These rules have NO exceptions:
 
 1. ✅ `tasks/plan.md` is single source of truth for execution
-2. ✅ Append to `executionnotes.md` at bottom only (oldest→newest chronological)
+2. ✅ Append to `tasks/executionnotes.md` at bottom only (oldest→newest chronological)
 3. ✅ Update `tasks/plan.md` status only, never reword tasks
 4. ✅ Rewrite `tasks/session-state.md` completely at session end
 5. ✅ Never modify `tasks/features.md` unless explicitly instructed
 6. ✅ Stop immediately when task is complete or clarity is needed
 7. ✅ One task per session unless explicitly told otherwise
-8. ✅ Verify against `codemapcc.md` and `executionnotes.md`, never assume
+8. ✅ Verify against `tasks/codemapcc.md` and `tasks/executionnotes.md`, never assume
 9. ✅ STOP and ask when uncertain, never guess
 10. ✅ Follow Session Start and Session End protocols every time
 

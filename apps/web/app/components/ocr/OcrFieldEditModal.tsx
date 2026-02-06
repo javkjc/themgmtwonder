@@ -23,12 +23,14 @@ export default function OcrFieldEditModal({
   const [correctedValue, setCorrectedValue] = useState(field?.currentValue ?? '');
   const [correctionReason, setCorrectionReason] = useState('');
   const [touched, setTouched] = useState(false);
+  const [previewValue, setPreviewValue] = useState<string | null>(null);
 
   useEffect(() => {
     if (field) {
       setCorrectedValue(field.currentValue ?? '');
       setCorrectionReason('');
       setTouched(false);
+      setPreviewValue(null);
     }
   }, [field]);
 
@@ -101,6 +103,7 @@ export default function OcrFieldEditModal({
             onChange={(event) => {
               setCorrectedValue(event.target.value);
               setTouched(true);
+              setPreviewValue(null);
             }}
             placeholder="Enter the corrected text"
             style={{
@@ -110,8 +113,129 @@ export default function OcrFieldEditModal({
               padding: 10,
               fontSize: 14,
               resize: 'vertical',
+              marginBottom: 8,
             }}
           />
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: previewValue ? 8 : 0 }}>
+            <button
+              type="button"
+              onClick={() => setPreviewValue(correctedValue.trim())}
+              disabled={isSaving || !correctedValue}
+              style={{
+                fontSize: 11,
+                padding: '4px 10px',
+                borderRadius: 6,
+                border: '1px solid #e2e8f0',
+                background: '#f8fafc',
+                color: '#64748b',
+                fontWeight: 600,
+                cursor: isSaving || !correctedValue ? 'not-allowed' : 'pointer',
+              }}
+            >
+              Trim
+            </button>
+            <button
+              type="button"
+              onClick={() => setPreviewValue(correctedValue.replace(/[^\d.-]/g, ''))}
+              disabled={isSaving || !correctedValue}
+              style={{
+                fontSize: 11,
+                padding: '4px 10px',
+                borderRadius: 6,
+                border: '1px solid #e2e8f0',
+                background: '#f8fafc',
+                color: '#64748b',
+                fontWeight: 600,
+                cursor: isSaving || !correctedValue ? 'not-allowed' : 'pointer',
+              }}
+            >
+              Normalize Currency
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const d = new Date(correctedValue);
+                if (!isNaN(d.getTime())) {
+                  setPreviewValue(d.toISOString().split('T')[0]);
+                } else {
+                  setPreviewValue('Invalid Date');
+                }
+              }}
+              disabled={isSaving || !correctedValue}
+              style={{
+                fontSize: 11,
+                padding: '4px 10px',
+                borderRadius: 6,
+                border: '1px solid #e2e8f0',
+                background: '#f8fafc',
+                color: '#64748b',
+                fontWeight: 600,
+                cursor: isSaving || !correctedValue ? 'not-allowed' : 'pointer',
+              }}
+            >
+              Parse Date
+            </button>
+          </div>
+          {previewValue !== null && (
+            <div
+              style={{
+                padding: '8px 12px',
+                borderRadius: 10,
+                background: '#f0f9ff',
+                border: '1px solid #bae6fd',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 12,
+                marginTop: 8,
+              }}
+            >
+              <div style={{ fontSize: 12, color: '#0369a1' }}>
+                <span style={{ fontWeight: 700, marginRight: 6 }}>Preview:</span>
+                <code style={{ background: '#e0f2fe', padding: '2px 4px', borderRadius: 4 }}>{previewValue}</code>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => setPreviewValue(null)}
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: 6,
+                    border: 'none',
+                    background: 'transparent',
+                    color: '#64748b',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Discard
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (previewValue !== 'Invalid Date') {
+                      setCorrectedValue(previewValue);
+                      setPreviewValue(null);
+                    }
+                  }}
+                  disabled={previewValue === 'Invalid Date'}
+                  style={{
+                    padding: '4px 12px',
+                    borderRadius: 6,
+                    border: 'none',
+                    background: previewValue === 'Invalid Date' ? '#94a3b8' : '#0284c7',
+                    color: 'white',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: previewValue === 'Invalid Date' ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          )}
           {touched && !correctedValue.trim() && (
             <p style={{ color: '#dc2626', margin: '6px 0 0', fontSize: 12 }}>Corrected value is required.</p>
           )}

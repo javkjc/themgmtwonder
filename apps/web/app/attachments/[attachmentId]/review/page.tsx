@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import NotificationToast, { type Notification } from '@/app/components/NotificationToast';
@@ -21,6 +21,7 @@ import {
   fetchOcrCorrectionHistory,
   type OcrCorrectionHistoryItem,
   type OcrField,
+  type OcrManualFieldPayload,
   type OcrResultsWithCorrectionsResponse,
 } from '@/app/lib/api/ocr';
 import {
@@ -28,9 +29,17 @@ import {
   createDraftBaseline as createDraftBaselineApi,
   fetchBaselineForAttachment,
   markBaselineReviewed,
+  upsertAssignment,
+  deleteAssignment,
   type Baseline,
+  type Segment,
+  type Assignment,
 } from '@/app/lib/api/baselines';
 import type { Me } from '@/app/types';
+
+import ExtractedTextPool from '@/app/components/ocr/ExtractedTextPool';
+import FieldAssignmentPanel from '@/app/components/ocr/FieldAssignmentPanel';
+import CorrectionReasonModal from '@/app/components/ocr/CorrectionReasonModal';
 
 
 const DEFAULT_NOTIFICATION_TTL = 5000;
@@ -40,6 +49,23 @@ const badgeStyles: Record<string, { bg: string; color: string; border: string }>
   reviewed: { bg: '#e0f2fe', color: '#075985', border: '#bae6fd' },
   confirmed: { bg: '#dcfce7', color: '#166534', border: '#bbf7d0' },
   archived: { bg: '#f1f5f9', color: '#475569', border: '#e2e8f0' },
+};
+
+const humanizeToken = (value: string) =>
+  value
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const UTILIZATION_REASON_LABELS: Record<string, string> = {
+  authoritative_record: 'Authoritative record created',
+  data_export: 'Data exported',
+  human_approval: 'Human approved',
+};
+
+const STATUS_REASON_LABELS: Record<string, string> = {
+  confirmed: 'Status: Confirmed output (read-only)',
+  archived: 'Status: Archived output (view only)',
+  reviewed: 'Status: Reviewed output (locked)',
 };
 
 export default function AttachmentOcrReviewPage() {
@@ -75,17 +101,22 @@ export default function AttachmentOcrReviewPage() {
   const [reviewingBaseline, setReviewingBaseline] = useState(false);
   const [confirmingBaseline, setConfirmingBaseline] = useState(false);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [isCorrectionModalOpen, setIsCorrectionModalOpen] = useState(false);
+  const [correctionPendingAction, setCorrectionPendingAction] = useState<{
+    type: 'upsert' | 'delete';
+    fieldKey: string;
+    value?: string;
+    sourceSegmentId?: string;
+  } | null>(null);
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      setTaskId(urlParams.get('taskId'));
-    }
-  }, []);
+  const [isFieldBuilderOpen, setIsFieldBuilderOpen] = useState(true);
+  const [shouldScrollToBuilder, setShouldScrollToBuilder] = useState(false);
+  const [selectionText, setSelectionText] = useState('');
+  const [createModalInitials, setCreateModalInitials] = useState<{ fieldName?: string; fieldValue?: string }>({});
+  const [libraryFields, setLibraryFields] = useState<any[]>([]);
+  const [highlightedSegment, setHighlightedSegment] = useState<Segment | null>(null);
+  const [activeTab, setActiveTab] = useState<'document' | 'text' | 'fields'>('document');
 
-  const documentUrl = attachmentId
-    ? `${API_BASE_URL}/attachments/${attachmentId}/download`
-    : '';
 
   const addNotification = useCallback((notification: Notification) => {
     setNotifications((prev) => [...prev, notification]);
@@ -122,26 +153,6 @@ export default function AttachmentOcrReviewPage() {
     checkAuth();
   }, []);
 
-  const fetchData = useCallback(async () => {
-    if (!attachmentId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await fetchAttachmentOcrResults(attachmentId);
-      setOcrData(data);
-      setSelectedFieldId((prev) => {
-        if (prev && data.parsedFields.some((field) => field.id === prev)) {
-          return prev;
-        }
-        return data.parsedFields[0]?.id ?? null;
-      });
-    } catch (err: unknown) {
-      setError((err as Error)?.message || 'Failed to load extraction review data');
-    } finally {
-      setLoading(false);
-    }
-  }, [attachmentId]);
-
   const loadBaseline = useCallback(async () => {
     if (!attachmentId) return;
     setBaselineLoading(true);
@@ -150,12 +161,110 @@ export default function AttachmentOcrReviewPage() {
       let current = await fetchBaselineForAttachment(attachmentId);
       if (!current) {
         current = await createDraftBaselineApi(attachmentId);
+        // Re-fetch to get segments/assignments if createDraft doesn't return them populated
+        current = await fetchBaselineForAttachment(attachmentId);
       }
       setBaseline(current);
     } catch (err: unknown) {
       setBaselineError((err as Error)?.message || 'Unable to load baseline status');
     } finally {
       setBaselineLoading(false);
+    }
+  }, [attachmentId]);
+
+  const handleAssignmentUpdate = useCallback(async (fieldKey: string, value: string, sourceSegmentId?: string) => {
+    if (!baseline) return;
+    const existing = baseline.assignments?.find(a => a.fieldKey === fieldKey);
+
+    if (existing) {
+      setCorrectionPendingAction({ type: 'upsert', fieldKey, value, sourceSegmentId });
+      setIsCorrectionModalOpen(true);
+      return;
+    }
+
+    try {
+      await upsertAssignment(baseline.id, { fieldKey, assignedValue: value, sourceSegmentId });
+      await loadBaseline();
+      addNotification({
+        id: Date.now().toString(),
+        type: 'success',
+        title: 'Assignment saved',
+        message: `${fieldKey} updated`,
+      });
+    } catch (e: any) {
+      addNotification({
+        id: Date.now().toString(),
+        type: 'error',
+        title: 'Update failed',
+        message: e.message,
+      });
+    }
+  }, [baseline, loadBaseline, addNotification]);
+
+  const handleAssignmentDelete = useCallback(async (fieldKey: string) => {
+    setCorrectionPendingAction({ type: 'delete', fieldKey });
+    setIsCorrectionModalOpen(true);
+  }, []);
+
+  const handleCorrectionConfirm = useCallback(async (reason: string) => {
+    if (!baseline || !correctionPendingAction) return;
+    setIsCorrectionModalOpen(false);
+    const { type, fieldKey, value, sourceSegmentId } = correctionPendingAction;
+
+    try {
+      if (type === 'upsert') {
+        await upsertAssignment(baseline.id, { fieldKey, assignedValue: value!, sourceSegmentId, correctionReason: reason });
+      } else {
+        await deleteAssignment(baseline.id, fieldKey, reason);
+      }
+      await loadBaseline();
+      addNotification({
+        id: Date.now().toString(),
+        type: 'success',
+        title: type === 'upsert' ? 'Assignment updated' : 'Assignment cleared',
+        message: `${fieldKey} processed`,
+      });
+    } catch (e: any) {
+      addNotification({
+        id: Date.now().toString(),
+        type: 'error',
+        title: 'Action failed',
+        message: e.message,
+      });
+    } finally {
+      setCorrectionPendingAction(null);
+    }
+  }, [baseline, correctionPendingAction, loadBaseline, addNotification]);
+
+  const builderSectionRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      setTaskId(urlParams.get('taskId'));
+    }
+  }, []);
+
+  const documentUrl = attachmentId
+    ? `${API_BASE_URL}/attachments/${attachmentId}/download`
+    : '';
+
+  const fetchData = useCallback(async () => {
+    if (!attachmentId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      // Fetch OCR results for the PDF viewer and status information
+      const data = await fetchAttachmentOcrResults(attachmentId);
+      setOcrData(data);
+
+      // Fetch Field Library
+      const fields = await apiFetchJson('/fields?status=active');
+      setLibraryFields(fields as any[]);
+    } catch (err: unknown) {
+      setError((err as Error)?.message || 'Failed to load extraction review data');
+    } finally {
+      setLoading(false);
     }
   }, [attachmentId]);
 
@@ -172,20 +281,92 @@ export default function AttachmentOcrReviewPage() {
     return ocrData?.parsedFields.find((field) => field.id === selectedFieldId) ?? null;
   }, [ocrData, selectedFieldId]);
 
+  const parsedFields = ocrData?.parsedFields ?? [];
+  const hasFields = parsedFields.length > 0;
+  const rawExtractedText = ocrData?.rawOcr?.extractedText ?? '';
+  const hasRawText = rawExtractedText.trim().length > 0;
+  const fieldBuilderPanelId = 'field-builder-panel';
+  const rawTextSectionId = 'raw-extracted-text-section';
+  const builderSectionId = 'field-builder-section';
+  const extractedFieldsSectionId = 'extracted-fields-section';
+
+  const openFieldBuilderPanel = useCallback((scrollToBuilder = false) => {
+    setIsFieldBuilderOpen(true);
+    if (scrollToBuilder) {
+      setShouldScrollToBuilder(true);
+    }
+  }, []);
+
+  const toggleFieldBuilder = useCallback(() => {
+    setIsFieldBuilderOpen((prev) => !prev);
+  }, []);
+
+  const handleEmptyStateCta = useCallback(() => {
+    openFieldBuilderPanel(true);
+  }, [openFieldBuilderPanel]);
+
+  useEffect(() => {
+    if (isFieldBuilderOpen && shouldScrollToBuilder) {
+      builderSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      builderSectionRef.current?.focus();
+      setShouldScrollToBuilder(false);
+    }
+  }, [isFieldBuilderOpen, shouldScrollToBuilder]);
+
+  const rawOcrStatus = ocrData?.rawOcr?.status;
+  const isStatusLocked = rawOcrStatus ? rawOcrStatus !== 'draft' : false;
+  const isUtilizationLocked = Boolean(ocrData?.utilizationType);
+  const isFieldBuilderReadOnly = isStatusLocked || isUtilizationLocked;
+  const statusFallbackLabel = rawOcrStatus ? `Status: ${humanizeToken(rawOcrStatus)}` : 'Status unavailable';
+  const readOnlyReason = isUtilizationLocked
+    ? UTILIZATION_REASON_LABELS[ocrData?.utilizationType ?? ''] ?? 'Data in use'
+    : isStatusLocked
+      ? STATUS_REASON_LABELS[rawOcrStatus ?? ''] ?? statusFallbackLabel
+      : undefined;
+  const canMutateFields = !isFieldBuilderReadOnly;
+
+  const handleRawTextMouseUp = useCallback(() => {
+    const selection = window.getSelection();
+    const text = selection?.toString().trim() || '';
+    setSelectionText(text);
+  }, []);
+
+  const handleUseSelectionAsValue = useCallback(() => {
+    if (!selectionText || !canMutateFields) return;
+    setCreateModalInitials({ fieldValue: selectionText });
+    setIsCreateOpen(true);
+    // Clear selection after capturing
+    window.getSelection()?.removeAllRanges();
+    setSelectionText('');
+  }, [selectionText, canMutateFields]);
+
+  const assignmentStats = useMemo(() => {
+    const totalFields = libraryFields.length;
+    const assigned = baseline?.assignments?.length || 0;
+    return { assigned, empty: Math.max(0, totalFields - assigned) };
+  }, [libraryFields, baseline]);
+
   const isLowConfidence = useMemo(() => {
-    if (!ocrData || ocrData.parsedFields.length === 0) return false;
-    const fieldsWithConfidence = ocrData.parsedFields.filter(
-      (f) => f.confidence !== undefined && f.confidence !== null
-    );
-    if (fieldsWithConfidence.length === 0) return false;
-    return fieldsWithConfidence.every((f) => f.confidence! < 0.6);
+    if (ocrData?.parsedFields?.length) {
+      const fieldsWithConfidence = ocrData.parsedFields.filter(f => f.confidence !== null);
+      if (fieldsWithConfidence.length) {
+        return fieldsWithConfidence.every(f => f.confidence! < 0.6);
+      }
+    }
+    return false;
   }, [ocrData]);
 
-  const handleOpenEdit = useCallback((field: OcrField) => {
-    setEditField(field);
-    setCorrectionError(null);
-    setIsEditOpen(true);
-  }, []);
+  const handleOpenEdit = useCallback(
+    (field: OcrField) => {
+      if (!canMutateFields) {
+        return;
+      }
+      setEditField(field);
+      setCorrectionError(null);
+      setIsEditOpen(true);
+    },
+    [canMutateFields],
+  );
 
   const handleSaveCorrection = useCallback(
     async (payload: { correctedValue: string; correctionReason?: string }) => {
@@ -213,13 +394,14 @@ export default function AttachmentOcrReviewPage() {
   );
 
   const handleCreateField = useCallback(
-    async (payload: { fieldName: string; fieldValue: string; reason: string }) => {
-      if (!ocrData?.rawOcr) return;
+    async (payload: OcrManualFieldPayload) => {
+      if (!canMutateFields || !ocrData?.rawOcr) return;
       setCreatingField(true);
       setCreateError(null);
       try {
         await createManualOcrField(ocrData.rawOcr.id, payload);
         setIsCreateOpen(false);
+        setCreateModalInitials({});
         addNotification({
           id: Date.now().toString(),
           type: 'success',
@@ -233,11 +415,14 @@ export default function AttachmentOcrReviewPage() {
         setCreatingField(false);
       }
     },
-    [addNotification, fetchData, ocrData?.rawOcr],
+    [addNotification, fetchData, ocrData?.rawOcr, canMutateFields],
   );
 
   const handleDeleteField = useCallback(
     async (field: OcrField) => {
+      if (!canMutateFields) {
+        return;
+      }
       const reason = window.prompt(`Are you sure you want to delete "${field.fieldName}"? Please provide a reason:`);
       if (reason === null) return; // Cancelled
       const trimmedReason = reason.trim();
@@ -264,7 +449,7 @@ export default function AttachmentOcrReviewPage() {
         });
       }
     },
-    [addNotification, fetchData],
+    [addNotification, fetchData, canMutateFields],
   );
 
   const handleOpenHistory = useCallback((field: OcrField) => {
@@ -375,6 +560,93 @@ export default function AttachmentOcrReviewPage() {
   }
 
   const badgeStylesValue = baseline?.status ? (badgeStyles[baseline.status] || badgeStyles.draft) : badgeStyles.draft;
+  const isMobile = typeof window !== 'undefined' ? window.innerWidth < 1024 : false;
+
+
+  const renderPanel1 = () => {
+    const mimeType = ocrData?.attachment?.mimeType || '';
+    const isPdfOrImage = mimeType.includes('pdf') || mimeType.includes('image');
+    const isExcel = mimeType.includes('spreadsheet') || mimeType.includes('excel') || ocrData?.attachment?.filename?.endsWith('.xlsx');
+    const isWord = mimeType.includes('word') || ocrData?.attachment?.filename?.endsWith('.doc') || ocrData?.attachment?.filename?.endsWith('.docx');
+
+    return (
+      <div style={{ flex: '1 1 40%', minWidth: isMobile ? '100%' : 420 }}>
+        <div style={{ marginBottom: 12, color: '#475569', fontSize: 13, fontWeight: 700 }}>1. Document Preview</div>
+        {isPdfOrImage ? (
+          <PdfDocumentViewer
+            title={ocrData?.attachment?.filename ?? 'Attachment'}
+            documentUrl={documentUrl}
+            mimeType={ocrData?.attachment?.mimeType ?? null}
+            fileName={ocrData?.attachment?.filename ?? null}
+            highlightedField={
+              highlightedSegment
+                ? { pageNumber: highlightedSegment.pageNumber || 1, boundingBox: highlightedSegment.boundingBox }
+                : (selectedField ? { pageNumber: selectedField.pageNumber, boundingBox: selectedField.boundingBox } : null)
+            }
+            onDocumentError={handleDocumentError}
+            forcePage={highlightedSegment?.pageNumber ?? selectedField?.pageNumber ?? null}
+          />
+        ) : isExcel ? (
+          <div style={{ height: 400, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 24 }}>
+            <span style={{ fontSize: 48, marginBottom: 16 }}>📊</span>
+            <p style={{ margin: 0, fontWeight: 600, color: '#1e293b' }}>Excel files have no preview.</p>
+            <a href={documentUrl} target="_blank" rel="noreferrer" style={{ marginTop: 12, color: '#2563eb', fontWeight: 600 }}>Download to view</a>
+          </div>
+        ) : isWord ? (
+          <div style={{ height: 400, background: '#fee2e2', border: '1px solid #fecaca', borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 24 }}>
+            <span style={{ fontSize: 48, marginBottom: 16 }}>⚠️</span>
+            <p style={{ margin: 0, fontWeight: 600, color: '#b91c1c' }}>Word documents not supported.</p>
+            <p style={{ margin: '8px 0 0', fontSize: 13, color: '#7f1d1d' }}>Please convert to PDF for preview and extraction.</p>
+          </div>
+        ) : (
+          <div style={{ height: 400, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <p style={{ color: '#64748b' }}>Preview not available for this file type.</p>
+          </div>
+        )}
+        {documentError && (
+          <div style={{ marginTop: 8, padding: 10, borderRadius: 10, background: '#fee2e2', color: '#b91c1c', fontSize: 13 }}>
+            {documentError}. <a href={documentUrl} target="_blank" rel="noreferrer" style={{ color: '#991b1b' }}>Download file</a>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderPanel2 = () => (
+    <div style={{ flex: '1 1 30%', minWidth: isMobile ? '100%' : 300, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <div style={{ color: '#475569', fontSize: 13, fontWeight: 700 }}>2. Extracted Text</div>
+        <span style={{ fontSize: 11, color: '#94a3b8' }}>{baseline?.segments?.length || 0} segments</span>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', maxHeight: isMobile ? 'auto' : 'calc(100vh - 350px)', paddingRight: 4 }}>
+        <ExtractedTextPool
+          segments={baseline?.segments || []}
+          onHighlight={setHighlightedSegment}
+          onDragStart={(e, s) => {
+            e.dataTransfer.setData('application/json', JSON.stringify(s));
+          }}
+        />
+      </div>
+    </div>
+  );
+
+  const renderPanel3 = () => (
+    <div style={{ flex: '1 1 30%', minWidth: isMobile ? '100%' : 300, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <div style={{ color: '#475569', fontSize: 13, fontWeight: 700 }}>3. Field Assignments</div>
+        <span style={{ fontSize: 11, color: '#94a3b8' }}>{assignmentStats.assigned} / {libraryFields.length} set</span>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', maxHeight: isMobile ? 'auto' : 'calc(100vh - 350px)', paddingRight: 4 }}>
+        <FieldAssignmentPanel
+          fields={libraryFields}
+          assignments={baseline?.assignments || []}
+          isReadOnly={baseline?.status === 'confirmed' || baseline?.status === 'archived'}
+          onUpdate={handleAssignmentUpdate}
+          onDelete={handleAssignmentDelete}
+        />
+      </div>
+    </div>
+  );
 
   return (
     <Layout currentPage="home" userEmail={me.email} userRole={me.role} isAdmin={me.isAdmin} onLogout={logout}>
@@ -532,7 +804,7 @@ export default function AttachmentOcrReviewPage() {
             {baseline.status === 'draft' && 'Draft baseline. Mark as reviewed before confirming.'}
             {baseline.status === 'reviewed' && 'Reviewed baseline. Confirm to lock and make it system-usable.'}
             {baseline.status === 'confirmed' && 'Confirmed baseline. The previously confirmed baseline is archived.'}
-            {baseline.status === 'archived' && 'Archived baseline (view only).' }
+            {baseline.status === 'archived' && 'Archived baseline (view only).'}
           </span>
         </div>
       )}
@@ -618,142 +890,45 @@ export default function AttachmentOcrReviewPage() {
           </div>
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-        <div style={{ flex: '1 1 420px', minWidth: 320 }}>
-          <div style={{ marginBottom: 12, color: '#475569', fontSize: 14 }}>
-            Document
-          </div>
-          <PdfDocumentViewer
-            title={ocrData?.attachment?.filename ?? 'Attachment'}
-            documentUrl={documentUrl}
-            mimeType={ocrData?.attachment?.mimeType ?? null}
-            fileName={ocrData?.attachment?.filename ?? null}
-            highlightedField={
-              selectedField
-                ? { pageNumber: selectedField.pageNumber, boundingBox: selectedField.boundingBox }
-                : null
-            }
-            onDocumentError={handleDocumentError}
-            forcePage={selectedField?.pageNumber ?? null}
-          />
-          {documentError && (
-            <div
-              style={{
-                marginTop: 8,
-                padding: 10,
-                borderRadius: 10,
-                background: '#fee2e2',
-                color: '#b91c1c',
-                fontSize: 13,
-              }}
-            >
-              {documentError}. <a href={documentUrl} target="_blank" rel="noreferrer" style={{ color: '#991b1b' }}>Download file</a>
-            </div>
-          )}
-        </div>
-        <div style={{ flex: '1 1 360px', minWidth: 320 }}>
-          <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ color: '#475569', fontSize: 14, fontWeight: 500 }}>
-              Extracted Fields
-            </div>
-            {hasOcrOutput && (
+      {/* Layout Panels */}
+      {isMobile ? (
+        <div>
+          <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', marginBottom: 20, gap: 4 }}>
+            {[
+              { id: 'document', label: 'Document' },
+              { id: 'text', label: 'Text' },
+              { id: 'fields', label: 'Fields' },
+            ].map((tab) => (
               <button
-                onClick={() => setIsCreateOpen(true)}
-                disabled={!!ocrData?.utilizationType}
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
                 style={{
-                  padding: '6px 12px',
-                  borderRadius: 8,
-                  background: ocrData?.utilizationType ? '#f1f5f9' : '#ffffff',
-                  border: '1px solid #e2e8f0',
-                  color: ocrData?.utilizationType ? '#94a3b8' : '#2563eb',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: ocrData?.utilizationType ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6
+                  flex: 1,
+                  padding: '12px 8px',
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: activeTab === tab.id ? '2px solid #2563eb' : '2px solid transparent',
+                  color: activeTab === tab.id ? '#2563eb' : '#64748b',
+                  fontSize: 14,
+                  fontWeight: activeTab === tab.id ? 700 : 500,
+                  cursor: 'pointer',
                 }}
               >
-                <span>➕</span> Add Field
+                {tab.label}
               </button>
-            )}
+            ))}
           </div>
-          {loading && (
-            <div
-              style={{
-                padding: 24,
-                borderRadius: 12,
-                border: '1px dashed #cbd5f5',
-                textAlign: 'center',
-                color: '#94a3b8',
-              }}
-            >
-              Loading extracted results...
-            </div>
-          )}
-          {!loading && !hasOcrOutput && (
-            <div
-              style={{
-                padding: 24,
-                borderRadius: 12,
-                border: '1px dashed #f97316',
-                background: '#fff7ed',
-                color: '#c2410c',
-                fontWeight: 600,
-              }}
-            >
-              No extraction available for this attachment.
-            </div>
-          )}
-          {!loading && hasOcrOutput && ocrData && ocrData.parsedFields.length === 0 && (
-            <div
-              style={{
-                padding: 24,
-                borderRadius: 12,
-                border: '1px dashed #cbd5f5',
-                textAlign: 'center',
-                color: '#64748b',
-                background: '#f8fafc',
-              }}
-            >
-              No fields extracted.
-            </div>
-          )}
-          {!loading && hasOcrOutput && ocrData && ocrData.parsedFields.length > 0 && (
-            <OcrFieldList
-              fields={ocrData.parsedFields}
-              utilizationType={ocrData.utilizationType}
-              onEdit={handleOpenEdit}
-              onViewHistory={handleOpenHistory}
-              onSelect={handleFieldSelect}
-              onDelete={handleDeleteField}
-              selectedFieldId={selectedFieldId}
-            />
-          )}
-
-          {hasOcrOutput && ocrData?.rawOcr?.extractedText && (
-            <div style={{ marginTop: 24 }}>
-              <div style={{ marginBottom: 12, color: '#475569', fontSize: 14 }}>
-                Extracted Text
-              </div>
-              <div style={{
-                padding: 16,
-                borderRadius: 12,
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                color: '#1e293b',
-                fontSize: 13,
-                whiteSpace: 'pre-wrap',
-                fontFamily: 'monospace',
-                maxHeight: 400,
-                overflowY: 'auto'
-              }}>
-                {ocrData.rawOcr.extractedText}
-              </div>
-            </div>
-          )}
+          {activeTab === 'document' && renderPanel1()}
+          {activeTab === 'text' && renderPanel2()}
+          {activeTab === 'fields' && renderPanel3()}
         </div>
-      </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+          {renderPanel1()}
+          {renderPanel2()}
+          {renderPanel3()}
+        </div>
+      )}
       <OcrFieldEditModal
         field={editField}
         isOpen={isEditOpen}
@@ -762,15 +937,22 @@ export default function AttachmentOcrReviewPage() {
         onClose={() => setIsEditOpen(false)}
         onSave={handleSaveCorrection}
       />
-      {isCreateOpen && (
-        <OcrFieldCreateModal
-          isOpen={isCreateOpen}
-          isSaving={creatingField}
-          error={createError}
-          onClose={() => setIsCreateOpen(false)}
-          onSave={handleCreateField}
-        />
-      )}
+      {
+        isCreateOpen && (
+          <OcrFieldCreateModal
+            isOpen={isCreateOpen}
+            isSaving={creatingField}
+            error={createError}
+            onClose={() => {
+              setIsCreateOpen(false);
+              setCreateModalInitials({});
+            }}
+            onSave={handleCreateField}
+            initialFieldName={createModalInitials.fieldName}
+            initialFieldValue={createModalInitials.fieldValue}
+          />
+        )
+      }
       <OcrCorrectionHistoryModal
         field={historyField}
         isOpen={Boolean(historyField)}
@@ -779,85 +961,110 @@ export default function AttachmentOcrReviewPage() {
         error={historyError}
         onClose={handleHistoryClose}
       />
-      {isConfirmModalOpen && baseline && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.25)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 50,
-          }}
-        >
+      {
+        isConfirmModalOpen && baseline && (
           <div
             style={{
-              background: '#ffffff',
-              borderRadius: 12,
-              padding: 24,
-              width: 'min(520px, 92vw)',
-              boxShadow: '0 20px 70px rgba(15, 23, 42, 0.15)',
-              border: '1px solid #e2e8f0',
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 50,
             }}
           >
-            <h3 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#0f172a' }}>
-              Confirm Baseline
-            </h3>
-            <p style={{ marginTop: 12, marginBottom: 12, color: '#475569', lineHeight: 1.6, fontSize: 14 }}>
-              This will lock the baseline and make it system-usable. Previous confirmed baseline will be archived automatically.
-            </p>
             <div
               style={{
-                padding: 12,
-                borderRadius: 10,
-                background: '#f8fafc',
-                border: '1px dashed #cbd5e1',
-                color: '#475569',
-                fontSize: 13,
-                marginBottom: 16,
+                background: '#ffffff',
+                borderRadius: 12,
+                padding: 24,
+                width: 'min(520px, 92vw)',
+                boxShadow: '0 20px 70px rgba(15, 23, 42, 0.15)',
+                border: '1px solid #e2e8f0',
               }}
             >
-              Field assignment is not enabled yet.
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-              <button
-                onClick={() => setIsConfirmModalOpen(false)}
-                disabled={confirmingBaseline}
+              <h3 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#0f172a' }}>
+                Confirm Baseline
+              </h3>
+              <p style={{ marginTop: 12, marginBottom: 12, color: '#475569', lineHeight: 1.6, fontSize: 14 }}>
+                This will lock the baseline and make it system-usable. Previous confirmed baseline will be archived automatically.
+              </p>
+              <div
                 style={{
-                  padding: '8px 14px',
-                  borderRadius: 10,
-                  border: '1px solid #e2e8f0',
-                  background: '#ffffff',
+                  padding: 16,
+                  borderRadius: 12,
+                  background: '#f8fafc',
+                  border: '1px dashed #cbd5e1',
                   color: '#475569',
                   fontSize: 14,
-                  fontWeight: 600,
-                  cursor: confirmingBaseline ? 'not-allowed' : 'pointer',
+                  marginBottom: 20,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
                 }}
               >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmBaseline}
-                disabled={confirmingBaseline}
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: 10,
-                  border: '1px solid #16a34a',
-                  background: confirmingBaseline ? '#bbf7d0' : '#22c55e',
-                  color: '#065f46',
-                  fontSize: 14,
-                  fontWeight: 700,
-                  cursor: confirmingBaseline ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {confirmingBaseline ? 'Confirming...' : 'Confirm Baseline'}
-              </button>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Fields Assigned:</span>
+                  <strong style={{ color: '#166534' }}>{assignmentStats.assigned}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Fields Empty:</span>
+                  <strong style={{ color: assignmentStats.empty > 0 ? '#b91c1c' : '#475569' }}>{assignmentStats.empty}</strong>
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button
+                  onClick={() => setIsConfirmModalOpen(false)}
+                  disabled={confirmingBaseline}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: 10,
+                    border: '1px solid #e2e8f0',
+                    background: '#ffffff',
+                    color: '#475569',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: confirmingBaseline ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmBaseline}
+                  disabled={confirmingBaseline}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: 10,
+                    border: '1px solid #16a34a',
+                    background: confirmingBaseline ? '#bbf7d0' : '#22c55e',
+                    color: '#065f46',
+                    fontSize: 14,
+                    fontWeight: 700,
+                    cursor: confirmingBaseline ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {confirmingBaseline ? 'Confirming...' : 'Confirm Baseline'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
+      <CorrectionReasonModal
+        isOpen={isCorrectionModalOpen}
+        title={correctionPendingAction?.type === 'upsert' ? 'Confirm Overwrite' : 'Confirm Deletion'}
+        message={correctionPendingAction?.type === 'upsert'
+          ? `You are overwriting the assignment for ${correctionPendingAction.fieldKey}. This action requires a justification.`
+          : `You are clearing the assignment for ${correctionPendingAction?.fieldKey}. This action requires a justification.`
+        }
+        onClose={() => {
+          setIsCorrectionModalOpen(false);
+          setCorrectionPendingAction(null);
+        }}
+        onConfirm={handleCorrectionConfirm}
+      />
       <NotificationToast notifications={notifications} onDismiss={(id) => setNotifications((prev) => prev.filter((item) => item.id !== id))} />
-    </Layout>
+    </Layout >
   );
 }

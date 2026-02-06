@@ -17,7 +17,7 @@ export const baselineStatusEnum = pgEnum('baseline_status', [
 // Baseline utilization type enum
 export const baselineUtilizationTypeEnum = pgEnum('baseline_utilization_type', [
     'record_created',
-    'workflow_committed',
+    'process_committed',
     'data_exported',
 ]);
 

@@ -48,13 +48,11 @@ export default function ForcePasswordChange({ email, onChangePassword, error }: 
 
     if (ok) {
       setSuccess(true);
-      showToast('Password changed successfully! Please log in again.', 'success');
-      // Redirect to login page after a short delay
       // Use sessionStorage to pass success message (cleared after display)
       sessionStorage.setItem('passwordChangeSuccess', '1');
       setTimeout(() => {
         window.location.href = '/';
-      }, 1500);
+      }, 500);
     }
   };
 

@@ -12,7 +12,6 @@ import { AttachmentsModule } from './attachments/attachments.module';
 import { RemarksModule } from './remarks/remarks.module';
 import { OcrModule } from './ocr/ocr.module';
 import { BootstrapModule } from './bootstrap/bootstrap.module';
-import { WorkflowsModule } from './workflows/workflows.module';
 import { FieldLibraryModule } from './field-library/field-library.module';
 import { BaselineModule } from './baseline/baseline.module';
 
@@ -31,7 +30,6 @@ import { BaselineModule } from './baseline/baseline.module';
     AttachmentsModule,
     OcrModule,
     RemarksModule,
-    WorkflowsModule,
     FieldLibraryModule,
     BaselineModule,
   ],

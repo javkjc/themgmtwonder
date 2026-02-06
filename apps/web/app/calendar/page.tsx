@@ -19,6 +19,7 @@ import { useDurationSettings } from '../hooks/useDurationSettings';
 import ScheduleModal from '../components/ScheduleModal';
 import CreateTaskModal from '../components/CreateTaskModal';
 import { useSettings } from '../hooks/useSettings';
+import { DEFAULT_DURATION_MIN } from '../lib/constants';
 
 const locales = { 'en-US': require('date-fns/locale/en-US') };
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales });
@@ -71,11 +72,11 @@ const UnscheduleZone = memo(function UnscheduleZone() {
 const DropTimeIndicator = memo(function DropTimeIndicator({
   calendarRef,
   getDropTime,
-  getEventDuration,
+  getTaskDuration,
 }: {
   calendarRef: React.RefObject<HTMLDivElement | null>;
   getDropTime: (x: number, y: number) => Date | null;
-  getEventDuration: (taskId: string) => number;
+  getTaskDuration: (taskId: string, source: 'unscheduled' | 'calendar') => number;
 }) {
   const { activeItem, overId, pointerPosition } = useDragContext();
 
@@ -148,10 +149,8 @@ const DropTimeIndicator = memo(function DropTimeIndicator({
 
   const timeStr = format(dropTime, 'h:mm a');
 
-  // Use actual duration for scheduled events, default 30 min for unscheduled
-  const durationMin = activeItem.source === 'calendar'
-    ? getEventDuration(activeItem.taskId)
-    : 30;
+  // Use actual duration for both sources (A3)
+  const durationMin = getTaskDuration(activeItem.taskId, activeItem.source);
   const indicatorHeight = durationMin * pixelsPerMinute;
 
 
@@ -203,11 +202,15 @@ const DraggableEvent = memo(function DraggableEvent({
   onEventClick,
   onResizeStart,
   onResizeTopStart,
+  isLocked,
+  onBlockedInteraction,
 }: {
   event: CalendarEvent;
   onEventClick?: (event: CalendarEvent) => void;
   onResizeStart?: (event: CalendarEvent, e: React.PointerEvent) => void;
   onResizeTopStart?: (event: CalendarEvent, e: React.PointerEvent) => void;
+  isLocked: boolean;
+  onBlockedInteraction: () => void;
 }) {
   const data: DragItem = { taskId: event.id, title: event.title, source: 'calendar' };
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -226,6 +229,10 @@ const DraggableEvent = memo(function DraggableEvent({
   const handleResizeBottomPointerDown = (e: React.PointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    if (isLocked) {
+      onBlockedInteraction();
+      return;
+    }
     if (onResizeStart) {
       onResizeStart(event, e);
     }
@@ -234,6 +241,10 @@ const DraggableEvent = memo(function DraggableEvent({
   const handleResizeTopPointerDown = (e: React.PointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    if (isLocked) {
+      onBlockedInteraction();
+      return;
+    }
     if (onResizeTopStart) {
       onResizeTopStart(event, e);
     }
@@ -323,39 +334,84 @@ const DraggableEvent = memo(function DraggableEvent({
       />
 
       {/* Left = click/edit (covers entire left half minus resize edges) */}
-        <div
-          title="Click to edit"
-          onPointerDown={(e) => {
-            // prevents drag from ever starting on left side
-            e.stopPropagation();
-            e.preventDefault();
-          }}
-          onClick={handleClickableAreaClick}
-          style={{
-            position: 'absolute',
-            top: EDGE,
-            bottom: EDGE,
-            left: 0,
-            width: '50%',
-            cursor: 'pointer',
-            zIndex: 2,
-          }}
-        />
+      <div
+        title="Click to edit"
+        onPointerDown={(e) => {
+          // prevents drag from ever starting on left side
+          e.stopPropagation();
+          e.preventDefault();
+          if (isLocked) {
+            onBlockedInteraction();
+          }
+        }}
+        onClick={(e) => {
+          if (!isLocked) {
+            handleClickableAreaClick(e);
+          }
+        }}
+        style={{
+          position: 'absolute',
+          top: EDGE,
+          bottom: EDGE,
+          left: 0,
+          width: '50%',
+          cursor: isLocked ? 'not-allowed' : 'pointer',
+          zIndex: 2,
+        }}
+      />
 
-        {/* Right = drag/reschedule (covers entire right half minus resize edges) */}
+      {/* Right = drag/reschedule (covers entire right half minus resize edges) */}
+      <div
+        title="Drag to reschedule"
+        onPointerDown={(e) => {
+          if (isLocked) {
+            onBlockedInteraction();
+            e.stopPropagation();
+            return;
+          }
+        }}
+        {...listeners}
+        style={{
+          position: 'absolute',
+          top: EDGE,
+          bottom: EDGE,
+          right: 0,
+          width: '50%',
+          cursor: isLocked ? 'not-allowed' : (isDragging ? 'grabbing' : 'grab'),
+          zIndex: 2,
+        }}
+      />
+
+      {/* Saving Overlay (B1) */}
+      {isLocked && (
         <div
-          title="Drag to reschedule"
-          {...listeners}
           style={{
             position: 'absolute',
-            top: EDGE,
-            bottom: EDGE,
-            right: 0,
-            width: '50%',
-            cursor: isDragging ? 'grabbing' : 'grab',
-            zIndex: 2,
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10,
+            backdropFilter: 'blur(1px)',
+            borderRadius: 4,
+            pointerEvents: 'none',
           }}
-        />
+        >
+          <span style={{
+            color: 'white',
+            fontSize: 10,
+            fontWeight: 800,
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+            padding: '2px 4px',
+            background: 'rgba(0, 0, 0, 0.2)',
+            borderRadius: 2
+          }}>
+            Saving...
+          </span>
+        </div>
+      )}
     </div>
   );
 });
@@ -460,6 +516,18 @@ export default function CalendarPage() {
   // Notifications
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
+  // Mutation locks (A2)
+  const [inFlightTaskIds, setInFlightTaskIds] = useState<Set<string>>(new Set());
+
+  const toggleLock = useCallback((taskId: string, locked: boolean) => {
+    setInFlightTaskIds((prev) => {
+      const next = new Set(prev);
+      if (locked) next.add(taskId);
+      else next.delete(taskId);
+      return next;
+    });
+  }, []);
+
   const addNotification = useCallback((
     type: 'success' | 'error' | 'info',
     title: string,
@@ -529,7 +597,7 @@ export default function CalendarPage() {
             id: t.id,
             title: t.title,
             start: new Date(t.startAt!),
-            end: new Date(new Date(t.startAt!).getTime() + (t.durationMin || 30) * 60000),
+            end: new Date(new Date(t.startAt!).getTime() + (t.durationMin || DEFAULT_DURATION_MIN) * 60000),
             resource: t,
           }));
         setEvents(mapped);
@@ -585,11 +653,14 @@ export default function CalendarPage() {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, [me, fetchEvents, fetchUnscheduled]);
 
-  // Event duration lookup
-  const getEventDuration = useCallback((taskId: string): number => {
-    const event = events.find((e) => e.id === taskId);
-    return event?.resource.durationMin || 30;
-  }, [events]);
+  const getTaskDuration = useCallback((taskId: string, source: 'unscheduled' | 'calendar'): number => {
+    if (source === 'calendar') {
+      const event = events.find((e) => e.id === taskId);
+      return event?.resource.durationMin || DEFAULT_DURATION_MIN;
+    }
+    const todo = unscheduledTodos.find(t => t.id === taskId);
+    return todo?.durationMin || DEFAULT_DURATION_MIN;
+  }, [events, unscheduledTodos]);
 
   // Compute drop time from pointer position
   // Returns null if pointer is outside the valid calendar drop area (cancels drop)
@@ -601,7 +672,7 @@ export default function CalendarPage() {
 
     // Early bounds check: if pointer is completely outside the calendar container, return null
     if (x < calendarRect.left || x > calendarRect.right ||
-        y < calendarRect.top || y > calendarRect.bottom) {
+      y < calendarRect.top || y > calendarRect.bottom) {
       return null;
     }
 
@@ -724,7 +795,7 @@ export default function CalendarPage() {
   }, [fetchEvents, fetchUnscheduled, unscheduledTodos, addNotification]);
 
   // Unschedule task
-  const handleUnschedule = useCallback(async (taskId: string) => {
+  const handleUnschedule = useCallback(async (taskId: string, durationMin: number) => {
     // Find task title for notification
     const event = events.find(e => e.id === taskId);
     const taskTitle = event?.title || 'Task';
@@ -732,7 +803,7 @@ export default function CalendarPage() {
     try {
       await apiFetchJson(`/todos/${taskId}/schedule`, {
         method: 'PATCH',
-        body: JSON.stringify({ startAt: null }),
+        body: JSON.stringify({ startAt: null, durationMin }),
       });
       await fetchEvents();
       await fetchUnscheduled();
@@ -810,19 +881,19 @@ export default function CalendarPage() {
   const handleResizeStart = useCallback((event: CalendarEvent, e: React.PointerEvent) => {
     setResizingEvent(event);
     setResizeStartY(e.clientY);
-    setResizeStartDuration(event.resource.durationMin || 30);
+    setResizeStartDuration(getTaskDuration(event.id, 'calendar'));
     setResizeDirection('bottom');
     setResizeOriginalStart(event.start);
-  }, []);
+  }, [getTaskDuration]);
 
   // Top resize: end fixed, start moves, duration changes
   const handleResizeTopStart = useCallback((event: CalendarEvent, e: React.PointerEvent) => {
     setResizingEvent(event);
     setResizeStartY(e.clientY);
-    setResizeStartDuration(event.resource.durationMin || 30);
+    setResizeStartDuration(getTaskDuration(event.id, 'calendar'));
     setResizeDirection('top');
     setResizeOriginalStart(event.start);
-  }, []);
+  }, [getTaskDuration]);
 
   // Resize move and end handlers (attached to document when resizing)
   useEffect(() => {
@@ -918,6 +989,10 @@ export default function CalendarPage() {
       if (durationChanged || startChanged) {
         const taskTitle = resizingEvent.title;
         const taskId = resizingEvent.id;
+
+        // Lock task (A2)
+        toggleLock(taskId, true);
+
         try {
           await apiFetchJson(`/todos/${resizingEvent.id}/schedule`, {
             method: 'PATCH',
@@ -933,13 +1008,37 @@ export default function CalendarPage() {
             : 'The task duration has been updated.';
           addNotification('success', title, message, taskTitle, taskId);
         } catch (e: any) {
-          // Revert on error
-          await fetchEvents();
-          if (e?.status === 409) {
-            addNotification('error', 'Resize failed', 'Time slot conflicts with another event', taskTitle, taskId);
-          } else {
-            addNotification('error', 'Resize failed', e?.message || 'Failed to resize', taskTitle, taskId);
+          // Task B2: Immediate rollback and clear messaging
+          if (resizingEvent && resizeOriginalStart) {
+            const originalStart = resizeOriginalStart;
+            const originalDuration = resizeStartDuration;
+            const originalEnd = new Date(originalStart.getTime() + originalDuration * 60000);
+
+            setEvents((prev) =>
+              prev.map((ev) =>
+                ev.id === taskId
+                  ? {
+                    ...ev,
+                    start: originalStart,
+                    end: originalEnd,
+                    resource: {
+                      ...ev.resource,
+                      startAt: originalStart.toISOString(),
+                      durationMin: originalDuration,
+                    },
+                  }
+                  : ev
+              )
+            );
           }
+
+          addNotification('error', 'Resize failed', 'Failed to save duration. Reverting.', taskTitle, taskId);
+
+          // Fallback refetch to ensure consistency
+          await fetchEvents();
+        } finally {
+          // Unlock task (A2)
+          toggleLock(taskId, false);
         }
       }
 
@@ -1082,6 +1181,10 @@ export default function CalendarPage() {
         onEventClick={handleEventClick}
         onResizeStart={handleResizeStart}
         onResizeTopStart={handleResizeTopStart}
+        isLocked={inFlightTaskIds.has(props.event.id)}
+        onBlockedInteraction={() => {
+          addNotification('info', 'Saving resize...', 'Try again in a moment.', props.event.title, props.event.id);
+        }}
       />
     ),
     month: {
@@ -1101,7 +1204,7 @@ export default function CalendarPage() {
         </div>
       ),
     },
-  }), [handleEventClick, handleResizeStart, handleResizeTopStart]);
+  }), [handleEventClick, handleResizeStart, handleResizeTopStart, inFlightTaskIds, addNotification]);
 
   if (loading) return null;
 
@@ -1127,7 +1230,7 @@ export default function CalendarPage() {
         onUnschedule={handleUnschedule}
         onReschedule={handleReschedule}
         getDropTime={getDropTime}
-        getEventDuration={getEventDuration}
+        getTaskDuration={getTaskDuration}
       >
         {/* Header */}
         <div style={{ marginBottom: 24 }}>
@@ -1157,10 +1260,10 @@ export default function CalendarPage() {
               so our overlay hit-zones always receive click/drag/resize events.
               This ensures short events (5-15 min) remain fully interactive.
             */}
-            
+
 
             {/* Drop Time Indicator */}
-            <DropTimeIndicator calendarRef={calendarRef} getDropTime={getDropTime} getEventDuration={getEventDuration} />
+            <DropTimeIndicator calendarRef={calendarRef} getDropTime={getDropTime} getTaskDuration={getTaskDuration} />
 
             {/* Calendar Grid Drop Zone */}
             <DroppableZone
@@ -1302,7 +1405,7 @@ export default function CalendarPage() {
         <ScheduleModal
           isOpen={scheduleModalOpen}
           currentStartAt={scheduleModalTask?.startAt || null}
-          currentDurationMin={scheduleModalTask?.durationMin || 30}
+          currentDurationMin={scheduleModalTask ? getTaskDuration(scheduleModalTask.id, scheduleModalTask.startAt ? 'calendar' : 'unscheduled') : DEFAULT_DURATION_MIN}
           currentDescription={scheduleModalTask?.description || null}
           taskId={scheduleModalTask?.id || null}
           events={events}

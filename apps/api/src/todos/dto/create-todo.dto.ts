@@ -8,7 +8,6 @@ import {
   MaxLength,
   Min,
   MinLength,
-  ValidateIf,
 } from 'class-validator';
 
 export class CreateTodoDto {
@@ -32,7 +31,7 @@ export class CreateTodoDto {
   @IsISO8601({ strict: true })
   startAt?: string;
 
-  @ValidateIf((o) => o.startAt !== null && o.startAt !== undefined)
+  @IsOptional()
   @IsInt()
   @Min(1)
   @Max(10000)

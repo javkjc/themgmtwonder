@@ -1,33 +1,20 @@
-# Current Session State
-*Last updated: 2026-02-05*
-*This file is rewritten at the end of each session*
+# Session State - 2026-02-05
 
-## Where We Stopped
+## Current Status
+- **Milestone 8.6**: Field-Based Extraction Assignment & Baseline
+- **Completed Tasks**:
+  - **Task A1**: Verify (and Initialize) Extracted Text Segments Storage. ?
+  - **Task A2**: Baseline Field Assignment Data Model. ?
+  - **Task A3**: Field Assignment Validation Service (8.6.10). ?
+  - **Task A4**: Assignment API + Audit (8.6.11). ?
+- **Next Task**: Task A5: Baseline Review Payload Aggregation (8.6.12).
 
-Workflow Module Removal Checkpoint R2 is complete: `WorkflowsModule` is no longer imported by `AppModule`, the standalone `feature-flag` module/service was removed, and the remaining controller now only relies on projection helpers instead of the deleted guard.
+## Achievements
+- Implemented BaselineAssignmentsService with ownership/utilization/archived guards, validation, audit logging, and on-conflict upsert/delete handling.
+- Exposed assignment CRUD endpoints on BaselineController with correctionReason enforcement and validation responses.
+- Extended audit actions (`baseline.assignment.upsert`, `baseline.assignment.delete`) and registered the new DTO/service in BaselineModule.
 
-## What's Half-Done
-
-- Workflow Module Removal: Cleanupplan R2 done; Checkpoint R3 (schema/tables/migration cleanup plus deleting the workflows directory) remains.
-- No other v8.6 tasks in progress.
-
-## Next Immediate Step
-
-Cleanupplan Checkpoint R3 — remove workflow schema/tables/migrations and delete any remaining backend/web stubs once resources are available. Do not start R3 until this R2 gate is recorded as passed.
-
-## Context Needed for Resume
-
-- **Files actively changed**: `apps/api/src/app.module.ts`, `apps/api/src/workflows/workflows.module.ts`, `apps/api/src/workflows/workflows.controller.ts`, `tasks/executionnotes.md`, `tasks/session-state.md`
-- **Verification status**: `pnpm -C apps/api typecheck` fails because `pnpm` is not installed; `npm run build` (apps/api) bombs out with numerous existing TypeScript/Drizzle schema errors (missing `systemSettings`, `passwordHash`, etc.), so no clean build exists today.
-- **Feature**: Workflow Module Removal (cleanup plan R2)
-- **Current behavior**: No `/api/v1/workflows` or `/workflow-inbox` routes are registered via Nest, and the previously injected feature-flag guard is gone.
-
-## Open Questions
-
-- Should the broader TypeScript build errors (Drizzle schema mismatches) be resolved before rerunning verification for subsequent checkpoints?
-
----
-
-**Session Continuity Notes:**
-- `tasks/plan.md` is intentionally untouched per cleanup plan instructions.
-- `codemapcc.md` and other navigational docs were not modified this session; continue using the previous entries.
+## Context
+- Manual checkpoints for A4 still required (POST assign invoice_number, overwrite without correctionReason should 400, DB corrected_from/correction_reason, audit detail fields).
+- Utilization guard blocks assignment mutations when `utilizationType` or `utilizedAt` is set.
+- Assignments list endpoint is available; validation failures block mutation and return error payloads.

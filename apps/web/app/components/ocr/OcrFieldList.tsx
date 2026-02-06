@@ -9,15 +9,8 @@ type OcrFieldListProps = {
   onSelect?: (field: OcrField) => void;
   onDelete?: (field: OcrField) => void;
   selectedFieldId?: string | null;
-  utilizationType?: string | null;
-};
-
-const getReadOnlyTooltip = (type: string | null | undefined) => {
-  if (!type) return '';
-  if (type === 'authoritative_record') return 'Authoritative record created';
-  if (type === 'data_export') return 'Data exported';
-  if (type === 'workflow_approval') return 'Workflow approved';
-  return 'Data in use';
+  isReadOnly?: boolean;
+  readOnlyReason?: string;
 };
 
 
@@ -33,6 +26,13 @@ const humanReadableName = (name: string) => {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
+const formatFieldType = (type: string | null | undefined) => {
+  if (!type) {
+    return '';
+  }
+  return type.charAt(0).toUpperCase() + type.slice(1);
+};
+
 export default function OcrFieldList({
   fields,
   onEdit,
@@ -40,10 +40,12 @@ export default function OcrFieldList({
   onSelect,
   onDelete,
   selectedFieldId,
-  utilizationType,
+  isReadOnly,
+  readOnlyReason,
 }: OcrFieldListProps) {
 
-  const isReadOnly = !!utilizationType;
+  const readOnlyTitle = readOnlyReason ?? 'Read-only (data in use)';
+  const isReadOnlyMode = Boolean(isReadOnly);
 
   const sortedFields = [...fields].sort((a, b) => a.fieldName.localeCompare(b.fieldName));
 
@@ -121,6 +123,12 @@ export default function OcrFieldList({
                   )}
                 </div>
 
+                {field.fieldType && field.confidence === 1 && !field.originalValue && (
+                  <div style={{ fontSize: 11, color: '#475569', marginTop: 6 }}>
+                    Type: {formatFieldType(field.fieldType)}
+                  </div>
+                )}
+
                 <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>
                   Confidence:{' '}
                   {conf ? (
@@ -134,9 +142,9 @@ export default function OcrFieldList({
               </div>
 
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                {isReadOnly ? (
+                {isReadOnlyMode ? (
                   <span
-                    title={getReadOnlyTooltip(utilizationType)}
+                    title={readOnlyTitle}
                     style={{
                       padding: '4px 10px',
                       borderRadius: 8,

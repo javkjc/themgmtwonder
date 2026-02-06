@@ -17,9 +17,9 @@ This file captures patterns that caused issues and rules to prevent repeating mi
 *Rules will be extracted here as patterns accumulate.*
 
 *Example format:*
-- Always verify table exists in codemapcc.md before writing migration
-- Never prepend entries to executionnotes.md — append only (bottom of file)
-- Check prompt_guidelines.md stop conditions before continuing past task boundary
+- Always verify table exists in tasks/codemapcc.md before writing migration
+- Never prepend entries to tasks/executionnotes.md — append only (bottom of file)
+- Check tasks/prompt_guidelines.md stop conditions before continuing past task boundary
 
 ---
 
@@ -39,5 +39,5 @@ This file captures patterns that caused issues and rules to prevent repeating mi
 - **Problem**: What went wrong
 - **Root Cause**: Why it happened
 - **Rule**: What to do instead
-- **Related Feature**: [Link to features.md if applicable]
+- **Related Feature**: [Link to tasks/features.md if applicable]
 ```

@@ -58,6 +58,7 @@ export interface ParsedOcrResult {
   boundingBox: BoundingBox | null;
   pageNumber: number | null;
   createdAt: Date;
+  fieldType: string;
 }
 
 type ExtractedField = {
@@ -138,6 +139,7 @@ export class OcrParsingService {
           attachmentOcrOutputId,
           fieldName: field.fieldName,
           fieldValue: field.value,
+          fieldType: 'text',
           confidence: field.confidence.toString(),
           boundingBox: field.boundingBox,
           pageNumber: null,

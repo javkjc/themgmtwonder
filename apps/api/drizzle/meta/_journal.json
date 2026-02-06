@@ -5,36 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1770014541473,
-      "tag": "0000_gifted_mysterio",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1770016547385,
-      "tag": "0001_ocr_corrections",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1770017275440,
-      "tag": "0002_bitter_mesmero",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1770189700508,
-      "tag": "0003_married_warhawk",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1770194796715,
-      "tag": "0004_flaky_captain_universe",
+      "when": 1770312462533,
+      "tag": "0000_organic_rafael_vega",
       "breakpoints": true
     }
   ]

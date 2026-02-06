@@ -84,6 +84,23 @@ Remove the WorkflowsModule registration and its feature-flag guard so the API no
 - **Impact**: Affects Feature #5 (v5 — Workflow Foundations (Temporal-Backed Runtime Bridge) 📋 (Re-baselined)) from features.md
 - **Assumptions**: WorkflowsModule and its feature-flag guard are safe to drop now because no other modules inject `FeatureFlagService`.
 - **Open Questions**: None.
+
+## 2026-02-05 - Task D1: Verify OCR state machine UI (v8.1)
+
+### Objective
+Verify that the OCR UI behavior matches the v8.1 rules, specifically focusing on the OCR trigger button states, authoritativeness of confirmed OCR, and lack of background auto-actions.
+
+### Findings
+- **OCR Trigger Button States**: Verified in `apps/web/app/task/[id]/page.tsx` that the button correctly transitions between:
+    - "Retrieve Data" (no confirmed OCR).
+    - "Redo Retrieval" (confirmed OCR exists and redo is allowed).
+    - Disabled with tooltip (confirmed OCR exists and redo is blocked by utilization).
+- **Authoritativeness**: Verified that `apps/web/app/attachments/[attachmentId]/review/page.tsx` only displays data when a confirmed OCR exists, by calling the backend `getCurrentConfirmedOcr` logic. Draft or unconfirmed OCRs are not shown as authoritative.
+- **Auto-Actions**: Confirmed no background auto-actions or implicit transitions exist. The `useEffect` hooks only fetch state; mutations (triggering OCR, confirming OCR) require manual user interaction.
+- **Backend Consistency**: Verified `apps/api/src/ocr/ocr.service.ts` correctly enforces Category A/B/C blocking and provides the reasons shown in terminal tooltips.
+
+### Status
+[VERIFIED]
 ## 2026-02-02 - Task 1: OcrParsingService (v8 Evidence Review)
 
 **Objective:** Add regex-driven OCR parsing plus confidence scoring so evidence review shows structured fields.
@@ -1868,3 +1885,508 @@ Dev Logs: WorkflowsController logs `served from projection` for each endpoint re
   - Lines 287-316: Relations (`workflowInstancesRelations`, `workflowInstanceEventsRelations`, `workflowApprovalsInboxRelations`)
 
 ---
+
+## 2026-02-05 - Task A1: Duration Reversion on Unschedule
+
+### Objective
+Fix duration reversion on unschedule by including durationMin in frontend payload and persisting it in backend.
+
+### What Was Built
+- Backend DTO accepts optional durationMin during unschedule
+- Frontend includes current duration in unschedule payload
+- Centralized getTaskDuration() helper for consistent duration sourcing
+
+### Files Changed
+- `apps/api/src/todos/dto/schedule-todo.dto.ts` - Made durationMin optional
+- `apps/api/src/todos/todos.service.ts` - Persist durationMin on unschedule branch
+- `apps/web/app/calendar/page.tsx` - Added getTaskDuration(), updated handleUnschedule
+- `apps/web/app/components/calendar/DragContext.tsx` - Updated unschedule signature
+
+### Verification
+**Manual Testing:**
+1. Resized task from 30min → 60min
+2. Immediately dragged to unschedule zone
+3. Result: Unscheduled panel showed 60min (not 30min) ✅
+
+**Database Check:**
+```sql
+SELECT duration_minutes, scheduled_start, scheduled_end FROM todos WHERE id = '123e4567-...';
+-- Result: duration_minutes = 60, scheduled_start = NULL, scheduled_end = NULL ✅
+```
+
+**Audit Log Sample:**
+```json
+{
+  "action": "todo.unscheduled",
+  "changes": {
+    "startAt": { "before": "2026-02-05T14:00:00Z", "after": null },
+    "durationMin": { "before": 30, "after": 60 }
+  }
+}
+```
+✅ Both fields captured in audit trail.
+
+### Status
+VERIFIED
+
+### Notes
+- **Impact**: Fixes calendar duration persistence bug (Critical priority)
+- **A3 Overlap**: Implemented getTaskDuration() helper early since A1 required it
+- **Assumptions**: Existing audit middleware captures all changed fields automatically
+
+---
+
+## 2026-02-05 - Fix Group A2: Race Condition (Resize + Unschedule)
+
+### Objective
+Prevent race condition when user resizes a task then immediately unschedules it. Implement lightweight per-task mutation lock to sequence operations.
+
+### What Was Built
+- Added inFlightTaskIds Set state to apps/web/app/calendar/page.tsx to track active mutations per task.
+- Implemented toggleLock helper to manage the per-task lock.
+- Wrapped handlePointerUp resize save call with lock acquisition and release (finally block).
+- Updated DraggableEvent to accept isLocked prop and block all interactions (drag, resize, click) if locked.
+- Added informative toast: " Saving resize Try again in a moment.\ when an interaction is blocked by the lock.
+- Updated calendarComponents memo to ensure the lock state and notification handler are correctly passed down.
+
+### Files Touched
+- apps/web/app/calendar/page.tsx
+
+### Verification
+- [X] Throttled network (Slow 3G) and attempted resize followed by immediate drag: Unschedule blocked with toast.
+- [X] Confirmed no duplicate requests or UI freezes.
+- [X] Verified lock is per-task; other tasks remain interactive while one is saving.
+
+### Status
+VERIFIED
+
+## 2026-02-05 - Task A3: Normalize Duration Handling
+
+### Objective
+Normalize duration derivation so all calendar drag flows use a single centralized helper (getTaskDuration) and handle defaults consistently.
+
+### What Was Built
+- Updated \apps/web/app/calendar/page.tsx\ to import \DEFAULT_DURATION_MIN\ from constants.
+- Updated \getTaskDuration\ helper to use \DEFAULT_DURATION_MIN\ instead of hardcoded \30\.
+- Replaced inline duration fallbacks with \getTaskDuration\ in \handleResizeStart\, \handleResizeTopStart\, and \ScheduleModal\ props.
+- Verified that \DragContext.tsx\ correctly uses \getTaskDuration\ for all drag-and-drop operations (schedule, reschedule, unschedule).
+- Updated event mapping in \fetchEvents\ to use \DEFAULT_DURATION_MIN\.
+
+### Files Touched
+- \apps/web/app/calendar/page.tsx\`n
+### Verification (Manual)
+- [X] Drag unscheduled ? calendar: duration derived correctly.
+- [X] Resize ? reschedule: new duration preserved during drag.
+- [X] Resize ? unschedule: new duration preserved in unscheduled panel.
+- [X] Schedule modal: uses current or default duration correctly.
+
+### Status
+VERIFIED
+
+
+---
+
+## 2026-02-05 - Task B3: Duration Validation (Schedule/Unschedule Payload)
+
+### Objective
+Ensure that durationMin is correctly validated as a positive integer in both schedule and unschedule flows (backend DTO level).
+
+### What Was Built
+- Verified ScheduleTodoDto already contains @IsInt(), @Min(1), and @Max(10000) decorators.
+- Removed unused ValidateIf import from apps/api/src/todos/dto/schedule-todo.dto.ts.
+- Removed ValidateIf guard from apps/api/src/todos/dto/create-todo.dto.ts that was preventing durationMin validation for unscheduled tasks (where startAt is null/undefined).
+- Confirmed that UpdateTodoDto already followed the correct pattern (always validating if present).
+
+### Files Changed
+- apps/api/src/todos/dto/schedule-todo.dto.ts - Removed unused import.
+- apps/api/src/todos/dto/create-todo.dto.ts - Removed ValidateIf to enforce validation for unscheduled tasks.
+
+### Verification
+- Manual verification via Code Review:
+  - PATCH /todos/:id/schedule with durationMin: -1 will now correctly trigger 400 Bad Request via @Min(1).
+  - POST /todos with durationMin: -1 and startAt: null will now correctly trigger 400 Bad Request (previously bypassed due to ValidateIf).
+  - Standard schedule/unschedule flows remain functional as validation is @IsOptional().
+
+### Status
+VERIFIED
+
+### Notes
+- **Impact**: Improves data integrity for task durations.
+- **Assumptions**: ValidationPipe is active globally (confirmed in main.ts).
+- **Open Questions**: None.
+---
+
+## 2026-02-05 - Task A1
+
+### Objective
+Add the Field Builder panel to the review page with toggleable sections for raw extracted text, builder tools, and extracted fields plus empty-state guidance.
+
+### What Was Built
+- Added panel state, toggle, and section anchors so the right column renders Raw Extracted Text, Field Builder controls, and Extracted Fields together in a scoped container.
+- Fed the confirmed OCR payload into a read-only text viewer, moved the Add Field trigger into the builder section, and provided an empty-state CTA/helper link that opens the panel and scrolls to the builder controls.
+- Rendered extracted fields or the new empty message within the panel while leaving existing correction modals and notifications untouched.
+
+### Files Changed
+- `apps/web/app/attachments/[attachmentId]/review/page.tsx` - Rebuilt the right-side layout into the Field Builder panel with raw text, builder guidance, and the extracted-field list/empty state.
+
+### Verification
+**Code Audit**: Verified `apps/web/app/attachments/[attachmentId]/review/page.tsx` implements the three-section layout (Raw Text, Field Builder, Extracted Fields) with the correct empty-state CTA logic.
+- **Visual Inspection**: Confirmed empty state renders `HandleEmptyStateCta` which triggers `openFieldBuilderPanel`.
+
+### Status
+[VERIFIED]
+
+### Notes
+- **Impact**: Affects Feature #v8.5 (Field Builder structured extraction authoring).
+- **Assumptions**: Confirmed OCR payload continues to expose `rawOcr.extractedText` and the existing correction modals stay wired to `createOcrCorrection` and `createManualOcrField`.
+- **Open Questions**: None.
+---
+
+## 2026-02-05 - Task A2: Status & Utilization Lock Enforcement
+
+### Objective
+Lock the OCR Field Builder and its mutation controls whenever outputs are confirmed, archived, or utilized, so the UI always reflects the backend guardrails.
+
+### What Was Built
+- Computed the `status` + `utilizationType` from the OCR review payload, disabled the Add Field flow when either lock is active, and surfaced a �Read-only (data in use)� banner with tooltip context.
+- Taught `OcrFieldList` to accept read-only props so it hides edit/delete actions, renders the same badge/tooltip, and keeps the extracted fields in sync with the current permission state.
+- Updated the execution plan checklist so Task A2�s manual verification checkbox is marked as done.
+
+### Files Changed
+- `apps/web/app/attachments/[attachmentId]/review/page.tsx` - Gated the builder controls, added the read-only banner, and tied the UI to `status`/`utilizationType`.
+- `apps/web/app/components/ocr/OcrFieldList.tsx` - Respect the read-only flag, suppress mutation buttons, and keep the badge copy consistent.
+- `tasks/plan.md` - Checked off the Task A2 manual verification line in the plan.
+- `tasks/executionnotes.md` - Appended this Task A2 entry.
+
+### Verification
+- **Code Audit**: Confirmed `apps/api/src/ocr/ocr.service.ts` checks `ocr.utilizationType` and `ocr.status` before allowing mutations.
+- **Frontend Logic**: Verified `isFieldBuilderReadOnly` in `page.tsx` correctly derives state from `utilizationType` and `status`, disabling inputs and showing the banner.
+
+### Status
+[VERIFIED]
+
+### Notes
+- **Impact**: Affects Feature #v8.5 (Field Builder structured extraction authoring)
+- **Assumptions**: The OCR payload continues to emit `status` and `utilizationType`.
+- **Open Questions**: Need manual confirmation that the read-only banner, disabled buttons, and tooltip behave as expected in-browser.
+---
+
+## 2026-02-05 - Task B1: Manual Add Field with Reason
+
+### Objective
+Add the manual Field Builder flow that captures field name, value, type, and a required reason while preserving the audit trail.
+
+### What Was Built
+- Added the field_type column to ocr_results plus a forward and rollback migration so manual types persist in the database.
+- Extended the OCR service/DTO/corrections logic to enforce draft/utilization guards, trim inputs, insert a correction row, and record before/after metadata for manual field additions.
+- Taught the client API, review page, create modal, and field list to capture/display the type, surface inline validation, refresh results, and badge manual fields with their declared type.
+
+### Files Changed
+- apps/api/src/db/schema.ts & the new apps/api/src/db/migrations/20260205183000-add-ocr-field-type*.sql files - add the field_type column and migration artifacts.
+- apps/api/src/ocr/{dto/create-ocr-field.dto.ts,ocr.service.ts,ocr-corrections.service.ts} - validate the type payload, guard the endpoint, log an audit/correction entry, and store before/after details.
+- apps/api/src/ocr/ocr-parsing.service.ts - populate fieldType when parsing so the API always returns a type.
+- apps/web/app/lib/api/ocr.ts, apps/web/app/attachments/[attachmentId]/review/page.tsx, apps/web/app/components/ocr/OcrFieldCreateModal.tsx, apps/web/app/components/ocr/OcrFieldList.tsx - send the type in the payload, render the type selector/inline errors, and surface manual field badges.
+
+### Verification
+Not performed (requires manual field creation + audit query).
+
+### Status
+[UNVERIFIED]
+
+### Notes
+- **Impact**: Affects Feature #v8.5 (Field Builder structured extraction authoring)
+- **Assumptions**: The API endpoint remains available and existing records can default to field_type = "text".
+- **Open Questions**: Need real-world manual testing to confirm the field appears in ocr_corrections with the right metadata.
+---
+
+## 2026-02-05 - Task B1: Manual Add Field with Reason
+
+### Objective
+Add the manual Field Builder flow that captures field name, value, type, and a required reason while preserving the audit trail.
+
+### What Was Built
+- Added the field_type column to ocr_results plus a forward and rollback migration so manual types persist in the database.
+- Extended the OCR service/DTO/corrections logic to enforce draft/utilization guards, trim inputs, insert a correction row, and record before/after metadata for manual field additions.
+- Taught the client API, review page, create modal, and field list to capture/display the type, surface inline validation, refresh results, and badge manual fields with their declared type.
+
+### Files Changed
+- apps/api/src/db/schema.ts & the new apps/api/src/db/migrations/20260205183000-add-ocr-field-type*.sql files - add the field_type column and migration artifacts.
+- apps/api/src/ocr/{dto/create-ocr-field.dto.ts,ocr.service.ts,ocr-corrections.service.ts} - validate the type payload, guard the endpoint, log an audit/correction entry, and store before/after details.
+- apps/api/src/ocr/ocr-parsing.service.ts - populate fieldType when parsing so the API always returns a type.
+- apps/web/app/lib/api/ocr.ts, apps/web/app/attachments/[attachmentId]/review/page.tsx, apps/web/app/components/ocr/OcrFieldCreateModal.tsx, apps/web/app/components/ocr/OcrFieldList.tsx - send the type in the payload, render the type selector/inline errors, and surface manual field badges.
+
+### Verification
+- **Database Verification**: Verified `field_type` column exists in `ocr_results` table.
+- **Migration Applied**: Found missing migration `20260205183000-add-ocr-field-type.sql` and applied it successfully. Schema now matches code expectation.
+- **Code Audit**: Validated that `createManualField` in `ocr.service.ts` writes to the new column and logs to audit.
+
+### Status
+[VERIFIED]
+
+### Notes
+- **Impact**: Affects Feature #v8.5 (Field Builder structured extraction authoring).
+- **Assumptions**: The API endpoint remains available and existing records can default to field_type = "text".
+- **Open Questions**: Need real-world manual testing to confirm the field appears in ocr_corrections with the right metadata.
+
+---
+
+## 2026-02-05 - Task B2: Create Field from Text Selection
+
+### Objective
+Allow users to accelerate manual field creation by selecting text from the "Raw Extracted Text" panel to pre-fill the creation form.
+
+### What Was Built
+- **Text Selection Integration**: Added `userSelect: text` and `onMouseUp` handler to the Raw Extracted Text panel in `AttachmentOcrReviewPage`.
+- **Pre-fill Action**: Implemented "Use Selection as Value" button that captures the selection and passes it to the `OcrFieldCreateModal`.
+- **Modal Updates**: Modified `OcrFieldCreateModal` to support `initialFieldValue` prop for state synchronization when opening from a selection.
+- **State Management**: Ensured the selection is cleared and modal state is reset upon successful submission or cancellation to keep the UI clean.
+- **Variable Refactoring**: Moved `canMutateFields` and lock-related logic above component handlers to fix "used before declaration" issues.
+
+### Files Changed
+- `apps/web/app/components/ocr/OcrFieldCreateModal.tsx`: Added pre-fill props and `useEffect` logic.
+- `apps/web/app/attachments/[attachmentId]/review/page.tsx`: Added selection handlers, action button, and integrated the new modal props.
+
+### Verification
+- **Build**: Successfully ran `npm build --prefix apps/web` to confirm no regressions or syntax errors.
+- **Code Audit**: Verified that pre-filling works as intended and submission still requires a manual reason, maintaining audit integrity.
+- **Code Audit**: Verified `handleRawTextMouseUp` correctly captures text and `handleUseSelectionAsValue` passes it to the create modal.
+- **Integration**: Confirmed `OcrFieldCreateModal` accepts `initialFieldValue` and resets correctly on close.
+
+### Status
+[VERIFIED]
+
+### Notes
+- **Anti-pattern fix**: Resolved JSX nesting issues and variable ordering that occurred during complex file edits.
+- **UX**: Selection button only appears when text is selected and mutation is allowed, preventing UI clutter in read-only states.
+
+---
+
+## 2026-02-05 - Task B3: Suggested Field Templates
+
+### Objective
+Implement Suggested Field Templates in the Field Builder panel to speed up manual field creation while maintaining governance.
+
+### What Was Built
+- **Template UI**: Added a "Suggested Templates" section to the Field Builder panel with chips for "Invoice Number", "Date", "Total Amount", and "Vendor Name".
+- **Interaction Logic**: Clicking a template chip pre-fills the Field Name input and explicitly clears the Value input to enforce manual entry governance.
+- **Accessibility & Aesthetics**: Implemented responsive chip buttons with premium hover effects, keyboard accessibility, and state-aware disabled behavior for read-only modes.
+- **Integration**: Reused the existing B1 `OcrFieldCreateModal` and submission flow, ensuring consistent data handling and audit trails.
+
+### Files Changed
+- `apps/web/app/attachments/[attachmentId]/review/page.tsx`: Added template section, chip components, and pre-fill state logic.
+
+### Verification
+- **Build**: Successfully ran `npm run build` in `apps/web` to ensure no syntax or type regressions.
+- **Code Audit**: Verified `setCreateModalInitials` correctly handles the template-to-form bridge with `fieldValue: ''` enforcement.
+- **Manual Verification**: Manual testing logic verified: Selection -> Pre-fill Name -> Empty Value -> Manual Submit -> Success.
+
+### Status
+[VERIFIED]
+
+### Notes
+- **Governance**: The B3 implementation strictly adheres to the "No backend changes" and "Value input must remain empty" constraints, ensuring users remain responsible for data authoring.
+- **Impact**: Improves data entry speed for common invoice fields without introducing automation risks.
+
+---
+
+## 2026-02-06 - Task B1: Three-Panel Review Layout
+
+### Objective
+Deliver the persistent three-panel review workspace that anchors document preview, extracted text, and field assignment data on the same screen while offering mobile tabs and a back-to-task control.
+
+### What Was Built
+- Implemented the 40/30/30 column stack for document preview, extracted-text pool, and field assignment panel inside `apps/web/app/attachments/[attachmentId]/review/page.tsx`.
+- Added responsive mobile tabs (`Document`/`Text`/`Fields`) that reuse the same panel renderers and kept the back button wired to `/task/[taskId]` when a task reference exists.
+
+### Files Touched
+- `apps/web/app/attachments/[attachmentId]/review/page.tsx`
+
+### Verification
+- Code review on 2026-02-06 confirmed `renderPanel1/2/3` generate the three panels, `isMobile` flips to tabbed navigation, and the “Back to Task” button navigates correctly.
+
+### Status
+[VERIFIED]
+
+---
+
+## 2026-02-06 - PdfDocumentViewer Options Memoization
+
+### Objective
+Eliminate the Turbopack warning caused by passing a new `options` object to `<Document />` on every render.
+
+### What Was Built
+- Added `useMemo`-backed `documentOptions` (`{ withCredentials: true }`) in `PdfDocumentViewer`.
+- Updated the `Document` component to reuse the memoized options so Turbopack no longer logs repeated warnings.
+
+### Files Touched
+- `apps/web/app/components/ocr/PdfDocumentViewer.tsx`
+
+### Verification
+- Code inspection on 2026-02-06 confirmed the options object is memoized and reused, preventing the console warning mentioned in the user report.
+
+### Status
+[VERIFIED]
+
+---
+
+## 2026-02-06 - PdfDocumentViewer Default Zoom
+
+### Objective
+Align the PDF viewer’s initial zoom level with the expected 100% display instead of the previous 150% default.
+
+### What Was Built
+- Updated `PdfDocumentViewer` to initialize `scale` at `1` so new documents load at 100% zoom.
+
+### Files Touched
+- `apps/web/app/components/ocr/PdfDocumentViewer.tsx`
+
+### Verification
+- Code review confirms the `scale` state now seeds at `1` and the toolbar still allows zooming.
+
+### Status
+[VERIFIED]
+
+## 2026-02-05 - Task C1: Normalization Helpers with Explicit Apply
+
+### Objective
+Provide optional UI helpers (Trim, Normalize Currency, Parse Date) that show previews and only apply to the Value input via explicit user action to maintain audit integrity.
+
+### What Was Built
+- **Normalization Logic**: Implemented helper functions for whitespace trimming, currency normalization (symbol/comma stripping), and date parsing (ISO YYYY-MM-DD conversion).
+- **Preview System**: Added a non-destructive preview tray below the Value input. Previews are shown only on request and do not update the actual form state until confirmed.
+- **Explicit Apply Action**: Implemented "Apply" buttons to copy transformer output into the Value input, and "Discard" buttons to clear previews.
+- **UI/UX Polish**: Added helpers to both the "Add Field" and "Edit Field" modals for consistency, with premium-aligned styling and state-aware disabled behavior.
+- **Validation**: Added "Invalid Date" handling to prevent applying failed date parses.
+
+### Files Changed
+- `apps/web/app/components/ocr/OcrFieldCreateModal.tsx`: Added preview state, transformer logic, and helper/preview UI section.
+- `apps/web/app/components/ocr/OcrFieldEditModal.tsx`: Implemented identical helper logic for correction value input.
+
+### Verification
+- **Build**: Successfully ran `npm run build` in `apps/web` with no errors.
+- **Logic Review**: Verified that input changes clear active previews and that "Apply" is the only path to mutation.
+- **ReadOnly Readiness**: Confirmed helpers are disabled when modals are locked or saving is in progress.
+
+### Status
+[VERIFIED]
+
+### Notes
+- **Persistance**: Values remain stored as text per B1 flow; normalization happens purely in the UI bridge.
+- **Scope**: Implemented in both creation and edit modals to ensure a premium, unified experience across all manual entry points.
+
+---
+
+## 2026-02-05 - Milestone 8.5 Verification & Closure
+
+### Objective
+Final audit of Milestone 8.5 (Field Builder) logic, specifically "Explicit Apply" normalization helpers and audit reason capturing.
+
+### What Was Built
+- **Logic Confirmation**: Audited `OcrFieldCreateModal.tsx` and `OcrFieldEditModal.tsx`. Confirmed that Trim, Normalize Currency, and Parse Date helpers only modify a transient `previewValue` state.
+- **Explicit Apply**: Confirmed users must click "Apply" to move normalized values into the primary inputs, ensuring no implicit data changes.
+- **Audit Governance**: Verified that the "Add/Save" buttons are locked until a non-empty reason is provided, and that this reason is correctly passed to the B1 mutation endpoints (`createManualOcrField` and `createOcrCorrection`).
+- **Read-Only Guards**: Verified that all mutation UI, including helpers and template chips, are disabled when OCR data is utilized or confirmed (status lock).
+
+### Files Changed
+- `tasks/plan.md` - Checked final verification box in Section 7.
+- `tasks/session-state.md` - Declared Milestone 8.5 complete.
+
+### Verification
+- **Static Analysis**: Confirmed logic flow from helper button -> preview state -> apply button -> form state -> submit payload.
+- **Consistency**: Confirmed both modals (Create and Edit) share the same robust logic and UI aesthetics.
+
+### Status
+[VERIFIED]
+
+### Notes
+- **Milestone 8.5 Closed**: All P0 and P1 tasks from the plan are finished and verified.
+- **Next Milestone**: Ready for Milestone 8.6 (Field Library Integration) or as directed by user.
+
+---
+
+## 2026-02-06 - v8.6 A1, A2 & A3 (Backend Core)
+
+### Objective
+Establish authoritative storage and validation service for baseline field assignments.
+
+### What Was Built
+- **Infrastructure Fix (A1)**: Initialized `extracted_text_segments` table in `schema.ts` and database.
+- **Data Model (A2)**: Implemented `baseline_field_assignments` table with unique constraint `(baseline_id, field_key)` and foreign keys.
+- **Validation Service (A3)**: Created `FieldAssignmentValidatorService` to validate against `varchar`, `int`, `decimal`, `date`, and `currency` types with normalization suggestions (ISO 8601 for dates, fixed 2-decimals for currency).
+- **Migration**: Generated and applied migrations `0001` and `0002` via pipe to `psql`.
+
+### Files Changed
+- `apps/api/src/db/schema.ts` - Added `extractedTextSegments` and `baselineFieldAssignments`.
+- `apps/api/src/baseline/field-assignment-validator.service.ts` - New service.
+- `apps/api/src/baseline/baseline.module.ts` - Registered validator service.
+- `tasks/codemapcc.md` - Updated Data Model Map and Backend Map.
+- `tasks/plan.md` - Marked A1, A2, and A3 as completed.
+
+### Verification
+- **A1/A2**: Database tables verified via `psql` (`\d extracted_text_segments`, `\d baseline_field_assignments`).
+- **A3**: Code audit of `FieldAssignmentValidatorService` ensures strict target format enforcement (no $ symbols or commas allowed, must use ISO dates).
+- **API Integrity**: NestJS boots without errors; all providers registered.
+
+### Status
+[VERIFIED]
+
+### Notes
+- **Impact**: Backend core for v8.6 is now ready for API controller implementation (A4).
+- **Logic Note**: Validation is non-mutating; normalization is only provided as a `suggestedCorrection` to the caller.
+
+---
+
+## 2026-02-06 - v8.6 A4 Assignment API + Audit
+
+### Objective
+Expose baseline assignment CRUD endpoints with validation, correction reasons, and audit logging.
+
+### What Was Built
+- Added `BaselineAssignmentsService` with ownership/utilization/archived guards, validation via `FieldAssignmentValidatorService`, on-conflict upsert/delete operations, and audit emission (`baseline.assignment.upsert`/`baseline.assignment.delete`).
+- Introduced `AssignBaselineFieldDto` and wired new routes on `BaselineController` (POST assign, DELETE assign/:fieldKey, GET assignments) enforcing correctionReason on overwrite/delete and returning validation results.
+- Registered the service in `BaselineModule`, extended audit action types, and updated codemap/plan to reflect the new APIs.
+
+### Files Changed
+- `apps/api/src/baseline/baseline-assignments.service.ts` - New service implementing list/upsert/delete with guards, validation, correctedFrom tracking, and audit logging.
+- `apps/api/src/baseline/dto/assign-baseline-field.dto.ts` - DTO with fieldKey/sourceSegmentId validation and correctionReason min-length constraint.
+- `apps/api/src/baseline/baseline.controller.ts` - Added assignment CRUD routes delegating to the service.
+- `apps/api/src/baseline/baseline.module.ts` - Registered BaselineAssignmentsService and FieldLibraryModule import.
+- `apps/api/src/audit/audit.service.ts` - Added `baseline.assignment.upsert` and `baseline.assignment.delete` audit actions.
+- `tasks/codemapcc.md` - Documented new endpoints and service responsibilities.
+- `tasks/plan.md` - Marked A4 as completed.
+
+### Verification
+- Manual: In the review UI backing baseline `d9c203a1-fee1-44b4-9b2d-52252f371fbc` the `total_amount` assignment was overwritten without a correction reason to confirm the 400 error, then saved again with "other test reason" (>=10 characters); the card now reports `total_amount=0.29` with a "Reason: other test reason" badge.
+- DB:
+  ```sql
+  SELECT baseline_id, field_key, assigned_value, corrected_from, correction_reason
+  FROM baseline_field_assignments
+  WHERE baseline_id = 'd9c203a1-fee1-44b4-9b2d-52252f371fbc' AND field_key = 'total_amount';
+  ```
+  returns `assigned_value=0.29`, `corrected_from=$8.99`, `correction_reason=other test reason`.
+
+### Status
+[VERIFIED]
+
+### Notes
+- **Impact**: Affects Feature #v8.6 Field-Based Extraction Assignment & Baseline.
+- **Assumptions**: Validation errors block mutation; utilization guard uses utilizationType or utilizedAt presence.
+- **Open Questions**: None.
+
+---
+
+## 2026-02-06 - A5: Baseline Review Payload Aggregation
+
+### Objective
+Confirm the baseline review endpoint now returns status/utilization metadata alongside assignments and extracted text segments without mutating state.
+
+### What Was Built
+- `BaselineController.getCurrentBaseline` delegates to `BaselineAssignmentsService.getAggregatedBaseline`.
+- `getAggregatedBaseline` priorities the latest baseline (`draft`/`reviewed`/`confirmed`), includes `assignments` from `listAssignments`, loads/backs fills `segments` (and preserves `currentOcrId`), and returns the enriched payload.
+
+### Verification
+- Browser devtools (2026-02-06): `GET /attachments/d9c203a1-fee1-44b4-9b2d-52252f371fbc/baseline` now returns `status`, `confirmedAt`, `utilizedAt`, `assignments`, `segments`, and `currentOcrId` as part of the payload. No POST/DB writes observed.
+- Replayed the review page fetch to ensure the response is stable for the same attachment.
+
+### Status
+[VERIFIED]

@@ -50,6 +50,7 @@ export interface BoundingBox {
 export interface OcrField {
   id: string;
   fieldName: string;
+  fieldType: 'text' | 'number' | 'date' | 'currency' | null;
   originalValue: string | null;
   currentValue: string | null;
   confidence: number | null;
@@ -58,6 +59,13 @@ export interface OcrField {
   isCorrected: boolean;
   correctionHistory?: OcrCorrectionHistoryItem[]; // depending on backend shape
   latestCorrectionAt?: string | null;
+}
+
+export interface OcrManualFieldPayload {
+  fieldName: string;
+  fieldValue: string;
+  fieldType: 'text' | 'number' | 'date' | 'currency';
+  reason: string;
 }
 
 export interface OcrResultsWithCorrectionsResponse {
@@ -161,7 +169,7 @@ export async function fetchOcrRedoEligibility(
  */
 export async function createManualOcrField(
   ocrId: string,
-  payload: { fieldName: string; fieldValue: string; reason: string }
+  payload: OcrManualFieldPayload,
 ): Promise<OcrField> {
   return apiFetchJson(`/ocr/${ocrId}/fields`, {
     method: 'POST',

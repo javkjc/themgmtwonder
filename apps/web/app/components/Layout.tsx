@@ -13,9 +13,7 @@ type LayoutProps = {
   | 'customizations'
   | 'admin'
   | 'adminFields'
-  | 'activity'
-  | 'workflows'
-  | 'workflowInbox';
+  | 'activity';
   userEmail?: string;
   userRole?: string;
   isAdmin?: boolean;
@@ -23,14 +21,11 @@ type LayoutProps = {
 };
 
 export default function Layout({ children, currentPage, userEmail, userRole, isAdmin, onLogout }: LayoutProps) {
-  // Sidebar starts collapsed by default
   const [isCollapsed, setIsCollapsed] = useState(true);
-
   const sidebarWidth = isCollapsed ? 60 : 250;
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#f5f7fa' }}>
-      {/* Sidebar */}
       <aside
         style={{
           width: sidebarWidth,
@@ -47,7 +42,6 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
           transition: 'width 0.2s ease',
         }}
       >
-        {/* Logo/Brand + Toggle */}
         <div style={{
           padding: isCollapsed ? '24px 12px' : '24px 20px',
           borderBottom: '1px solid var(--sidebar-border)',
@@ -73,18 +67,16 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
             }}
             title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            {isCollapsed ? '→' : '←'}
+            {isCollapsed ? '?' : '?'}
           </button>
         </div>
 
-        {/* Global Search - only when expanded */}
         {!isCollapsed && (
           <div style={{ padding: '16px 20px' }}>
             <GlobalSearch />
           </div>
         )}
 
-        {/* Navigation */}
         <nav style={{ flex: 1, padding: '16px 0' }}>
           <Link
             href="/"
@@ -102,28 +94,8 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
             }}
             title="My Tasks"
           >
-            <span style={{ fontSize: 18 }}>📋</span>
+            <span style={{ fontSize: 18 }}>??</span>
             {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>My Tasks</span>}
-          </Link>
-
-          <Link
-            href="/workflows/inbox"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              padding: isCollapsed ? '12px 0' : '12px 20px',
-              justifyContent: isCollapsed ? 'center' : 'flex-start',
-              textDecoration: 'none',
-              color: currentPage === 'workflowInbox' ? 'var(--sidebar-text)' : 'var(--sidebar-text-muted)',
-              background: currentPage === 'workflowInbox' ? 'var(--sidebar-link-active)' : 'transparent',
-              borderLeft: currentPage === 'workflowInbox' ? '3px solid var(--sidebar-link-border)' : '3px solid transparent',
-              transition: 'all 0.2s',
-            }}
-            title="Workflow Inbox"
-          >
-            <span style={{ fontSize: 18 }}>IN</span>
-            {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>Workflow Inbox</span>}
           </Link>
 
           <Link
@@ -142,11 +114,10 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
             }}
             title="Calendar"
           >
-            <span style={{ fontSize: 18 }}>📅</span>
+            <span style={{ fontSize: 18 }}>??</span>
             {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>Calendar</span>}
           </Link>
 
-          {/* Admin Section - only visible to admins */}
           {isAdmin && (
             <>
               {!isCollapsed && (
@@ -171,28 +142,8 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
                 }}
                 title="Customizations"
               >
-                <span style={{ fontSize: 18 }}>⚙️</span>
+                <span style={{ fontSize: 18 }}>??</span>
                 {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>Customizations</span>}
-              </Link>
-
-              <Link
-                href="/workflows"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  padding: isCollapsed ? '12px 0' : '12px 20px',
-                  justifyContent: isCollapsed ? 'center' : 'flex-start',
-                  textDecoration: 'none',
-                  color: currentPage === 'workflows' ? 'var(--sidebar-text)' : 'var(--sidebar-text-muted)',
-                  background: currentPage === 'workflows' ? 'var(--sidebar-link-active)' : 'transparent',
-                  borderLeft: currentPage === 'workflows' ? '3px solid var(--sidebar-link-border)' : '3px solid transparent',
-                  transition: 'all 0.2s',
-                }}
-                title="Workflows"
-              >
-                <span style={{ fontSize: 18 }}>🔄</span>
-                {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>Workflows</span>}
               </Link>
 
               <Link
@@ -211,7 +162,7 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
                 }}
                 title="Activity Log"
               >
-                <span style={{ fontSize: 18 }}>📊</span>
+                <span style={{ fontSize: 18 }}>??</span>
                 {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>Activity Log</span>}
               </Link>
 
@@ -232,7 +183,7 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
                 }}
                 title="User Management"
               >
-                <span style={{ fontSize: 18 }}>👥</span>
+                <span style={{ fontSize: 18 }}>??</span>
                 {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>User Management</span>}
               </Link>
 
@@ -252,14 +203,13 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
                 }}
                 title="Field Library"
               >
-                <span style={{ fontSize: 18 }}>📝</span>
+                <span style={{ fontSize: 18 }}>??</span>
                 {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>Fields</span>}
               </Link>
             </>
           )}
         </nav>
 
-        {/* User Section */}
         {userEmail && (
           <div
             style={{
@@ -293,7 +243,7 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
                 }}
                 title="Profile"
               >
-                {isCollapsed ? '👤' : 'Profile'}
+                {isCollapsed ? '??' : 'Profile'}
               </Link>
               {onLogout && (
                 <button
@@ -317,7 +267,7 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
                   }}
                   title="Logout"
                 >
-                  {isCollapsed ? '🚪' : 'Logout'}
+                  {isCollapsed ? '??' : 'Logout'}
                 </button>
               )}
             </div>
@@ -325,7 +275,6 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
         )}
       </aside>
 
-      {/* Main Content */}
       <main style={{
         marginLeft: sidebarWidth,
         flex: 1,
