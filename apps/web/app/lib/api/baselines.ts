@@ -56,10 +56,11 @@ export async function upsertAssignment(baselineId: string, payload: AssignPayloa
   });
 }
 
-export async function deleteAssignment(baselineId: string, fieldKey: string, reason: string): Promise<any> {
+export async function deleteAssignment(baselineId: string, fieldKey: string, reason?: string | null): Promise<any> {
+  const payload = reason ? { correctionReason: reason } : {};
   return apiFetchJson(`/baselines/${baselineId}/assign/${fieldKey}`, {
     method: 'DELETE',
-    body: JSON.stringify({ correctionReason: reason }),
+    body: JSON.stringify(payload),
   });
 }
 

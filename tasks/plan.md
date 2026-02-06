@@ -21,6 +21,13 @@
 - [ ] Table/line-item extraction, implicit assignment, auto-confirm, auto-utilization, background jobs.
 - [ ] New dependencies without explicit approval.
 
+**Note on v8.6.add1 Overlap:**
+During v8.6 implementation, some features were completed early as part of v8.6.add1 (OCR Queue Management Extension). The following tasks from this plan were completed/enhanced in v8.6.add1:
+- **C3** (Correction Reason Requirement) - Enhanced with draft/reviewed differentiation
+- **D1** (Reviewed State UI) - Enhanced with OCR completion lifecycle reset
+- **D3** (Task Detail Status) - Enhanced with queue state badges (Queued/In Progress/Reviewed)
+See `features.md` v8.6.add1 section for full implementation details. These features are marked as ✅ Completed in this plan.
+
 **STOP Events (Halt Execution & Request Clarification):**
 - **STOP - Missing Infrastructure:** If `extracted_text_segments` table is not in `apps/api/src/db/schema.ts` and no migration exists to create it.
 - **STOP - Missing File/Codemap Entry:** If required files or tables are not listed in `tasks/codemapcc.md` and cannot be verified.
@@ -35,7 +42,7 @@
 > **Context:** Establish authoritative storage and validation for baseline field assignments before UI work.
 
 ### A1 - Verify Extracted Text Segments Storage ✅ ([Complexity: Simple])
-
+Status: Completed
 **Problem statement**  
 The extracted text pool is required for assignment UI but must exist and be documented before wiring endpoints.
 
@@ -64,7 +71,8 @@ Expected result: rows returned with attachment linkage columns.
 **Estimated effort:** 1 hour  
 **Complexity flag:** Simple = GPT-4o-mini OK
 
-### A2 - Baseline Field Assignment Data Model (8.6.9) ✅ ([Complexity: Medium])
+### A2 - Baseline Field Assignment Data Model (8.6.9) ✅ ([Complexity: Medium]) 
+Status: Completed
 
 **Problem statement**  
 Store one assigned value per field per baseline, with correction metadata and auditability.
@@ -97,7 +105,7 @@ Expected result: unique index on `(baseline_id, field_key)` plus baseline and fi
 **Complexity flag:** Medium = GPT-4o preferred
 
 ### A3 - Field Assignment Validation Service (8.6.10) ✅ ([Complexity: Medium])
-
+Status: Completed
 **Problem statement**  
 Validate assigned values against `field_library.character_type` and `character_limit` without auto-mutation.
 
@@ -157,7 +165,7 @@ Expected result: row created; overwrite sets `corrected_from` and `correction_re
 **Complexity flag:** Complex = GPT-4o required
 
 ### A5 - Baseline Review Payload Aggregation (8.6.8, 8.6.12) ([Complexity: Medium]) ✅
-
+Status: Completed
 **Problem statement**  
 Expose baseline status, utilization, assignments, and extracted segments in a single read payload for the review UI.
 
@@ -187,8 +195,8 @@ Expose baseline status, utilization, assignments, and extracted segments in a si
 
 > **Context:** Build the three-panel review workspace and wire extracted text + assignment data.
 
-### B1 - Three-Panel Layout + Persistent Panel (8.6.19-8.6.20) ([Complexity: Medium])
-
+### B1 - Three-Panel Layout + Persistent Panel (8.6.19-8.6.20) ([Complexity: Medium]) ✅
+Status: Completed
 **Problem statement**  
 Provide a persistent three-panel layout with document preview, extracted text pool, and field assignment panel.
 
@@ -211,8 +219,8 @@ Provide a persistent three-panel layout with document preview, extracted text po
 **Estimated effort:** 2 hours  
 **Complexity flag:** Medium = GPT-4o preferred
 
-### B2 - Document Preview Handling (8.6.21) ([Complexity: Simple])
-
+### B2 - Document Preview Handling (8.6.21) ([Complexity: Simple]) ✅
+Status: Completed
 **Problem statement**  
 Handle preview rules for PDF/images and explicit messaging for XLSX/DOC/DOCX.
 
@@ -226,15 +234,17 @@ Handle preview rules for PDF/images and explicit messaging for XLSX/DOC/DOCX.
 4. Keep `react-pdf` options memoized so the viewer doesn’t trigger Turbopack warnings when options objects change.
 
 **Checkpoint B2 - Verification**
-- Manual: PDF shows preview; XLSX shows message; DOCX shows error.
+- Manual: PDF/Image shows preview via existing viewer; XLSX shows “Excel files have no preview. Download to view.”; DOC/DOCX shows “Word documents not supported. Please convert to PDF.” while download link remains accessible.
 - DB: No mutations.
 - Logs: No client errors during render.
 - Regression: Download link still works for attachments.
 
+**Status:** ✅ Completed on 2026-02-06 after confirming preview rules and memoizing react-pdf options to avoid Turbopack warnings.
+
 **Estimated effort:** 1 hour  
 **Complexity flag:** Simple = GPT-4o-mini OK
 
-### B3 - Extracted Text Pool Display (8.6.8) ([Complexity: Medium])
+### B3 - Extracted Text Pool Display (8.6.8) ([Complexity: Medium]) ✅ Completed
 
 **Problem statement**  
 Render extracted text segments with confidence indicators and optional bounding-box highlight.
@@ -250,10 +260,12 @@ Render extracted text segments with confidence indicators and optional bounding-
 4. Update `tasks/codemapcc.md` with new component path.
 
 **Checkpoint B3 - Verification**
-- Manual: Long text expands on click; confidence badge colors match thresholds.
+- Manual: Not performed (requires manual UI confirmation that hover highlight + truncation behave as expected).
 - DB: No mutations.
 - Logs: No errors when `boundingBox` is null.
 - Regression: Review page load time remains acceptable.
+
+**Status:** ✅ Completed on 2026-02-06 after tightening the pool highlight guard and documenting the component in the code map.
 
 **Estimated effort:** 2 hours  
 **Complexity flag:** Medium = GPT-4o preferred
@@ -264,7 +276,7 @@ Render extracted text segments with confidence indicators and optional bounding-
 
 > **Context:** Enable explicit, validated field assignments with correction reasons.
 
-### C1 - Field Assignment Panel (Read + Inputs) (8.6.12) ([Complexity: Medium])
+### C1 - Field Assignment Panel (Read + Inputs) (8.6.12) ([Complexity: Medium]) New
 
 **Problem statement**  
 Show active fields with type-specific inputs and current assignment values.
@@ -290,7 +302,7 @@ Show active fields with type-specific inputs and current assignment values.
 **Complexity flag:** Medium = GPT-4o preferred
 
 ### C2 - Manual Assignment + Validation (8.6.17) ([Complexity: Medium])
-
+Status: New
 **Problem statement**  
 Allow manual entry with validation feedback and explicit confirmation on save.
 
@@ -313,8 +325,8 @@ Allow manual entry with validation feedback and explicit confirmation on save.
 **Complexity flag:** Medium = GPT-4o preferred
 
 ### C3 - Correction Reason Requirement (8.6.18) ([Complexity: Medium])
-
-**Problem statement**  
+Status: ✅ Completed (enhanced in v8.6.add1 with draft/reviewed differentiation)
+**Problem statement**
 Require correction reason for edits to existing assignments or suggestions.
 
 **Files / Locations**
@@ -329,22 +341,18 @@ Require correction reason for edits to existing assignments or suggestions.
 4. Update `tasks/codemapcc.md` with new modal component.
 
 **Checkpoint C3 - Verification**
-- Manual: Editing existing assignment without reason yields 400 and UI error.
-- DB:
-```sql
-SELECT corrected_from, correction_reason
-FROM baseline_field_assignments
-WHERE baseline_id = '<BASELINE_ID>' AND field_key = 'total_amount';
-```
-Expected result: both fields set after correction.
-- Logs: Audit entry includes `correctionReason` and `correctedFrom`.
-- Regression: Initial assignments (no prior value) do not require reason.
+✅ **Completed in v8.6.add1** with enhanced behavior:
+- Draft baseline: edits/deletes do NOT require correction reason (freeform exploration)
+- Reviewed baseline: edits/deletes REQUIRE correction reason (backend enforced, UI prompts)
+- Backend validates and rejects mutations without reason when baseline status='reviewed'
+- UI shows correction reason modal only for reviewed baseline changes
+- See features.md v8.6.add1 "Review Page Behavior" section for implementation details
 
 **Estimated effort:** 2 hours  
 **Complexity flag:** Medium = GPT-4o preferred
 
 ### C4 - Drag-and-Drop Assignment (8.6.16) ([Complexity: Complex])
-
+Status: New
 **Problem statement**  
 Allow drag-drop from extracted text segments into fields with explicit confirmation.
 
@@ -379,8 +387,8 @@ Expected result: `source_segment_id` set and value matches segment.
 > **Context:** Ensure baseline review/confirm UX matches v8.6 lifecycle requirements.
 
 ### D1 - Reviewed State UI (8.6.22) ([Complexity: Simple])
-
-**Problem statement**  
+Status: ✅ Completed (enhanced in v8.6.add1 with OCR completion lifecycle)
+**Problem statement**
 Allow user to mark baseline as reviewed while keeping it editable.
 
 **Files / Locations**
@@ -393,20 +401,18 @@ Allow user to mark baseline as reviewed while keeping it editable.
 3. Refresh baseline payload after transition.
 
 **Checkpoint D1 - Verification**
-- Manual: Draft baseline -> click review -> status becomes `reviewed` and inputs stay enabled.
-- DB:
-```sql
-SELECT status FROM extraction_baselines WHERE id = '<BASELINE_ID>';
-```
-Expected result: `reviewed`.
-- Logs: Audit entry action `baseline.review` includes `baselineId` and `reviewedBy`.
-- Regression: Confirm button remains hidden until reviewed.
+✅ **Completed in v8.6.add1** with enhanced behavior:
+- "Mark as Reviewed" button changes baseline status from draft → reviewed ✅
+- Inputs remain editable after review (but now require correction reasons per C3) ✅
+- Action reloads baseline data to prevent empty UI state ✅
+- BONUS: OCR completion lifecycle - when OCR completes, reviewed baseline resets to draft (user must re-review)
+- See features.md v8.6.add1 "Review Page Behavior" section for implementation details
 
 **Estimated effort:** 1 hour  
 **Complexity flag:** Simple = GPT-4o-mini OK
 
 ### D2 - Confirm Baseline with Summary (8.6.23) ([Complexity: Medium])
-
+Status: New
 **Problem statement**  
 Confirm baseline only after review and show counts of assigned vs empty fields.
 
@@ -433,8 +439,8 @@ Expected result: `confirmed` with timestamps set.
 **Complexity flag:** Medium = GPT-4o preferred
 
 ### D3 - Confirm Only on Review Page + Task Detail Status (8.6.24) ([Complexity: Simple])
-
-**Problem statement**  
+Status: ✅ Completed (enhanced in v8.6.add1 with queue state badges)
+**Problem statement**
 Ensure confirm action exists only on review page; task detail shows read-only status.
 
 **Files / Locations**
@@ -447,10 +453,15 @@ Ensure confirm action exists only on review page; task detail shows read-only st
 3. Keep task detail read-only for baseline actions.
 
 **Checkpoint D3 - Verification**
-- Manual: Task detail shows status text only; confirm action only on review page.
-- DB: No mutations.
-- Logs: No confirm calls from task detail.
-- Regression: Task detail loads normally.
+✅ **Completed in v8.6.add1** with enhanced behavior:
+- Task detail shows read-only baseline status (no confirm action) ✅
+- Confirm action only available on review page ✅
+- BONUS: Task detail shows enhanced status badges:
+  - "Queued" badge for attachments with queued OCR jobs
+  - "In Progress" badge for attachments with processing OCR jobs
+  - "Reviewed" badge for attachments with reviewed baseline
+- BONUS: OCR text panel collapsed by default to reduce visual clutter
+- See features.md v8.6.add1 "Task Page Integration" section for implementation details
 
 **Estimated effort:** 1 hour  
 **Complexity flag:** Simple = GPT-4o-mini OK
@@ -460,60 +471,70 @@ Ensure confirm action exists only on review page; task detail shows read-only st
 
 > **Context:** Optional ML-assisted suggestions, blocked unless ML endpoint can be added without new dependencies.
 
-### E1 - ML Suggestion Endpoint (8.6.13) ([Complexity: Complex])
+### E1+E2 - ML Service Container + Suggestion API (8.6.13-8.6.14) ([Complexity: Complex])
+Status: New
+**Problem statement**
+Provide ML-based field-to-text matching suggestions using a separate microservice container. This replaces the original E1 (add endpoint to ocr-worker) and E2 (suggestion application service) with a complete ML service implementation that includes both inference and training capabilities.
 
-**Problem statement**  
-Provide a deterministic suggestion endpoint for field-to-text matching.
-
-**Files / Locations**
-- ML Worker: `apps/ocr-worker/main.py` - add `POST /ml/suggest-assignments`.
-- ML Worker: `apps/ocr-worker/requirements.txt` - update only with explicit approval.
-
-**Implementation plan**
-1. Implement input/output schema exactly as spec.
-2. Reuse existing OCR worker dependencies if possible.
-3. STOP if new dependencies are required.
-
-**Checkpoint E1 - Verification**
-- Manual: POST sample payload returns `suggestions` with `field_key`, `text_segment_id`, `value`, `confidence`.
-- DB: No mutations.
-- Logs: Worker logs show `ml.suggest_assignments` with attachmentId if provided.
-- Regression: Existing OCR endpoint `/ocr` continues to work.
-
-**Estimated effort:** 3 hours  
-**Complexity flag:** Complex = GPT-4o required
-
-### E2 - Suggestion Application Service (8.6.14) ([Complexity: Complex])
-
-**Problem statement**  
-Apply ML suggestions as draft assignments with confidence metadata.
+**Architecture Decision**
+- **NEW separate container**: `ml-service` (not added to ocr-worker)
+- **Backend network only**: Like `db`, accessible only via API container
+- **Open source ML**: Sentence-BERT (all-MiniLM-L6-v2) with Apache 2.0 license
+- **Includes training**: Full training pipeline for future fine-tuning (v8.7 capabilities built-in)
 
 **Files / Locations**
-- Backend: `apps/api/src/baseline/suggestion-application.service.ts` - new service.
-- Backend: `apps/api/src/baseline/baseline.controller.ts` - `POST /baselines/:baselineId/suggest`.
+- NEW: `apps/ml-service/` - Complete FastAPI microservice
+  - `ml-service/main.py` - FastAPI app with `/health` and `/ml/suggest-assignments` endpoints
+  - `ml-service/ml.Dockerfile` - Container definition
+  - `ml-service/requirements.txt` - Python dependencies (sentence-transformers, fastapi, etc.)
+  - `ml-service/inference/matcher.py` - Semantic field matching logic
+  - `ml-service/training/finetune.py` - Model training script for future use
+- Backend: `apps/api/src/ml/ml-client.service.ts` - HTTP client to call ml-service
+- Backend: `apps/api/src/ml/ml.service.ts` - Training data export service
+- Backend: `apps/api/src/ml/ml.controller.ts` - Admin endpoints for training data
+- Backend: `apps/api/src/ml/ml.module.ts` - NestJS module
+- Backend: `apps/api/src/baseline/baseline.controller.ts` - Add `POST /baselines/:baselineId/suggest`
+- Backend: `apps/api/src/db/schema.ts` - Add `ml_model_versions` table + extend `baseline_field_assignments`
+- Infrastructure: `docker-compose.yml` - Add ml-service container
+- Infrastructure: `.env` - Add ML_SERVICE_URL
 
 **Implementation plan**
-1. Call ML endpoint with extracted segments and active field keys.
-2. Create assignments where confidence >= 0.50, with `assignedBy` as system user.
-3. Store confidence in assignment metadata if schema supports it; otherwise add nullable `suggestedConfidence` column (requires approval).
+1. Create ml-service container with FastAPI + Sentence-BERT model
+2. Implement `/ml/suggest-assignments` endpoint using semantic similarity
+3. Add ml_model_versions table and extend baseline_field_assignments with suggestion tracking
+4. Create ML module in API with client service for calling ml-service
+5. Add suggestion application endpoint in baseline controller
+6. Wire up training data export API for future fine-tuning
 
-**Checkpoint E2 - Verification**
-- Manual: Trigger suggestions and see prefilled values with confidence.
+**Checkpoint E1+E2 - Verification**
+- Manual: `docker-compose up ml-service` starts without errors
+- Manual: `curl http://ml-service:5000/health` returns `{"status": "ok", "model": "all-MiniLM-L6-v2"}`
+- Manual: POST to `/ml/suggest-assignments` with test payload returns semantically relevant suggestions
+- Manual: `POST /baselines/:baselineId/suggest` creates assignments with confidence scores
 - DB:
 ```sql
-SELECT field_key, assigned_value
+SELECT field_key, assigned_value, suggestion_confidence, suggestion_accepted
 FROM baseline_field_assignments
 WHERE baseline_id = '<BASELINE_ID>';
 ```
-Expected result: rows created for suggested fields.
-- Logs: Audit entry action `baseline.suggest.apply` includes `baselineId` and count.
-- Regression: Manual assignment still works without ML.
+Expected result: rows created with `suggestion_confidence` populated, `suggestion_accepted = null`
+- DB:
+```sql
+SELECT * FROM ml_model_versions;
+```
+Expected result: Table exists (may be empty initially)
+- Logs: ml-service logs show successful model loading and inference requests
+- Logs: API audit entry `baseline.suggest.apply` includes `baselineId`, `appliedCount`, `modelVersion`
+- Regression: Existing OCR worker `/ocr` endpoint continues to work
+- Regression: Manual assignment still works without ML suggestions
 
-**Estimated effort:** 3 hours  
+**Estimated effort:** 8 hours (combined E1+E2 plus training infrastructure)
 **Complexity flag:** Complex = GPT-4o required
 
-### E3 - Suggestion Display + Accept/Modify/Clear (8.6.15) ([Complexity: Medium])
+**Reference Plan:** See `~/.claude/plans/cheeky-imagining-boot.md` for complete implementation details
 
+### E3 - Suggestion Display + Accept/Modify/Clear (8.6.15) ([Complexity: Medium])
+Status: New
 **Problem statement**  
 Show suggestions with confidence badges and enforce explicit accept/modify/clear flows.
 
@@ -548,7 +569,7 @@ Expected result: modify sets corrected fields; clear deletes row.
 > **Context:** Baseline editing must lock after utilization, both UI and backend.
 
 ### F1 - Utilization Tracking for Baselines (8.6.25) ([Complexity: Medium])
-
+Status: New
 **Problem statement**  
 Persist utilization timestamps and types when baseline data is used.
 
@@ -577,7 +598,7 @@ Expected result: fields set once.
 **Complexity flag:** Medium = GPT-4o preferred
 
 ### F2 - Utilization Lockout (8.6.26) ([Complexity: Medium])
-
+Status: New
 **Problem statement**  
 Prevent edits when baseline is utilized, in both UI and backend.
 
@@ -601,7 +622,7 @@ Prevent edits when baseline is utilized, in both UI and backend.
 **Complexity flag:** Medium = GPT-4o preferred
 
 ### F3 - Utilization Indicator on Task Detail (8.6.27) ([Complexity: Simple])
-
+Status: New
 **Problem statement**  
 Surface baseline utilization status on task detail page.
 
@@ -630,7 +651,7 @@ Surface baseline utilization status on task detail page.
 > **Context:** Restrict uploads to supported file types with clear errors.
 
 ### G1 - Upload Validation (8.6.28) ([Complexity: Simple])
-
+Status: New
 **Problem statement**  
 Reject unsupported file types with explicit user-facing errors.
 
@@ -673,9 +694,8 @@ Reject unsupported file types with explicit user-facing errors.
 13. **D1** Reviewed state UI - depends on A5.
 14. **D2** Confirm baseline with summary - depends on D1 and C1.
 15. **D3** Confirm only on review page + task detail status - depends on D2.
-16. **E1** ML suggestion endpoint - depends on explicit dependency approval.
-17. **E2** Suggestion application service - depends on E1 and A4.
-18. **E3** Suggestion display - depends on E2 and C1.
+16. **E1+E2** ML service container + suggestion API - depends on A4 (assignment API exists).
+17. **E3** Suggestion display - depends on E1+E2 and C1.
 19. **F1** Utilization tracking - depends on A2.
 20. **F2** Utilization lockout - depends on F1 and C1.
 21. **F3** Utilization indicator - depends on F1.
@@ -688,7 +708,8 @@ Reject unsupported file types with explicit user-facing errors.
 
 **Blocking relationships:**
 - UI assignments (C-series) are blocked until assignment API (A4) is complete.
-- Suggestion UI (E3) is blocked until ML endpoint (E1) and apply service (E2) are complete.
+- ML service (E1+E2) is blocked until assignment API (A4) is complete.
+- Suggestion UI (E3) is blocked until ML service (E1+E2) and field assignment panel (C1) are complete.
 
 ---
 

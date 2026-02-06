@@ -3,6 +3,7 @@
 import { ReactNode, useState } from 'react';
 import Link from 'next/link';
 import GlobalSearch from './GlobalSearch';
+import OcrQueuePanel from './ocr/OcrQueuePanel';
 
 type LayoutProps = {
   children: ReactNode;
@@ -285,6 +286,7 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
       }}>
         {children}
       </main>
+      <OcrQueuePanel />
     </div>
   );
 }

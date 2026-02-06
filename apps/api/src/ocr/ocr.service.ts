@@ -30,6 +30,20 @@ export type OcrUtilizationType =
 
 type AttachmentOcrOutputRecord = typeof attachmentOcrOutputs.$inferSelect;
 
+export type BoundingBox = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type OcrWorkerSegment = {
+  text: string;
+  confidence: number | null;
+  boundingBox: BoundingBox | null;
+  pageNumber: number;
+};
+
 type OcrWorkerPayload = {
   attachmentId: string;
   filePath: string;
@@ -39,6 +53,7 @@ type OcrWorkerPayload = {
 
 type OcrWorkerResult = {
   text: string;
+  segments: OcrWorkerSegment[];
   meta: OcrWorkerMeta;
   workerHost: string;
 };
@@ -107,12 +122,14 @@ export class OcrService {
     extractedText,
     status,
     metadata,
+    segments,
   }: {
     userId: string;
     attachmentId: string;
     extractedText: string;
     status: DerivedOcrStatus;
     metadata?: Record<string, unknown> | string | null;
+    segments?: OcrWorkerSegment[] | null;
   }) {
     await this.ensureUserOwnsAttachment(userId, attachmentId);
 
@@ -141,7 +158,7 @@ export class OcrService {
       })
       .returning();
 
-    await this.replaceTextSegments(record.id, extractedText);
+    await this.replaceTextSegments(record.id, extractedText, segments ?? null);
 
     await this.auditService.log({
       action: 'OCR_DRAFT_CREATED',
@@ -201,6 +218,7 @@ export class OcrService {
 
       const body = (await response.json().catch(() => null)) as {
         text?: string;
+        segments?: unknown;
         meta?: unknown;
         error?: string;
         details?: string;
@@ -225,6 +243,7 @@ export class OcrService {
 
       return {
         text: body.text,
+        segments: this.normalizeWorkerSegments(body.segments),
         meta:
           body.meta && typeof body.meta === 'object'
             ? (body.meta as Record<string, unknown>)
@@ -397,6 +416,24 @@ export class OcrService {
         ? editedExtractedText
         : ocr.extractedText;
 
+    const existingSegments =
+      editedExtractedText === undefined
+        ? (
+          await this.dbs.db
+            .select()
+            .from(extractedTextSegments)
+            .where(eq(extractedTextSegments.attachmentOcrOutputId, ocrId))
+        ).map((segment) => ({
+          text: segment.text,
+          confidence:
+            segment.confidence === null || segment.confidence === undefined
+              ? null
+              : Number(segment.confidence),
+          boundingBox: segment.boundingBox as BoundingBox | null,
+          pageNumber: segment.pageNumber ?? 1,
+        }))
+        : [];
+
     const [confirmedOcr] = await this.dbs.db
       .update(attachmentOcrOutputs)
       .set({
@@ -412,7 +449,11 @@ export class OcrService {
       throw new InternalServerErrorException('Failed to confirm OCR output');
     }
 
-    await this.replaceTextSegments(ocrId, finalExtractedText);
+    await this.replaceTextSegments(
+      ocrId,
+      finalExtractedText,
+      editedExtractedText === undefined ? existingSegments : null,
+    );
 
     await this.auditService.log({
       userId,
@@ -792,14 +833,103 @@ export class OcrService {
     return configured.replace(/\/+$/, '');
   }
 
+  private clamp01(value: number): number {
+    if (Number.isNaN(value)) return 0;
+    return Math.min(1, Math.max(0, value));
+  }
+
+  private normalizeBoundingBox(raw: any): BoundingBox | null {
+    if (!raw || typeof raw !== 'object') {
+      return null;
+    }
+
+    const { x, y, width, height } = raw as Record<string, unknown>;
+    if (
+      typeof x !== 'number' ||
+      typeof y !== 'number' ||
+      typeof width !== 'number' ||
+      typeof height !== 'number'
+    ) {
+      return null;
+    }
+
+    const clampedWidth = this.clamp01(width);
+    const clampedHeight = this.clamp01(height);
+
+    if (clampedWidth <= 0 || clampedHeight <= 0) {
+      return null;
+    }
+
+    return {
+      x: this.clamp01(x),
+      y: this.clamp01(y),
+      width: clampedWidth,
+      height: clampedHeight,
+    };
+  }
+
+  private normalizeWorkerSegments(raw: unknown): OcrWorkerSegment[] {
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+
+    const segments: OcrWorkerSegment[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== 'object') {
+        continue;
+      }
+
+      const { text, confidence, boundingBox, pageNumber } = item as Record<string, unknown>;
+      if (typeof text !== 'string' || !text.trim()) {
+        continue;
+      }
+
+      const normalizedConfidence =
+        typeof confidence === 'number' ? this.clamp01(confidence) : null;
+      const normalizedPage = Number.isFinite(pageNumber) && (pageNumber as number) > 0
+        ? Math.trunc(pageNumber as number)
+        : 1;
+      const normalizedBoundingBox = this.normalizeBoundingBox(boundingBox);
+
+      segments.push({
+        text: text.trim(),
+        confidence: normalizedConfidence,
+        boundingBox: normalizedBoundingBox,
+        pageNumber: normalizedPage,
+      });
+    }
+
+    return segments;
+  }
+
   private async replaceTextSegments(
     attachmentOcrOutputId: string,
     extractedText: string | null | undefined,
+    structuredSegments?: OcrWorkerSegment[] | null,
   ) {
     // Clear any existing segments for this OCR output (e.g., re-confirm with edited text)
     await this.dbs.db
       .delete(extractedTextSegments)
       .where(eq(extractedTextSegments.attachmentOcrOutputId, attachmentOcrOutputId));
+
+    const normalizedSegments = this.normalizeWorkerSegments(structuredSegments);
+
+    if (normalizedSegments.length > 0) {
+      await this.dbs.db.insert(extractedTextSegments).values(
+        normalizedSegments.map((segment) => ({
+          attachmentOcrOutputId,
+          text: segment.text,
+          confidence:
+            segment.confidence === null || segment.confidence === undefined
+              ? null
+              : segment.confidence.toString(),
+          boundingBox: segment.boundingBox,
+          pageNumber: segment.pageNumber,
+          createdAt: new Date(),
+        })),
+      );
+      return;
+    }
 
     const normalized = (extractedText ?? '').trim();
     if (!normalized) {

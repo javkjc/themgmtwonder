@@ -23,6 +23,7 @@ import {
 import { OcrCorrectionsService } from './ocr-corrections.service';
 import { OcrParsingService } from './ocr-parsing.service';
 import { OcrService } from './ocr.service';
+import { OcrQueueService } from './ocr-queue.service';
 import { ArchiveOcrDto } from './dto/archive-ocr.dto';
 import { ConfirmOcrDto } from './dto/confirm-ocr.dto';
 import { CreateOcrCorrectionDto } from './dto/create-ocr-correction.dto';
@@ -36,6 +37,7 @@ export class OcrController {
     private readonly ocrService: OcrService,
     private readonly ocrParsingService: OcrParsingService,
     private readonly ocrCorrectionsService: OcrCorrectionsService,
+    private readonly ocrQueueService: OcrQueueService,
     private readonly dbs: DbService,
   ) {}
 
@@ -136,6 +138,39 @@ export class OcrController {
       attachmentId,
       req.user.userId,
     );
+  }
+
+  /**
+   * List active OCR jobs (queued/processing) for the current user.
+   */
+  @Get('ocr/jobs')
+  async listOcrJobs(@Req() req: { user: { userId: string } }) {
+    const jobs = await this.ocrQueueService.listActiveJobs(req.user.userId);
+    return jobs.filter((job) => !job.dismissedAt);
+  }
+
+  @Post('ocr/jobs/:jobId/dismiss')
+  async dismissOcrJob(
+    @Req() req: { user: { userId: string } },
+    @Param('jobId') jobId: string,
+  ) {
+    return this.ocrQueueService.dismissJob(req.user.userId, jobId);
+  }
+
+  @Post('ocr/jobs/:jobId/cancel')
+  async cancelOcrJob(
+    @Req() req: { user: { userId: string } },
+    @Param('jobId') jobId: string,
+  ) {
+    return this.ocrQueueService.cancelJob(req.user.userId, jobId);
+  }
+
+  @Post('ocr/jobs/:jobId/retry')
+  async retryOcrJob(
+    @Req() req: { user: { userId: string } },
+    @Param('jobId') jobId: string,
+  ) {
+    return this.ocrQueueService.retryJob(req.user.userId, jobId);
   }
 
   /**

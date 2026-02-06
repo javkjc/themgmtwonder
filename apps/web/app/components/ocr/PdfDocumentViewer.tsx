@@ -87,6 +87,7 @@ export default function PdfDocumentViewer({
     });
   };
 
+  // Keep the options object stable so react-pdf does not warn on re-renders.
   const documentOptions = useMemo(() => ({ withCredentials: true }), []);
 
   const highlightStyles = useMemo(() => {
@@ -102,11 +103,26 @@ export default function PdfDocumentViewer({
     const { boundingBox } = highlightedField;
     return {
       left: `${clamp(boundingBox.x) * 100}%`,
-      top: `${clamp(1 - boundingBox.y - boundingBox.height) * 100}%`,
+      top: `${clamp(boundingBox.y) * 100}%`,
       width: `${clamp(boundingBox.width) * 100}%`,
       height: `${clamp(boundingBox.height) * 100}%`,
     };
   }, [currentPage, highlightedField]);
+
+  const imageHighlightStyles = useMemo(() => {
+    if (!highlightedField || !highlightedField.boundingBox) {
+      return null;
+    }
+
+    const clamp = (value: number) => Math.max(0, Math.min(1, value));
+    const { boundingBox } = highlightedField;
+    return {
+      left: `${clamp(boundingBox.x) * 100}%`,
+      top: `${clamp(boundingBox.y) * 100}%`,
+      width: `${clamp(boundingBox.width) * 100}%`,
+      height: `${clamp(boundingBox.height) * 100}%`,
+    };
+  }, [highlightedField]);
 
   const handleError = (error: Error) => {
     const message = error?.message || 'Unable to render document';
@@ -195,25 +211,44 @@ export default function PdfDocumentViewer({
         border: '1px solid #e2e8f0',
         overflow: 'auto',
         background: '#0f172a',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'flex-start',
       }}
     >
-      <Document
-        file={documentUrl}
-        options={documentOptions}
-        onLoadSuccess={handleDocumentLoadSuccess}
-        onLoadError={handleError}
-        loading={<div style={{ padding: 40, textAlign: 'center' }}>Loading...</div>}
-        noData={<div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>No document loaded.</div>}
-        renderMode="canvas"
-      >
-        <Page
-          pageNumber={currentPage}
-          scale={scale}
-          renderTextLayer={false}
-          renderAnnotationLayer={false}
-          onRenderError={handleError}
-        />
-      </Document>
+      <div style={{ position: 'relative', display: 'inline-block' }}>
+        <Document
+          file={documentUrl}
+          options={documentOptions}
+          onLoadSuccess={handleDocumentLoadSuccess}
+          onLoadError={handleError}
+          loading={<div style={{ padding: 40, textAlign: 'center' }}>Loading...</div>}
+          noData={<div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>No document loaded.</div>}
+          renderMode="canvas"
+        >
+          <Page
+            pageNumber={currentPage}
+            scale={scale}
+            renderTextLayer={false}
+            renderAnnotationLayer={false}
+            onRenderError={handleError}
+          />
+        </Document>
+        {!renderError && highlightStyles && (
+          <div
+            style={{
+              position: 'absolute',
+              border: '2px solid #f97316',
+              boxShadow: '0 0 8px rgba(249,115,22,0.4)',
+              background: 'rgba(249,115,22,0.15)',
+              borderRadius: 4,
+              pointerEvents: 'none',
+              zIndex: 2,
+              ...highlightStyles,
+            }}
+          />
+        )}
+      </div>
       {renderError && (
         <div
           style={{
@@ -241,19 +276,6 @@ export default function PdfDocumentViewer({
           </div>
         </div>
       )}
-      {!renderError && highlightStyles && (
-        <div
-          style={{
-            position: 'absolute',
-            border: '2px solid #f97316',
-            boxShadow: '0 0 8px rgba(249,115,22,0.4)',
-            background: 'rgba(249,115,22,0.15)',
-            borderRadius: 4,
-            pointerEvents: 'none',
-            ...highlightStyles,
-          }}
-        />
-      )}
     </div>
   );
 
@@ -271,24 +293,44 @@ export default function PdfDocumentViewer({
         alignItems: 'center',
       }}
     >
-      <img
-        src={documentUrl}
-        alt={fileName ?? title}
+      <div
         style={{
-          maxWidth: '100%',
-          height: 'auto',
-          display: 'block',
+          position: 'relative',
           transform: `scale(${scale})`,
           transformOrigin: 'center',
           transition: 'transform 0.2s ease-out',
         }}
-        onError={(event) => {
-          const target = event.target as HTMLImageElement;
-          target.style.display = 'none';
-          setRenderError('Unable to load image preview.');
-          onDocumentError?.('Unable to load image preview.');
-        }}
-      />
+      >
+        <img
+          src={documentUrl}
+          alt={fileName ?? title}
+          style={{
+            maxWidth: '100%',
+            height: 'auto',
+            display: 'block',
+          }}
+          onError={(event) => {
+            const target = event.target as HTMLImageElement;
+            target.style.display = 'none';
+            setRenderError('Unable to load image preview.');
+            onDocumentError?.('Unable to load image preview.');
+          }}
+        />
+        {!renderError && imageHighlightStyles && (
+          <div
+            style={{
+              position: 'absolute',
+              border: '2px solid #f97316',
+              boxShadow: '0 0 8px rgba(249,115,22,0.4)',
+              background: 'rgba(249,115,22,0.15)',
+              borderRadius: 4,
+              pointerEvents: 'none',
+              zIndex: 2,
+              ...imageHighlightStyles,
+            }}
+          />
+        )}
+      </div>
       {renderError && (
         <div
           style={{

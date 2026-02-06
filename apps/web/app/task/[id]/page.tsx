@@ -9,6 +9,8 @@ import {
   isUnauthorized,
 } from '../../lib/api';
 import { confirmOcrOutput, fetchCurrentConfirmedOcr, fetchOcrRedoEligibility } from '../../lib/api/ocr';
+import { fetchBaselineForAttachment } from '../../lib/api/baselines';
+import { fetchOcrJobs, type OcrJob } from '../../lib/api/ocr-queue';
 import { formatDate, formatDateTime } from '../../lib/dateTime';
 import { useCategories } from '../../hooks/useCategories';
 import { useDurationSettings } from '../../hooks/useDurationSettings';
@@ -209,6 +211,7 @@ export default function TaskDetailsPage() {
   const [attachmentOcrTriggering, setAttachmentOcrTriggering] = useState<
     Record<string, boolean>
   >({});
+  const [ocrJobs, setOcrJobs] = useState<OcrJob[]>([]);
   const [ocrConfirming, setOcrConfirming] = useState<Record<string, boolean>>({});
   const [showConfirmOcrModal, setShowConfirmOcrModal] = useState(false);
   const [pendingOcrConfirmation, setPendingOcrConfirmation] = useState<{ attachmentId: string, outputId: string, text?: string } | null>(null);
@@ -216,6 +219,7 @@ export default function TaskDetailsPage() {
   const [ocrEligibility, setOcrEligibility] = useState<
     Record<string, { loading: boolean; allowed: boolean; reason?: string; hasConfirmed: boolean; utilizationType?: string | null }>
   >({});
+  const [baselineStatusByAttachment, setBaselineStatusByAttachment] = useState<Record<string, string | null>>({});
 
   // History
   const [history, setHistory] = useState<AuditEntry[]>([]);
@@ -254,6 +258,32 @@ export default function TaskDetailsPage() {
 
   const dismissNotification = useCallback((id: string) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const refreshJobs = async () => {
+      try {
+        const data = await fetchOcrJobs();
+        if (mounted) {
+          setOcrJobs(data);
+        }
+      } catch {
+        if (mounted) {
+          setOcrJobs([]);
+        }
+      }
+    };
+
+    refreshJobs();
+    timer = setInterval(refreshJobs, 3000);
+
+    return () => {
+      mounted = false;
+      if (timer) clearInterval(timer);
+    };
   }, []);
 
   // Check auth
@@ -311,7 +341,24 @@ export default function TaskDetailsPage() {
 
     try {
       const data = await apiFetchJson(`/attachments/todo/${taskId}`);
-      setAttachments(Array.isArray(data) ? data : []);
+      const nextAttachments = Array.isArray(data) ? data : [];
+      setAttachments(nextAttachments);
+      const statusPairs = await Promise.all(
+        nextAttachments.map(async (attachment: Attachment) => {
+          try {
+            const baseline = await fetchBaselineForAttachment(attachment.id);
+            return [attachment.id, baseline?.status ?? null] as const;
+          } catch {
+            return [attachment.id, null] as const;
+          }
+        }),
+      );
+      setBaselineStatusByAttachment(
+        statusPairs.reduce<Record<string, string | null>>((acc, [id, status]) => {
+          acc[id] = status;
+          return acc;
+        }, {}),
+      );
     } catch {
       // ignore
     }
@@ -757,7 +804,7 @@ export default function TaskDetailsPage() {
         ...prev,
         [attachmentId]: {
           ...existing,
-          open: existing?.open ?? true,
+          open: existing?.open ?? false,
           loading: true,
           error: null,
           outputs: existing?.outputs ?? null,
@@ -808,6 +855,8 @@ export default function TaskDetailsPage() {
 
     try {
       await apiFetchJson(`/attachments/${attachmentId}/ocr`, { method: 'POST' });
+      const jobs = await fetchOcrJobs();
+      setOcrJobs(jobs);
       addNotification(
         'success',
         'Extraction requested',
@@ -1733,13 +1782,23 @@ export default function TaskDetailsPage() {
                         const viewerOpen = viewerState?.open ?? false;
                         const viewerCount = viewerState?.outputs?.length ?? 0;
                         const ocrTriggering = attachmentOcrTriggering[attachment.id] ?? false;
+                        const activeJob = ocrJobs.find(
+                          (job) =>
+                            job.attachmentId === attachment.id &&
+                            (job.status === 'queued' || job.status === 'processing'),
+                        );
+                        const baselineStatus = baselineStatusByAttachment[attachment.id];
 
                         const latestOutput = viewerState?.outputs?.[0];
                         const latestProcessingStatus = latestOutput?.processingStatus ?? 'pending';
                         const latestHasText = (latestOutput?.extractedText ?? '').trim().length > 0;
                         let badge = { label: 'Ready', color: '#64748b' };
-                        if (ocrTriggering) {
+                        if (activeJob?.status === 'queued') {
+                          badge = { label: 'Queued', color: '#0f172a' };
+                        } else if (activeJob?.status === 'processing' || ocrTriggering) {
                           badge = { label: 'In Progress', color: '#f59e0b' };
+                        } else if (baselineStatus === 'reviewed') {
+                          badge = { label: 'Reviewed', color: '#0ea5e9' };
                         } else if (latestOutput) {
                           badge = latestHasText
                             ? getLifecycleBadge(latestOutput.lifecycleStatus)
@@ -1833,10 +1892,11 @@ export default function TaskDetailsPage() {
                                 {(() => {
                                   const eligibility = ocrEligibility[attachment.id];
                                   const isBackendPending = latestOutput?.processingStatus === 'pending';
+                                  const isJobActive = activeJob?.status === 'queued' || activeJob?.status === 'processing';
 
                                   // Task A2 / v8 UI Governance: Block concurrent retrieval if already in progress on backend.
                                   // This check is enforced regardless of redo eligibility to respect backend authority.
-                                  const isLoading = eligibility?.loading || ocrTriggering || isBackendPending;
+                                  const isLoading = eligibility?.loading || ocrTriggering || isBackendPending || isJobActive;
 
                                   const label = eligibility?.hasConfirmed ? 'Redo Retrieval' : 'Retrieve Data';
                                   const isDisabled = isLoading || (eligibility?.hasConfirmed && !eligibility?.allowed);
@@ -1864,7 +1924,7 @@ export default function TaskDetailsPage() {
                                           position: 'relative',
                                         }}
                                       >
-                                        {isLoading ? 'Processing...' : label}
+                                        {isLoading ? (activeJob?.status === 'queued' ? 'Queued...' : 'Processing...') : label}
                                         {tooltip && <span className="sr-only">Redo blocked: {tooltip}</span>}
                                       </button>
 

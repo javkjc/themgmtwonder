@@ -25,6 +25,19 @@ const getConfidenceBg = (confidenceValue: string | null) => {
     return '#fee2e2';
 };
 
+const hasBoundingBox = (segment: Segment) => {
+    const box = segment.boundingBox;
+    if (!box || typeof box !== 'object') {
+        return false;
+    }
+    return (
+        typeof box.x === 'number' &&
+        typeof box.y === 'number' &&
+        typeof box.width === 'number' &&
+        typeof box.height === 'number'
+    );
+};
+
 export default function ExtractedTextPool({
     segments,
     onHighlight,
@@ -63,7 +76,7 @@ export default function ExtractedTextPool({
                         key={segment.id}
                         draggable={!!onDragStart}
                         onDragStart={(e) => onDragStart?.(e, segment)}
-                        onMouseEnter={() => onHighlight(segment)}
+                        onMouseEnter={() => onHighlight(hasBoundingBox(segment) ? segment : null)}
                         onMouseLeave={() => onHighlight(null)}
                         onClick={() => toggleExpand(segment.id)}
                         style={{

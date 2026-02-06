@@ -1151,7 +1151,7 @@ Dependencies:
 REQUIRES: v8.1 (OCR retrieval & confirmation workflow)
 REQUIRES: v8.5 (Field Builder infrastructure)
 EXTENDS: v3 OCR system (adds field library + baseline model)
-ML INTEGRATION: Uses FastAPI microservice (PaddleOCR + Sentence-BERT)
+ML INTEGRATION: NEW ml-service container (Sentence-BERT, separate from ocr-worker)
 
 
 Capability A — Field Library (Admin-Managed)
@@ -1348,40 +1348,62 @@ Clear field (set to empty) → requires reason (modal)
 
 
 
-Capability E — System-Suggested Assignment (ML-Assisted)
-Milestone 8.6.13: ML Suggestion Service (FastAPI Microservice)
+Capability E — System-Suggested Assignment (ML-Assisted via Separate Container)
+Milestone 8.6.13: ML Service Container (Separate FastAPI Microservice)
 
-NEW ENDPOINT (FastAPI): POST /ml/suggest-assignments
+**Architecture:** NEW separate `ml-service` container on backend network (not added to ocr-worker)
 
-Input: { extracted_text_segments: [...], field_keys: [...] }
-Process:
+NEW CONTAINER: apps/ml-service/
+- FastAPI application with Sentence-BERT (all-MiniLM-L6-v2, Apache 2.0 license)
+- Port 5000 (internal only, backend network)
+- Includes both inference AND training capabilities
 
-Generate embeddings for extracted text (Sentence-BERT)
-Generate embeddings for field_keys (Sentence-BERT)
-Compute cosine similarity (text → field matching)
-For each field, select highest confidence text segment
-Apply character type filtering (e.g., field expects int → filter non-numeric)
-Return suggestions with confidence scores
+**Endpoints:**
+- GET /health — Health check
+- POST /ml/suggest-assignments — Field-to-text matching
 
+**Input:** { segments: [{id, text, confidence}], fields: [{field_key, label, character_type}] }
 
-Output: { suggestions: [{ field_key, text_segment_id, value, confidence }] }
+**Process:**
+- Generate embeddings for extracted text segments (Sentence-BERT)
+- Generate embeddings for field labels + types (Sentence-BERT)
+- Compute cosine similarity matrix (text → field matching)
+- For each segment, select best field match with confidence score
+- Return suggestions with confidence >= 0.50
 
+**Output:** { suggestions: [{field_key, text_segment_id, value, confidence}], model_version, total_suggestions }
 
+**Docker Integration:**
+- docker-compose.yml: Add ml-service with volume for model persistence
+- Backend network only (like db container)
+- API container calls ml-service via http://ml-service:5000
 
-Milestone 8.6.14: Suggestion Application (NestJS Backend)
+**Database Extensions:**
+- NEW TABLE: ml_model_versions (tracks trained model versions for future fine-tuning)
+- EXTEND: baseline_field_assignments (add suggestion_confidence, suggestion_accepted, ml_model_version_id)
 
-NEW SERVICE: SuggestionApplicationService
-Method: applySuggestions(baselineId, attachmentId)
+Milestone 8.6.14: Suggestion Application (NestJS Backend Integration)
 
-Call FastAPI /ml/suggest-assignments with extracted text + active fields
-For each suggestion with confidence ≥ 50%:
+NEW SERVICE: MlClientService
+- HTTP client to call ml-service with timeout/error handling
+- Pattern: Similar to OcrService.extractFromWorker()
 
-Create draft assignment in baseline_field_assignments
-Set source_segment_id (links to extracted text)
-Mark as system-generated (assigned_by = system user)
+NEW MODULE: apps/api/src/ml/
+- ml.module.ts — NestJS module
+- ml-client.service.ts — HTTP client for ml-service
+- ml.service.ts — Training data export (for future fine-tuning)
+- ml.controller.ts — Admin endpoints (/admin/ml/training-data)
 
-
-Store confidence scores in metadata (for display)
+NEW ENDPOINT: POST /baselines/:baselineId/suggest
+- Get baseline segments + active fields
+- Call ml-service via MlClientService.getSuggestions()
+- For each suggestion with confidence ≥ 50%:
+  - Create assignment in baseline_field_assignments
+  - Set source_segment_id (links to extracted text)
+  - Set suggestion_confidence and ml_model_version_id
+  - Mark assigned_by as system user
+  - Set suggestion_accepted = null (user hasn't reviewed yet)
+- Audit log with action `baseline.suggest.apply`
 
 
 
@@ -1563,6 +1585,191 @@ Reject unsupported types with clear error message
 
 
 
+---
+
+## v8.6.add1 — OCR Queue Management Extension 🚧 (Tentative - Target UI/UX)
+
+**What this is**
+- **Target UI/UX** for OCR job management (this design will persist into v8.9+)
+- User-facing panel to view, dismiss, cancel, and retry OCR jobs
+- Image preprocessing for OCR quality improvements
+- Per-job status tracking (queued, processing, completed, failed, dismissed)
+- **Current implementation**: Lightweight database-backed tracking (backend may be replaced in v8.9)
+
+**What this is not**
+- Not the final backend architecture (implementation tentative until v8.9)
+- Not batch baseline confirmation (single-attachment focus for now)
+- Not locked-in (backend infrastructure subject to v8.9 redesign)
+
+**Design Intent**
+Establish the **desired user experience** for OCR job management now, with understanding that:
+- **UI/UX patterns are the target** for both v8.6.add1 and v8.9 (user-facing behavior stays consistent)
+- **Backend implementation is tentative** and will likely be replaced with BullMQ infrastructure in v8.9
+- **User actions** (dismiss/cancel/retry) should work the same way regardless of backend changes
+- This provides **immediate value** while we design v8.9's full batch processing system
+
+**Capacity & Rate Limiting Principles**
+- **Controlled job limits** to ensure system can handle the load
+- **Per-user quotas** to prevent any single user from overwhelming the OCR worker
+- **Queue depth monitoring** to surface when system is at capacity
+- **Graceful degradation** when limits are reached (show user-friendly messages, not crashes)
+
+**Dependencies**
+- **REQUIRES:** v8.1 (OCR retrieval & confirmation workflow)
+- **EXTENDS:** v3 (OCR worker integration)
+- **COMPATIBLE WITH:** v8.6 (baseline & field assignment)
+
+**What Was Built**
+
+**Database Schema:**
+- Uses existing `attachment_ocr_outputs` table with `status` field ('draft', 'confirmed', 'archived')
+- No new queue tables (leverages existing OCR output tracking)
+- Job state tracked via `processingStatus` in OCR outputs
+
+**Backend Services:**
+- `apps/api/src/ocr/ocr-queue.service.ts` - NEW queue management service
+  - `listActiveJobs(userId)` - Returns non-dismissed jobs (queued/processing/completed/failed) with task + attachment info
+  - `dismissJob(jobId, userId)` - Soft-deletes job by setting `dismissed_at` timestamp
+  - `cancelJob(jobId, userId)` - Cancels queued/processing jobs (marks failed with "Cancelled by user")
+  - `retryJob(jobId, userId)` - Converts failed job to new queued job (dismisses old one)
+  - **Enforces per-user limit:** Max 1 processing + 2 queued jobs per user
+
+**Backend Controller Extensions:**
+- `apps/api/src/ocr/ocr.controller.ts` - EXTENDED with queue endpoints
+  - `GET /ocr/jobs` - List non-dismissed OCR jobs for current user
+  - `POST /ocr/jobs/:jobId/dismiss` - Dismiss completed job
+  - `POST /ocr/jobs/:jobId/cancel` - Cancel queued/processing job
+  - `POST /ocr/jobs/:jobId/retry` - Retry failed job
+
+**OCR Worker Extensions:**
+- `apps/ocr-worker/main.py` - EXTENDED with preprocessing
+  - `preprocess_image(image_path)` - Image resize/contrast enhancement for OCR quality/speed tuning
+  - Applied before Tesseract/cloud OCR processing
+
+**Frontend Components:**
+- `apps/web/app/components/ocr/OcrQueuePanel.tsx` - NEW global UI panel (**MINIMUM VIABLE UI/UX BASELINE**)
+
+  **Layout & Position:**
+  - Fixed bottom-right corner (position: fixed, bottom: 20px, right: 20px, z-index: 9000)
+  - Width: 320px, max height: 5 jobs visible (scrollable for more)
+  - Dark theme (#111827 background, rounded corners, drop shadow)
+
+  **Header:**
+  - Always visible "Jobs (N)" count badge
+  - Collapsed by default (user must expand to see job list)
+  - Click to toggle expand/collapse
+
+  **Per-Job Card (Minimum Information):**
+  - **File Icon:** [IMG] / [PDF] / [FILE] type indicator (32x32 rounded box)
+  - **Filename:** Truncated with ellipsis if too long (13px font)
+  - **Status Badge:** Color-coded pill (Queued/Processing/Completed/Failed, 11px uppercase)
+    - Processing: dark (#0f172a)
+    - Completed: green (#16a34a)
+    - Failed: red (#dc2626)
+    - Queued: gray (#e2e8f0)
+  - **Task Title:** "Task: [title]" (linked, truncated, 12px font)
+  - **Completion DateTime:** Shows "Completed: [datetime]" for completed/failed jobs (11px gray)
+  - **Error Message:** Red text below if status=failed (11px)
+  - **Actions:**
+    - "View" link (navigate to task detail, 12px)
+    - "X" button (cancel) - for queued/processing jobs
+    - "Dismiss" button - for completed jobs
+    - **Failed jobs:** Both "Try again" AND "X" (dismiss) buttons stacked vertically
+
+  **Behavior:**
+  - Auto-refresh: polls every 3 seconds (configurable via `pollMs` prop)
+  - **Job ordering:** Sorted by `requestedAt` ASC (oldest first, stable ordering - cancelled jobs stay in place)
+  - No empty state clutter: shows "No OCR jobs in queue." if empty
+  - **Custom scrollbar:** Styled thin scrollbar (8px width, semi-transparent gray)
+  - **Dynamic toast offset:** CSS variable `--toast-bottom-offset` adjusts notification position to avoid overlapping queue panel (collapsed or expanded)
+
+  **🎯 This UI/UX is the TARGET - v8.9 enhances but PRESERVES this core design**
+
+**API Client:**
+- `apps/web/app/lib/api/ocr-queue.ts` - NEW client API module
+  - `fetchOcrJobs()` - Client wrapper for GET /ocr/jobs
+  - `dismissOcrJob(jobId)` - Client wrapper for dismiss action
+  - `cancelOcrJob(jobId)` - Client wrapper for cancel action
+  - `retryOcrJob(jobId)` - Client wrapper for retry action
+
+**Governance Alignment**
+- **Explicit Intent:** All job actions (dismiss/cancel/retry) require explicit user clicks; no automatic job cleanup
+- **Auditability:** Job state changes logged via existing OCR audit events; retry creates new job entry
+- **Ownership:** Jobs filtered by userId; users can only manage their own OCR jobs
+
+**Integration Notes**
+
+**OCR Queue Panel:**
+- **Location:** Global panel accessible from review page or task detail (bottom-right fixed)
+- **Job Lifecycle:** Queued → Processing → Completed/Failed → Dismissed (user action)
+- **Retry Behavior:** Creates new queued job, dismisses failed job, preserves original attachment link
+- **Preprocessing Impact:** Image preprocessing applied transparently before OCR worker processing
+
+**Task Page (/task/[id]) Status Indicators:**
+- **Attachment List Shows Queue State:**
+  - "Queued" badge for attachments with queued OCR jobs
+  - "In Progress" badge for attachments with processing OCR jobs
+  - "Reviewed" badge for attachments with reviewed baseline (baseline status='reviewed')
+- **OCR Text Panel:** Collapsed by default (user must expand to see extracted text)
+
+**Review Page (/attachments/[attachmentId]/review) Behavior:**
+- **"Mark as Reviewed" Action:** Reloads baseline data after status update to prevent empty UI state
+- **Correction Reason Rules:**
+  - **Draft baseline:** Edits/deletes do NOT require correction reason (freeform exploration)
+  - **Reviewed baseline:** Edits/deletes REQUIRE correction reason (backend enforced, UI prompts)
+- **OCR Completion Lifecycle:** When OCR completes, any reviewed baseline for that attachment is **reset to draft** (user must re-review after new OCR data arrives)
+
+**Capacity Controls (v8.6.add1)**
+- **Per-User Processing Limit:** Max 1 processing + 2 queued jobs per user (backend enforced)
+- **Upload Validation:** Block new OCR requests if user's queue limit reached
+- **UI Feedback:** Show message "You have reached your queue limit. Please wait for completion or cancel existing jobs."
+- **Queue State Tracking:** Jobs include `dismissed_at` timestamp for soft-delete behavior
+- **Cancellation Support:** Queued/processing jobs can be cancelled (marked as failed with "Cancelled by user")
+
+**Differences from Planned v8.9:**
+- **No BullMQ:** Uses database polling instead of Redis-backed job queue
+- **No Bulk Upload:** Single-file OCR jobs only (batch upload deferred to v8.9)
+- **No Parallel Workers:** Sequential processing via existing OCR worker (v8.9 adds concurrency)
+- **No Progress Bars:** Simple status badges instead of granular progress tracking
+
+**v8.9 Migration Path:**
+When v8.9 implements the full batch processing system:
+- **PRESERVE:** All UI components (`OcrQueuePanel`, action buttons, job list layout)
+- **PRESERVE:** API endpoint contracts (`GET /ocr/jobs`, dismiss/cancel/retry endpoints)
+- **REPLACE:** Backend implementation (swap database polling for BullMQ)
+- **EXTEND:** Add bulk upload UI, progress bars, parallel processing
+- **GOAL:** User experience should feel identical, just faster and more capable
+
+**Bottom-Right Panel Evolution (v8.6.add1 → v8.9):**
+
+| Feature | v8.6.add1 (Baseline) | v8.9 (Enhanced) |
+|---------|----------------------|-----------------|
+| **Position** | Fixed bottom-right ✅ | ✅ Same |
+| **Job List** | Filename + status + actions ✅ | ✅ Same + queue position |
+| **Status Badge** | Queued/Processing/Completed/Failed ✅ | ✅ Same + progress spinner |
+| **Actions** | View/Cancel/Dismiss/Retry ✅ | ✅ Same |
+| **Auto-Refresh** | 3 second polling ✅ | ✅ Same or WebSocket upgrade |
+| **Batch Grouping** | ❌ None | ✅ "Batch of 12" header if >5 jobs |
+| **ETA** | ❌ None | ✅ "~2 min remaining" per job |
+| **Notifications** | ❌ None | ✅ Toast/sound/desktop notifications |
+
+**Key Principle:** v8.6.add1 establishes the **minimum viable information** at bottom-right. v8.9 adds **convenience features** but keeps the core layout identical.
+
+**Recent Refinements (Post-B3):**
+- ✅ **Queue Panel UX:** Collapsed by default, completion datetime, dynamic toast offset, stable job ordering, styled scrollbar
+- ✅ **Failed Job Actions:** Both "Try again" and "X" (dismiss) buttons for flexible failure recovery
+- ✅ **API Response:** Jobs now include completed/failed states (until dismissed)
+- ✅ **Dismissal Tracking:** Soft-delete with `dismissed_at` timestamp
+- ✅ **Per-User Limits:** Enforced 1 processing + 2 queued jobs per user
+- ✅ **Task Page Integration:** Queue state badges (Queued/In Progress), Reviewed badge, collapsed OCR text panel
+- ✅ **Review Page Integration:** "Mark as Reviewed" reloads data, correction reason rules (draft=optional, reviewed=required), OCR completion resets reviewed → draft
+- ✅ **Cancellation Support:** Cancel queued/processing jobs from UI
+
+**Status**
+🚧 Tentative (UI/UX target established, backend subject to v8.9 redesign)
+**Last Updated:** 2026-02-06 (Post-B3 refinements)
+
+---
 
 ## v8.7 — ML Model Training & Fine-Tuning 📋 (Planned)
 What this is
@@ -1828,11 +2035,13 @@ Upload multiple documents at once
 Batch OCR processing (queue-based, parallel)
 Bulk baseline confirmation (review all, confirm all)
 Progress tracking (X of Y documents processed)
+**BUILDS ON:** v8.6.add1 OCR Queue UI/UX (preserves user experience, upgrades backend)
 
 What this is not
 
 Not automatic confirmation (user must review each baseline)
 Not bulk field assignment (each document assigned independently)
+Not a complete redesign of queue UI (v8.6.add1 established the target UX)
 
 
 Capability A: Bulk Upload
@@ -1858,6 +2067,9 @@ Backend: handle concurrent uploads (use async/await, rate limit per user)
 Capability B: Batch OCR Processing
 Milestone 8.9.3: OCR Job Queue
 
+**REPLACES:** v8.6.add1 database polling with BullMQ infrastructure
+**PRESERVES:** API endpoints and UI components from v8.6.add1
+
 Install BullMQ (Redis-based job queue)
 NEW QUEUE: ocr-processing-queue
 Job structure: { attachmentId, userId, priority }
@@ -1870,13 +2082,63 @@ Job states: pending → processing → completed → failed
 Store job state in attachment_ocr_outputs.processing_status
 Track retries: max 3 attempts, exponential backoff
 
-Milestone 8.9.5: Progress Tracking UI
+**Capacity Controls (v8.9 with BullMQ):**
+- **Global Queue Limit:** Maximum total jobs in BullMQ queue (e.g., 100 jobs system-wide)
+- **Per-User Queue Limit:** Maximum pending jobs per user (e.g., 20 jobs per user)
+- **Bulk Upload Limit:** Maximum files per bulk upload (e.g., 50 files max)
+- **Concurrent Workers:** Configurable worker count (default: 5, max: 10 based on OCR worker capacity)
+- **Rate Limiting:** Throttle bulk upload requests (e.g., 1 bulk upload per 30 seconds per user)
+- **Queue Backpressure:** If queue depth > 80 jobs, show warning "System is busy. Your jobs may take longer."
+- **Admin Controls:**
+  - Dashboard showing queue depth, worker utilization, processing rate
+  - Ability to pause/resume workers during maintenance
+  - Ability to adjust worker count dynamically
+- **Graceful Degradation:** If Redis is down, fall back to database polling (v8.6.add1 mode)
 
-On Task detail: "Batch Processing" widget
-Display: "Processing 12 of 50 documents"
-Progress bar (% complete)
-List of files: status icon (pending/processing/done/failed)
-Auto-refresh every 5 seconds (polling or WebSocket)
+Milestone 8.9.5: Capacity Planning & Configuration
+
+**System Settings Table:**
+- `ocr_queue_max_global`: INT DEFAULT 100 (total jobs allowed system-wide)
+- `ocr_queue_max_per_user`: INT DEFAULT 20 (jobs per user)
+- `ocr_worker_count`: INT DEFAULT 5 (concurrent workers, max 10)
+- `ocr_bulk_upload_max_files`: INT DEFAULT 50 (files per bulk upload)
+- `ocr_bulk_upload_cooldown_sec`: INT DEFAULT 30 (seconds between bulk uploads per user)
+
+**Admin Settings Page:**
+- `/admin/ocr-settings` - Configure capacity limits
+- Real-time queue metrics: current depth, worker utilization, avg processing time
+- Alerts: notify when queue > 80% capacity
+
+**User-Facing Limits:**
+- Upload validation: check limits before accepting files
+- Error messages:
+  - "Queue limit reached (20/20 jobs). Please wait or cancel existing jobs."
+  - "Bulk upload limit: 50 files maximum"
+  - "Please wait 30 seconds before next bulk upload"
+
+Milestone 8.9.6: Progress Tracking UI
+
+**BUILDS ON v8.6.add1 OcrQueuePanel - Adds Enhanced Features:**
+
+**Bottom-Right Panel Enhancements (Preserves v8.6.add1 Design):**
+- **KEEP:** All existing UI elements (filename, status badge, actions, etc.)
+- **ADD:** Queue position indicator per job: "Position 3 of 15" (when queued)
+- **ADD:** Processing time estimate: "~2 min remaining" (based on avg processing time)
+- **ADD:** Progress spinner animation for processing jobs
+- **ADD:** Batch grouping: If >5 jobs from same task, show "Batch of 12" header
+
+**New Batch Processing Widget (Separate Component):**
+- On Task detail page: "Batch Processing" widget (appears during bulk uploads)
+- Display: "Processing 12 of 50 documents"
+- Overall progress bar (% complete) with ETA
+- Summary stats: "45 succeeded, 3 processing, 2 failed"
+- Expandable list with per-file status icons
+- Auto-refresh every 5 seconds (polling or WebSocket)
+
+**Visual Enhancements:**
+- Toast notifications when batch completes: "OCR batch complete: 48/50 succeeded"
+- Sound notification option (user preference)
+- Desktop notification permission (browser API)
 
 
 Capability C: Bulk Baseline Review

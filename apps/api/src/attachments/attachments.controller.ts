@@ -21,7 +21,8 @@ import { JwtAuthGuard } from '../auth/auth.guard';
 import { CsrfGuard } from '../common/csrf';
 import { AttachmentsService } from './attachments.service';
 import { AuditService } from '../audit/audit.service';
-import { DerivedOcrStatus, OcrService } from '../ocr/ocr.service';
+import { OcrQueueService } from '../ocr/ocr-queue.service';
+import { OcrService } from '../ocr/ocr.service';
 import * as fs from 'fs';
 import * as multer from 'multer';
 import { RemarksService } from '../remarks/remarks.service';
@@ -43,6 +44,7 @@ export class AttachmentsController {
     private readonly attachmentsService: AttachmentsService,
     private readonly audit: AuditService,
     private readonly ocrService: OcrService,
+    private readonly ocrQueueService: OcrQueueService,
     private readonly todosService: TodosService,
     private readonly remarksService: RemarksService,
   ) {}
@@ -239,93 +241,19 @@ export class AttachmentsController {
     });
 
     try {
-      const workerResult = await this.ocrService.extractFromWorker({
-        attachmentId: id,
-        filePath,
-        mimeType: attachment.mimeType,
-        filename: attachment.filename,
-      });
+      const job = await this.ocrQueueService.enqueueOcrJob(userId, id);
 
-      const record = await this.ocrService.createDerivedOutput({
-        userId,
-        attachmentId: id,
-        extractedText: workerResult.text,
-        status: 'complete',
-        metadata: {
-          workerUrl: workerResult.workerHost,
-          workerMeta: workerResult.meta,
-          mimeType: attachment.mimeType,
-        },
-      });
-
-      await this.audit.log({
-        userId,
-        action: 'OCR_SUCCEEDED',
-        module: 'attachment',
-        resourceType: 'attachment',
-        resourceId: id,
-        details: {
-          ...requestDetails,
-          derivedId: record.id,
-          textLength: workerResult.text.length,
-          workerHost: workerResult.workerHost,
-        },
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent'],
-      });
-
-      const payload: {
-        id: string;
-        status: DerivedOcrStatus;
-        textLength: number;
-        meta?: Record<string, unknown> | null;
-      } = {
-        id: record.id,
-        status: 'complete',
-        textLength: workerResult.text.length,
+      return {
+        status: 'queued',
+        jobId: job.id,
+        requestedAt: job.requestedAt,
       };
-
-      if (workerResult.meta) {
-        payload.meta = workerResult.meta;
-      }
-
-      return payload;
     } catch (err) {
+      if (err instanceof BadRequestException) {
+        throw err;
+      }
       const errorMessage =
-        err instanceof Error ? err.message : 'OCR worker request failed';
-      const errorDetails =
-        err && typeof (err as Error & { details?: string }).details === 'string'
-          ? (err as Error & { details?: string }).details
-          : undefined;
-
-      await this.ocrService.createDerivedOutput({
-        userId,
-        attachmentId: id,
-        extractedText: '',
-        status: 'failed',
-        metadata: {
-          workerUrl: process.env.OCR_WORKER_BASE_URL ?? null,
-          filePath,
-          mimeType: attachment.mimeType,
-          error: errorMessage,
-          ...(errorDetails ? { errorDetails } : {}),
-        },
-      });
-
-      await this.audit.log({
-        userId,
-        action: 'OCR_FAILED',
-        module: 'attachment',
-        resourceType: 'attachment',
-        resourceId: id,
-        details: {
-          ...requestDetails,
-          error: errorMessage,
-        },
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent'],
-      });
-
+        err instanceof Error ? err.message : 'OCR queue request failed';
       throw new InternalServerErrorException(`OCR failed: ${errorMessage}`);
     }
   }

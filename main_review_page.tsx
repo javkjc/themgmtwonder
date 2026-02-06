@@ -176,7 +176,7 @@ export default function AttachmentOcrReviewPage() {
     if (!baseline) return;
     const existing = baseline.assignments?.find(a => a.fieldKey === fieldKey);
 
-    if (existing && baseline.status === 'reviewed') {
+    if (existing) {
       setCorrectionPendingAction({ type: 'upsert', fieldKey, value, sourceSegmentId });
       setIsCorrectionModalOpen(true);
       return;
@@ -202,30 +202,9 @@ export default function AttachmentOcrReviewPage() {
   }, [baseline, loadBaseline, addNotification]);
 
   const handleAssignmentDelete = useCallback(async (fieldKey: string) => {
-    if (!baseline) return;
-    if (baseline.status === 'reviewed') {
-      setCorrectionPendingAction({ type: 'delete', fieldKey });
-      setIsCorrectionModalOpen(true);
-      return;
-    }
-    try {
-      await deleteAssignment(baseline.id, fieldKey);
-      await loadBaseline();
-      addNotification({
-        id: Date.now().toString(),
-        type: 'success',
-        title: 'Assignment cleared',
-        message: `${fieldKey} cleared`,
-      });
-    } catch (e: any) {
-      addNotification({
-        id: Date.now().toString(),
-        type: 'error',
-        title: 'Delete failed',
-        message: e.message,
-      });
-    }
-  }, [addNotification, baseline, loadBaseline]);
+    setCorrectionPendingAction({ type: 'delete', fieldKey });
+    setIsCorrectionModalOpen(true);
+  }, []);
 
   const handleCorrectionConfirm = useCallback(async (reason: string) => {
     if (!baseline || !correctionPendingAction) return;
@@ -512,8 +491,8 @@ export default function AttachmentOcrReviewPage() {
     setReviewingBaseline(true);
     setBaselineError(null);
     try {
-      await markBaselineReviewed(baseline.id);
-      await loadBaseline();
+      const updated = await markBaselineReviewed(baseline.id);
+      setBaseline(updated);
       addNotification({
         id: Date.now().toString(),
         type: 'success',
@@ -532,7 +511,7 @@ export default function AttachmentOcrReviewPage() {
     } finally {
       setReviewingBaseline(false);
     }
-  }, [addNotification, baseline, loadBaseline]);
+  }, [addNotification, baseline]);
 
   const handleConfirmBaseline = useCallback(async () => {
     if (!baseline) return;
@@ -585,32 +564,20 @@ export default function AttachmentOcrReviewPage() {
 
 
   const renderPanel1 = () => {
-    const attachment = ocrData?.attachment;
-    const mimeType = attachment?.mimeType?.toLowerCase() ?? '';
-    const fileName = attachment?.filename ?? '';
-    const lowerFileName = fileName.toLowerCase();
-    const isPdf = mimeType.includes('pdf') || lowerFileName.endsWith('.pdf');
-    const isImage = mimeType.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(fileName);
-    const isPreviewable = isPdf || isImage;
-    const isExcel =
-      mimeType.includes('excel') ||
-      mimeType.includes('spreadsheet') ||
-      lowerFileName.endsWith('.xls') ||
-      lowerFileName.endsWith('.xlsx');
-    const isWord =
-      mimeType.includes('word') ||
-      lowerFileName.endsWith('.doc') ||
-      lowerFileName.endsWith('.docx');
+    const mimeType = ocrData?.attachment?.mimeType || '';
+    const isPdfOrImage = mimeType.includes('pdf') || mimeType.includes('image');
+    const isExcel = mimeType.includes('spreadsheet') || mimeType.includes('excel') || ocrData?.attachment?.filename?.endsWith('.xlsx');
+    const isWord = mimeType.includes('word') || ocrData?.attachment?.filename?.endsWith('.doc') || ocrData?.attachment?.filename?.endsWith('.docx');
 
     return (
       <div style={{ flex: '1 1 40%', minWidth: isMobile ? '100%' : 420 }}>
         <div style={{ marginBottom: 12, color: '#475569', fontSize: 13, fontWeight: 700 }}>1. Document Preview</div>
-        {isPreviewable ? (
+        {isPdfOrImage ? (
           <PdfDocumentViewer
-            title={fileName || 'Attachment'}
+            title={ocrData?.attachment?.filename ?? 'Attachment'}
             documentUrl={documentUrl}
-            mimeType={attachment?.mimeType ?? null}
-            fileName={fileName || null}
+            mimeType={ocrData?.attachment?.mimeType ?? null}
+            fileName={ocrData?.attachment?.filename ?? null}
             highlightedField={
               highlightedSegment
                 ? { pageNumber: highlightedSegment.pageNumber || 1, boundingBox: highlightedSegment.boundingBox }
@@ -621,16 +588,15 @@ export default function AttachmentOcrReviewPage() {
           />
         ) : isExcel ? (
           <div style={{ height: 400, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 24 }}>
-            <span style={{ fontSize: 48, marginBottom: 16 }}>📊</span>
-            <p style={{ margin: 0, fontWeight: 600, color: '#1e293b' }}>
-              Excel files have no preview. <a href={documentUrl} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>Download to view.</a>
-            </p>
+            <span style={{ fontSize: 48, marginBottom: 16 }}>??</span>
+            <p style={{ margin: 0, fontWeight: 600, color: '#1e293b' }}>Excel files have no preview.</p>
+            <a href={documentUrl} target="_blank" rel="noreferrer" style={{ marginTop: 12, color: '#2563eb', fontWeight: 600 }}>Download to view</a>
           </div>
         ) : isWord ? (
           <div style={{ height: 400, background: '#fee2e2', border: '1px solid #fecaca', borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 24 }}>
-            <span style={{ fontSize: 48, marginBottom: 16 }}>⚠️</span>
-            <p style={{ margin: 0, fontWeight: 600, color: '#b91c1c' }}>Word documents not supported. Please convert to PDF.</p>
-            <a href={documentUrl} target="_blank" rel="noreferrer" style={{ marginTop: 12, color: '#991b1b', fontWeight: 600 }}>Download file</a>
+            <span style={{ fontSize: 48, marginBottom: 16 }}>??</span>
+            <p style={{ margin: 0, fontWeight: 600, color: '#b91c1c' }}>Word documents not supported.</p>
+            <p style={{ margin: '8px 0 0', fontSize: 13, color: '#7f1d1d' }}>Please convert to PDF for preview and extraction.</p>
           </div>
         ) : (
           <div style={{ height: 400, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -752,7 +718,7 @@ export default function AttachmentOcrReviewPage() {
                   gap: 6,
                 }}
               >
-                <span>✓</span> Confirmed
+                <span>?</span> Confirmed
               </button>
             )}
             {baseline?.status === 'archived' && (
@@ -803,7 +769,7 @@ export default function AttachmentOcrReviewPage() {
               e.currentTarget.style.borderColor = '#e2e8f0';
             }}
           >
-            <span>←</span> Back to Task
+            <span>?</span> Back to Task
           </button>
         </div>
       )}
@@ -827,12 +793,12 @@ export default function AttachmentOcrReviewPage() {
         >
           <span style={{ fontSize: 18 }}>
             {baseline.status === 'confirmed'
-              ? '✅'
+              ? '?'
               : baseline.status === 'archived'
-                ? '📁'
+                ? '??'
                 : baseline.status === 'reviewed'
-                  ? '🧾'
-                  : '🧩'}
+                  ? '??'
+                  : '??'}
           </span>
           <span>
             {baseline.status === 'draft' && 'Draft baseline. Mark as reviewed before confirming.'}
@@ -858,7 +824,7 @@ export default function AttachmentOcrReviewPage() {
             gap: 12,
           }}
         >
-          <span style={{ fontSize: 18 }}>⚠️</span>
+          <span style={{ fontSize: 18 }}>??</span>
           <span>Baseline status unavailable. {baselineError}</span>
         </div>
       )}
@@ -878,7 +844,7 @@ export default function AttachmentOcrReviewPage() {
             gap: 12
           }}
         >
-          <span style={{ fontSize: 18 }}>⚠️</span>
+          <span style={{ fontSize: 18 }}>??</span>
           <span>Failed to load extraction review data. {error}</span>
         </div>
       )}
@@ -898,8 +864,8 @@ export default function AttachmentOcrReviewPage() {
             gap: 12
           }}
         >
-          <span style={{ fontSize: 18 }}>⚠️</span>
-          <span style={{ fontWeight: 600 }}>Low confidence extraction — please verify carefully.</span>
+          <span style={{ fontSize: 18 }}>??</span>
+          <span style={{ fontWeight: 600 }}>Low confidence extraction � please verify carefully.</span>
         </div>
       )}
 
@@ -914,7 +880,7 @@ export default function AttachmentOcrReviewPage() {
         lineHeight: 1.6
       }}>
         <div style={{ display: 'flex', gap: 12 }}>
-          <span style={{ fontSize: 18 }}>ℹ️</span>
+          <span style={{ fontSize: 18 }}>??</span>
           <div>
             <p style={{ margin: 0, fontWeight: 600, color: '#1e293b' }}>About this review</p>
             <p style={{ margin: '4px 0 0' }}>
@@ -1098,10 +1064,7 @@ export default function AttachmentOcrReviewPage() {
         }}
         onConfirm={handleCorrectionConfirm}
       />
-      <NotificationToast
-        notifications={notifications}
-        onDismiss={(id) => setNotifications((prev) => prev.filter((item) => item.id !== id))}
-      />
+      <NotificationToast notifications={notifications} onDismiss={(id) => setNotifications((prev) => prev.filter((item) => item.id !== id))} />
     </Layout >
   );
 }

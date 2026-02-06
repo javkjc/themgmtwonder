@@ -30,6 +30,8 @@ type BaselineContext = {
     ownerId: string;
 };
 
+type BoundingBox = { x: number; y: number; width: number; height: number };
+
 @Injectable()
 export class BaselineAssignmentsService {
     constructor(
@@ -90,6 +92,16 @@ export class BaselineAssignmentsService {
                 .from(extractedTextSegments)
                 .where(eq(extractedTextSegments.attachmentOcrOutputId, currentOcr.id))
                 .orderBy(extractedTextSegments.pageNumber, extractedTextSegments.createdAt);
+
+            segments = segments.map((segment) => ({
+                ...segment,
+                confidence:
+                    segment.confidence === null || segment.confidence === undefined
+                        ? null
+                        : Number(segment.confidence),
+                boundingBox: segment.boundingBox as BoundingBox | null,
+                pageNumber: segment.pageNumber ?? 1,
+            }));
 
             if (!segments.length && (currentOcr.extractedText ?? '').trim()) {
                 segments = await this.backfillSegmentsFromText(
@@ -172,10 +184,10 @@ export class BaselineAssignmentsService {
         const providedReason = dto.correctionReason?.trim();
         const isOverwrite = !!existing;
 
-        if (isOverwrite) {
+        if (context.status === 'reviewed' && isOverwrite) {
             if (!providedReason || providedReason.length < 10) {
                 throw new BadRequestException(
-                    'correctionReason (min 10 chars) is required when overwriting an assignment',
+                    'correctionReason (min 10 chars) is required when overwriting an assignment in reviewed status',
                 );
             }
         } else if (providedReason && providedReason.length < 10) {
@@ -186,7 +198,9 @@ export class BaselineAssignmentsService {
 
         const correctedFromValue = isOverwrite ? existing?.assignedValue ?? null : null;
         const correctionReasonValue =
-            isOverwrite || providedReason ? providedReason ?? null : null;
+            (context.status === 'reviewed' && (isOverwrite || providedReason))
+                ? providedReason ?? null
+                : providedReason ?? null;
 
         const [assignment] = await this.dbs.db
             .insert(baselineFieldAssignments)
@@ -255,9 +269,15 @@ export class BaselineAssignmentsService {
         }
 
         const trimmedReason = correctionReason?.trim();
-        if (!trimmedReason || trimmedReason.length < 10) {
+        if (context.status === 'reviewed') {
+            if (!trimmedReason || trimmedReason.length < 10) {
+                throw new BadRequestException(
+                    'correctionReason (min 10 chars) is required to delete an assignment in reviewed status',
+                );
+            }
+        } else if (trimmedReason && trimmedReason.length < 10) {
             throw new BadRequestException(
-                'correctionReason (min 10 chars) is required to delete an assignment',
+                'correctionReason must be at least 10 characters when provided',
             );
         }
 
@@ -281,7 +301,7 @@ export class BaselineAssignmentsService {
                 fieldKey,
                 assignedBy: userId,
                 correctedFrom: existing.assignedValue ?? null,
-                correctionReason: trimmedReason,
+                correctionReason: trimmedReason ?? null,
             },
         });
 

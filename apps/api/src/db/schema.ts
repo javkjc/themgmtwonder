@@ -199,6 +199,33 @@ export const ocrResults = pgTable(
     })
 );
 
+// OCR Jobs queue table
+export const ocrJobs = pgTable(
+    'ocr_jobs',
+    {
+        id: uuid('id').primaryKey().defaultRandom(),
+        attachmentId: uuid('attachment_id')
+            .notNull()
+            .references(() => attachments.id, { onDelete: 'cascade' }),
+        userId: uuid('user_id')
+            .notNull()
+            .references(() => users.id, { onDelete: 'cascade' }),
+        status: varchar('status', { length: 30 }).notNull(),
+        requestedAt: timestamp('requested_at').defaultNow().notNull(),
+        startedAt: timestamp('started_at'),
+        completedAt: timestamp('completed_at'),
+        dismissedAt: timestamp('dismissed_at'),
+        error: text('error'),
+        outputId: uuid('output_id')
+            .references(() => attachmentOcrOutputs.id, { onDelete: 'set null' }),
+    },
+    (table) => ({
+        userStatusIdx: index('idx_ocr_jobs_user_status').on(table.userId, table.status),
+        statusRequestedIdx: index('idx_ocr_jobs_status_requested').on(table.status, table.requestedAt),
+        attachmentIdx: index('idx_ocr_jobs_attachment_id').on(table.attachmentId),
+    }),
+);
+
 // Extracted Text Segments table
 export const extractedTextSegments = pgTable(
     'extracted_text_segments',

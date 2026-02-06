@@ -101,6 +101,33 @@ Verify that the OCR UI behavior matches the v8.1 rules, specifically focusing on
 
 ### Status
 [VERIFIED]
+
+---
+
+## 2026-02-06 - B2: Document Preview Handling
+
+### Objective
+Ensure the review page previews PDF/Image content with the existing viewer, surface explicit messaging for XLSX and DOC/DOCX attachments, and keep the react-pdf options object stable.
+
+### What Was Built
+- Routed PDF/Image attachments through `PdfDocumentViewer` while branching XLSX and DOC/DOCX into dedicated message panels that reiterate "Excel files have no preview. Download to view." and "Word documents not supported. Please convert to PDF." with download links.
+- Clarified the messaging copy, kept download affordances available even when previews are blocked, and documented why the viewer memoizes its options object to avoid react-pdf warnings.
+
+### Files Changed
+- `apps/web/app/attachments/[attachmentId]/review/page.tsx` - Tightened attachment-type detection and messaging logic so previewable files hit the viewer while XLSX/DOC/DOCX render the required notices and download links stay visible.
+- `apps/web/app/components/ocr/PdfDocumentViewer.tsx` - Added a comment/local note assuring the pdf options object is memoized to prevent repeated object identity churn.
+- `tasks/plan.md` - Marked B2 as completed with verification details reflecting the new preview rules and memoized options requirement.
+
+### Verification
+- Manual: Not performed (manual); B2 checklist requires confirming PDF/Image previews render, XLSX shows ‚ÄúExcel files have no preview. Download to view.,‚Äù DOC/DOCX shows ‚ÄúWord documents not supported. Please convert to PDF.,‚Äù and download links/consoles stay error-free.
+
+### Status
+[UNVERIFIED]
+
+### Notes
+- **Impact**: Affects Feature #v8.6 Field-Based Extraction Assignment & Baseline (Evidence Review preview rules).
+- **Assumptions**: Attachment metadata (MIME type/filename) is accurate enough for preview routing; PdfDocumentViewer continues to support the expected viewer experience.
+- **Open Questions**: None.
 ## 2026-02-02 - Task 1: OcrParsingService (v8 Evidence Review)
 
 **Objective:** Add regex-driven OCR parsing plus confidence scoring so evidence review shows structured fields.
@@ -2390,3 +2417,138 @@ Confirm the baseline review endpoint now returns status/utilization metadata alo
 
 ### Status
 [VERIFIED]
+---
+
+## 2026-02-06 - B3: Extracted Text Pool Display
+
+### Objective
+Render the extracted text list with truncation, confidence badges, and hover-driven bounding-box highlights on the review page.
+
+### What Was Built
+- Refined ExtractedTextPool to only expose bounding-box highlights when normalized coordinates exist so the preview overlay stays stable.
+- Documented the componentís purpose and wiring in 	asks/codemapcc.md so the review routeís dependencies are discoverable.
+- Updated 	asks/plan.md and will refresh 	asks/session-state.md to mark B3 complete and summarize the current session state.
+
+### Files Changed
+- pps/web/app/components/ocr/ExtractedTextPool.tsx - Bounding-box guard prevents highlight state changes when preview metadata is missing.
+- 	asks/codemapcc.md - Added the ExtractedTextPool usage entry under the review route and global component list.
+- 	asks/plan.md - Marked B3 complete and captured the verification note.
+- 	asks/session-state.md - (pending rewrite) will describe the current session progress after B3.
+
+### Verification
+Not performed (manual review of hover highlight + truncation behavior remains).
+
+### Status
+[NEEDS-TESTING]
+
+### Notes
+- **Impact**: Affects Feature #v8.6 Field-Based Extraction Assignment & Baseline.
+- **Assumptions**: Baseline segments continue to expose normalized oundingBox data when available.
+- **Open Questions**: None.
+
+
+## 2026-02-06 - OCR Bounding Boxes + Queue + Viewer Alignment
+
+### Objective
+Implement end-to-end OCR bounding boxes for hover highlighting, improve viewer alignment, and add an async OCR queue with per-user limits.
+
+### What Was Built
+- OCR worker now emits structured segments with normalized bounding boxes, confidence, and 1-based page numbers for PDFs and images.
+- Backend persists segment bounding boxes/confidence into `extracted_text_segments` and normalizes worker output (clamping coords, coercing confidence types).
+- Baseline aggregation returns numeric confidence + bounding boxes so the review UI can highlight segments.
+- Pdf/image viewers render bounding boxes; PDF overlay is now anchored to the rendered page canvas so highlights align correctly.
+- Added OCR job queue with per-user cap (max 3 queued/processing); requests are enqueued and processed FIFO in background.
+- OCR worker defaults made configurable and set to speed-first; env-driven tuning for DPI/contrast/upscaling/angle classification.
+
+### Files Changed
+- `apps/ocr-worker/main.py`
+- `apps/api/src/ocr/ocr.service.ts`
+- `apps/api/src/baseline/baseline-assignments.service.ts`
+- `apps/api/src/attachments/attachments.controller.ts`
+- `apps/api/src/ocr/ocr-queue.service.ts`
+- `apps/api/src/ocr/ocr.module.ts`
+- `apps/api/src/db/schema.ts`
+- `apps/web/app/components/ocr/PdfDocumentViewer.tsx`
+
+### Configuration
+- OCR worker supports env vars: `OCR_PDF_DPI`, `OCR_UPSCALE_MIN_DIM`, `OCR_CONTRAST`, `OCR_ANGLE_CLS_IMAGES`, `OCR_ANGLE_CLS_PDFS`.
+- OCR queue supports: `OCR_QUEUE_ENABLED`, `OCR_QUEUE_POLL_MS`.
+
+### Verification
+- Manual DB checks confirmed bounding boxes + confidence persisted for latest OCR outputs and UI badges display.
+- Manual UI checks: PDF highlights aligned after container change; image highlights render over the image.
+- Queue behavior not load-tested; requires manual multi-request test to validate rejection at 4th request.
+
+### Status
+[UNVERIFIED]
+
+## 2026-02-06 - OCR Queue UX + Status Wiring (Post-Queue)
+
+### Objective
+Refine OCR queue UX, status behavior, and attachment badges; add cancel/retry/dismiss flows and improve layout overlap handling.
+
+### What Was Built
+- OCR queue jobs now include completed/failed states and support dismiss/cancel/retry operations.
+- Queue panel supports cancel for queued/processing, dismiss for completed, try-again for failed.
+- Job list is always visible with a Jobs (N) header, collapsible by default, scrollable list, and completion timestamps.
+- Toast positioning is dynamic to avoid overlapping the queue panel in collapsed or expanded states.
+- Task detail attachment badge now reflects queued/processing via queue state, and shows Reviewed when baseline is reviewed.
+- Queue list order is stable by requested time (cancelled jobs stay in place).
+- Attachment OCR viewer default state set to collapsed.
+
+### Files Changed
+- `apps/api/src/db/schema.ts`
+- `apps/api/src/ocr/ocr-queue.service.ts`
+- `apps/api/src/ocr/ocr.controller.ts`
+- `apps/web/app/lib/api/ocr-queue.ts`
+- `apps/web/app/components/ocr/OcrQueuePanel.tsx`
+- `apps/web/app/components/NotificationToast.tsx`
+- `apps/web/app/attachments/[attachmentId]/review/page.tsx`
+- `apps/web/app/task/[id]/page.tsx`
+- `apps/web/app/page.tsx`
+- `apps/web/app/calendar/page.tsx`
+- `apps/web/app/customizations/page.tsx`
+
+### Verification
+- Manual UI checks done during iteration; no formal test run recorded for queue cancel/retry/dismiss flows.
+
+### Status
+[UNVERIFIED]
+- Manual QA: queue cancel/retry/dismiss, toast overlap, reviewed badge, default collapsed viewer ó all verified.
+
+## 2026-02-06 - OCR Queue UX + Baseline Review QoL (Follow-up)
+
+### Objective
+Capture UX and lifecycle changes made after the prior summary, including queue panel refinements, baseline status handling, and review-page behavior.
+
+### What Was Built
+- Queue panel now always visible with Jobs (N), collapsed by default, styled scrollbar, and completion timestamps.
+- Toast offset is dynamic and follows queue panel height to avoid overlap in collapsed/expanded states.
+- Job ordering is stable by requested time; canceled jobs remain in place and switch to failed.
+- Failed jobs show both "Try again" and dismiss (X); completed jobs show dismiss; queued/processing show cancel.
+- Task detail page badge reflects queue states (Queued/In Progress) and shows Reviewed when baseline is reviewed.
+- Draft baseline edits no longer require correction reason; reviewed edits/deletes require reason (UI + backend enforcement).
+- After new OCR completes, reviewed baselines are reset to draft so users re-review new text.
+- Review page refreshes baseline after Mark as Reviewed to avoid empty data.
+- Attachment OCR viewer defaults to collapsed.
+
+### Files Changed
+- `apps/api/src/db/schema.ts`
+- `apps/api/src/ocr/ocr-queue.service.ts`
+- `apps/api/src/ocr/ocr.controller.ts`
+- `apps/api/src/baseline/baseline-assignments.service.ts`
+- `apps/web/app/lib/api/ocr-queue.ts`
+- `apps/web/app/lib/api/baselines.ts`
+- `apps/web/app/components/ocr/OcrQueuePanel.tsx`
+- `apps/web/app/components/NotificationToast.tsx`
+- `apps/web/app/attachments/[attachmentId]/review/page.tsx`
+- `apps/web/app/task/[id]/page.tsx`
+- `apps/web/app/page.tsx`
+- `apps/web/app/calendar/page.tsx`
+- `apps/web/app/customizations/page.tsx`
+
+### Verification
+- Manual QA: queue cancel/retry/dismiss, toast overlap, reviewed badge, default collapsed viewer ó all verified.
+
+### Status
+[UNVERIFIED]

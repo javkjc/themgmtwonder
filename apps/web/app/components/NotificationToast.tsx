@@ -14,9 +14,21 @@ export type Notification = {
 type NotificationToastProps = {
   notifications: Notification[];
   onDismiss: (id: string) => void;
+  bottomOffset?: number;
+  rightOffset?: number;
 };
 
-export default function NotificationToast({ notifications, onDismiss }: NotificationToastProps) {
+export default function NotificationToast({
+  notifications,
+  onDismiss,
+  bottomOffset,
+  rightOffset = 20,
+}: NotificationToastProps) {
+  const resolvedBottom =
+    bottomOffset ??
+    (typeof window !== 'undefined'
+      ? Number(getComputedStyle(document.documentElement).getPropertyValue('--toast-bottom-offset')) || 20
+      : 20);
   // Auto-dismiss: success after 4s, error after 8s, info after 6s
   useEffect(() => {
     if (notifications.length === 0) return;
@@ -40,8 +52,8 @@ export default function NotificationToast({ notifications, onDismiss }: Notifica
     <div
       style={{
         position: 'fixed',
-        bottom: 20,
-        right: 20,
+        bottom: resolvedBottom,
+        right: rightOffset,
         zIndex: 10000,
         display: 'flex',
         flexDirection: 'column',

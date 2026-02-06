@@ -78,7 +78,7 @@
 - ROUTE: /attachments/[attachmentId]/review
   - Path: apps/web/app/attachments/[attachmentId]/review/page.tsx
   - Purpose: Visual OCR evidence review (attachment viewer + parsed field list + correction/history modals).
-  - Uses: PdfDocumentViewer, OcrFieldList, OcrFieldEditModal, OcrCorrectionHistoryModal, NotificationToast, lib/api/ocr.ts helpers (fetchAttachmentOcrResults, createOcrCorrection, fetchOcrCorrectionHistory), API_BASE_URL for downloads and document playback.
+  - Uses: PdfDocumentViewer, ExtractedTextPool (apps/web/app/components/ocr/ExtractedTextPool.tsx for truncated confidence badges and hover highlight), OcrFieldList, OcrFieldEditModal, OcrCorrectionHistoryModal, NotificationToast, lib/api/ocr.ts helpers (fetchAttachmentOcrResults, createOcrCorrection, fetchOcrCorrectionHistory), API_BASE_URL for downloads and document playback.
   - Mutations at: POST /ocr-results/:ocrResultId/corrections via lib/api/ocr.ts; Task detail page links to this route when attachment OCR status is confirmed.
 - ROUTE: /admin/fields
   - Path: apps/web/app/admin/fields/page.tsx
@@ -97,6 +97,7 @@
   - Auth/session entry points: apps/web/app/hooks/useAuth.ts (login/register/logout/changePassword/refreshMe hitting /auth endpoints), apps/web/app/components/ForcePasswordChange.tsx
   - Calendar v2 anchors: renderer DraggableEvent inside apps/web/app/calendar/page.tsx; DndContext provider + onDragEnd in apps/web/app/components/DragContext.tsx (DragProvider.handleDragEnd); drop-time calc in apps/web/app/calendar/page.tsx getDropTime(); DnD overlay via DragOverlay in DragContext
   - Calendar availability helpers: useScheduledEvents (apps/web/app/hooks/useScheduledEvents.ts), useDurationSettings (apps/web/app/hooks/useDurationSettings.ts), useCategories color map (apps/web/app/hooks/useCategories.ts)
+  - Extracted text pool: apps/web/app/components/ocr/ExtractedTextPool.tsx renders truncated segments with confidence badges and bounding-box hover highlighting for review.
 
 ## 3) Backend Map (NestJS)
 - Controller: AppController

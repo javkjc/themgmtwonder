@@ -1,4 +1,4 @@
-// .vscode/snippets.code-snippets
+# Old prompt // .vscode/snippets.code-snippets
 {
   "Task Execution Prompt": {
     "prefix": "taskprompt",
@@ -28,10 +28,10 @@
     ]
   }
 }
-*******************************
-for simple tesk
 
-# [Task Name] - [Task ID]
+# for simple tesk *******************8
+
+## [Task Name] - [Task ID]
 
 **Governance:** Follow `prompt_guidelines.md` and `ai-rules.md`
 
@@ -48,8 +48,8 @@ for simple tesk
 **Document:** Per Session End Protocol
 
 
-***************************************
-for generating plan.md 
+# for generating plan.md  ***************************************
+
 
 Generate a tasks/plan.md for **[VERSION] — [Feature Name]**.
 
@@ -75,7 +75,7 @@ The plan MUST:
 
 **TEMPLATE STRUCTURE:**
 
-# [VERSION] — [Feature Name]
+## [VERSION] — [Feature Name]
 
 **Date:** [Today's date]  
 **Scope:** [One sentence summary]  
@@ -262,8 +262,8 @@ The plan MUST:
 
 
 
-********************************
-for generating task from plan.md 1 each time
+
+# for generating task from plan.md 1 each time ********************************
 
 Generate an execution prompt for next actionable task from tasks/plan.md.
 
@@ -296,10 +296,10 @@ Use clear section headers and bullet points, not wall-of-text paragraphs.
 
 Target executor: gpt5.1-codex-mini medium
 
-******************************
-for reviewing of  completed plan.md files
+# for reviewing of  completed plan.md files ******************************
 
-# Post-Implementation Quality Review
+
+## Post-Implementation Quality Review
 
 **Your Role**: Quality auditor comparing delivered work against original requirements. Find gaps, don't fix them.
 
