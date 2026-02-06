@@ -1143,15 +1143,18 @@ Key insight: The backend is correct, the frontend just needs to respect it.
 ## v8.6 — Field-Based Extraction Assignment & Baseline 🚧 (In Progress)
 Based on your existing document and ML architecture decisions, here's the complete v8.6 specification with milestones:
 
-**Status:** 🚧 Partially Complete  
-**What's Done:** Milestones 8.6.1-8.6.6 (Field Library CRUD, Admin UI, Baseline Data Model, State Machine)  
-**What's Pending:** Milestones 8.6.7+ (Extracted Text Pool, Field Assignment, ML Suggestions, Review Page Layout)
-Dependencies:
+**Status:** 🚧 Partially Complete
+**What's Done:** Milestones 8.6.1-8.6.6 (Field Library CRUD, Admin UI, Baseline Data Model, State Machine, Baseline Confirmation UI)
+**What's Pending:** Milestones 8.6.7-8.6.16 (Extracted Text Pool, Field Assignment UI, Review Page Layout, Utilization & Locking, File Type Validation)
 
-REQUIRES: v8.1 (OCR retrieval & confirmation workflow)
-REQUIRES: v8.5 (Field Builder infrastructure)
-EXTENDS: v3 OCR system (adds field library + baseline model)
-ML INTEGRATION: NEW ml-service container (Sentence-BERT, separate from ocr-worker)
+**Dependencies:**
+- **REQUIRES:** v8.1 (OCR retrieval & confirmation workflow)
+- **REQUIRES:** v8.5 (Field Builder infrastructure)
+- **EXTENDS:** v3 OCR system (adds field library + baseline model)
+
+**Out of Scope:**
+- ML Suggestions (moved to v8.8)
+- Table Review (moved to v8.7)
 
 
 Capability A — Field Library (Admin-Managed)
@@ -1355,85 +1358,11 @@ Clear field (set to empty) → requires reason (modal)
 
 
 
-Capability E — System-Suggested Assignment (ML-Assisted via Separate Container)
-Milestone 8.6.13: ML Service Container (Separate FastAPI Microservice)
+Capability E — User Assignment & Editing (Integrated with Milestones 8.6.9-8.6.12)
 
-**Architecture:** NEW separate `ml-service` container on backend network (not added to ocr-worker)
+**Note:** Drag-and-drop, manual editing, and correction workflows are integrated into Milestone 8.6.12 (Field Assignment UI).
 
-NEW CONTAINER: apps/ml-service/
-- FastAPI application with Sentence-BERT (all-MiniLM-L6-v2, Apache 2.0 license)
-- Port 5000 (internal only, backend network)
-- Includes both inference AND training capabilities
-
-**Endpoints:**
-- GET /health — Health check
-- POST /ml/suggest-assignments — Field-to-text matching
-
-**Input:** { segments: [{id, text, confidence}], fields: [{field_key, label, character_type}] }
-
-**Process:**
-- Generate embeddings for extracted text segments (Sentence-BERT)
-- Generate embeddings for field labels + types (Sentence-BERT)
-- Compute cosine similarity matrix (text → field matching)
-- For each segment, select best field match with confidence score
-- Return suggestions with confidence >= 0.50
-
-**Output:** { suggestions: [{field_key, text_segment_id, value, confidence}], model_version, total_suggestions }
-
-**Docker Integration:**
-- docker-compose.yml: Add ml-service with volume for model persistence
-- Backend network only (like db container)
-- API container calls ml-service via http://ml-service:5000
-
-**Database Extensions:**
-- NEW TABLE: ml_model_versions (tracks trained model versions for future fine-tuning)
-- EXTEND: baseline_field_assignments (add suggestion_confidence, suggestion_accepted, ml_model_version_id)
-
-Milestone 8.6.14: Suggestion Application (NestJS Backend Integration)
-
-NEW SERVICE: MlClientService
-- HTTP client to call ml-service with timeout/error handling
-- Pattern: Similar to OcrService.extractFromWorker()
-
-NEW MODULE: apps/api/src/ml/
-- ml.module.ts — NestJS module
-- ml-client.service.ts — HTTP client for ml-service
-- ml.service.ts — Training data export (for future fine-tuning)
-- ml.controller.ts — Admin endpoints (/admin/ml/training-data)
-
-NEW ENDPOINT: POST /baselines/:baselineId/suggest
-- Get baseline segments + active fields
-- Call ml-service via MlClientService.getSuggestions()
-- For each suggestion with confidence ≥ 50%:
-  - Create assignment in baseline_field_assignments
-  - Set source_segment_id (links to extracted text)
-  - Set suggestion_confidence and ml_model_version_id
-  - Mark assigned_by as system user
-  - Set suggestion_accepted = null (user hasn't reviewed yet)
-- Audit log with action `baseline.suggest.apply`
-
-
-
-Milestone 8.6.15: Suggestion Display (Review Page)
-
-Field Assignment Panel shows system suggestions:
-
-Fields with suggestions: pre-filled with suggested value
-Confidence indicator: color-coded badge (High ≥80%, Medium 50-79%, Low <50%)
-User can:
-
-Accept: click field, see value, click "Confirm" (saves assignment)
-Modify: edit value before confirming (marks as corrected, requires reason)
-Clear: remove suggestion (requires reason)
-
-
-Once user edits field: suggestion is discarded (assigned_by changes to user)
-
-
-
-
-Capability F — User Assignment & Editing
-Milestone 8.6.16: Drag-and-Drop Assignment
+**Drag-and-Drop Assignment Requirements:**
 
 Implement drag-drop from Extracted Text Pool → Field Assignment Panel
 On drop:
@@ -1445,8 +1374,7 @@ If invalid: show error tooltip with suggested correction
 Require confirmation (modal): "Assign [text] to [field]?" [Cancel] [Confirm]
 
 
-
-Milestone 8.6.17: Manual Editing with Validation
+**Manual Editing with Validation Requirements:**
 
 User edits field value directly (text input/number input/date picker)
 On blur:
@@ -1458,7 +1386,7 @@ Suggest correction in tooltip (if available)
 
 User decides final value (can override validation warnings, but must acknowledge)
 
-Milestone 8.6.18: Correction Reason Requirement
+**Correction Reason Requirement:**
 
 If user edits pre-filled suggestion or existing assignment:
 
@@ -1471,8 +1399,8 @@ Correction reason stored in correction_reason field
 Audit log: record before/after + reason
 
 
-Capability G — Review Page Layout & Interaction
-Milestone 8.6.19: Three-Panel Layout
+Capability F — Review Page Layout & Interaction
+Milestone 8.6.10: Three-Panel Layout
 
 Review Page structure:
 
@@ -1483,54 +1411,23 @@ Right Panel (30% width): Field Assignment Panel (interactive form)
 
 Responsive: on mobile, collapse to tabs (Document / Text / Fields)
 
-Milestone 8.6.20: Persistent Panel (Non-Modal)
+Milestone 8.6.11: Persistent Panel (Non-Modal)
 
 Field Assignment Panel is always visible (not a modal)
 User can scroll through fields while viewing document
 Back button in navbar: returns to Task detail page
 
-Milestone 8.6.21: Document Preview Handling
+Milestone 8.6.12: Document Preview Handling
 
 PDF/Image: Show preview with pdf.js (existing from v3)
 XLSX: No preview, show message "Excel files have no preview. Download to view."
 DOC/DOCX: Explicitly excluded, show error "Word documents not supported"
 
 
-Capability H — Review → Confirm Lifecycle
-Milestone 8.6.22: Reviewed State
+**Note:** Review → Confirm Lifecycle (Capability G) was completed in Milestones 8.6.4-8.6.6 (Baseline Data Model, State Machine, Confirmation UI) and enhanced in v8.6.add1. See above for details.
 
-Button: "Mark as Reviewed" (only visible when status='draft')
-Action: Sets baseline status='reviewed'
-Still editable (user can continue assigning fields)
-Not usable by system (queries filter to status='confirmed' only)
-
-Milestone 8.6.23: Confirmed State
-
-Button: "Confirm Baseline" (only visible when status='reviewed')
-Confirmation modal:
-
-"This will lock the baseline. You will not be able to edit field assignments."
-Show summary: "X fields assigned, Y fields empty"
-[Cancel] [Confirm]
-
-
-Action:
-
-Set status='confirmed', confirmed_at=now(), confirmed_by=currentUser
-Archive previous baseline (if exists): set status='archived'
-Lock editing (UI disables all inputs, shows "Read-Only" badges)
-
-
-
-Milestone 8.6.24: Confirmation Occurs on Review Page Only
-
-Confirmation button only on Review Page (not on Task detail)
-After confirmation: redirect to Task detail with success toast
-Task detail shows baseline status: "Confirmed on [date] by [user]"
-
-
-Capability I — Utilization Locking
-Milestone 8.6.25: Utilization Detection Service
+Capability H — Utilization & Locking (Pending)
+Milestone 8.6.13: Utilization Tracking for Baselines
 
 EXTEND existing UtilizationTrackingService (from v8.1):
 
@@ -1546,7 +1443,7 @@ Sets: utilized_at (first call wins), utilization_type
 
 
 
-Milestone 8.6.26: Utilization Lockout (UI + Backend)
+Milestone 8.6.14: Utilization Lockout (UI + Backend)
 
 If baseline has utilization_type set:
 
@@ -1557,7 +1454,7 @@ Backend: Reject edit/delete requests with 403 error
 
 Viewing does NOT count as usage (reading baseline data doesn't lock it)
 
-Milestone 8.6.27: Utilization Indicator (Task Detail)
+Milestone 8.6.15: Utilization Indicator (Task Detail)
 
 On Task detail page, show baseline utilization status:
 
@@ -1570,8 +1467,8 @@ On Task detail page, show baseline utilization status:
 Click indicator → shows detail (which record, when, by whom)
 
 
-Capability J — Supported File Types
-Milestone 8.6.28: File Type Validation
+Capability I — Supported File Types
+Milestone 8.6.16: File Type Validation
 
 Supported for extraction:
 
@@ -1591,6 +1488,88 @@ Check MIME type
 Reject unsupported types with clear error message
 
 
+
+**v8.6 Cross-Cutting Concerns**
+
+**Error Handling Standards:**
+
+All API endpoints return standardized error responses:
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR" | "NOT_FOUND" | "FORBIDDEN" | "CONFLICT",
+    "message": "Human-readable error message",
+    "details": {
+      "field": "field_key",
+      "constraint": "character_type",
+      "providedValue": "abc123",
+      "expectedFormat": "integer"
+    }
+  }
+}
+```
+
+HTTP Status Codes:
+- 400: Validation errors, malformed requests
+- 403: Permission denied, baseline locked due to utilization
+- 404: Resource not found (field, baseline, assignment)
+- 409: Conflict (duplicate field_key, concurrent baseline confirmation)
+- 500: Server errors (log with request ID for debugging)
+
+**Performance Requirements:**
+
+Field Library CRUD:
+- List fields: < 200ms for 1000 fields
+- Create/update field: < 100ms
+- Pagination: 50 fields per page (default)
+
+Baseline Operations:
+- Create baseline: < 300ms
+- Confirm baseline: < 500ms (includes archival transaction)
+- List assignments: < 200ms for 100 fields
+
+Field Assignment:
+- Validate single field: < 50ms
+- Bulk validate (all fields): < 500ms
+- Drag-drop response: < 100ms (validation + UI update)
+
+Review Page:
+- Initial load: < 2s (PDF preview + extracted text + field library)
+- Field list rendering: < 300ms for 200 fields
+- Auto-save on field change: < 200ms (debounced)
+
+**Security Considerations:**
+
+Input Validation:
+- Sanitize all text inputs (prevent XSS via field labels, assigned values)
+- SQL injection prevention: Use parameterized queries for all DB operations
+- Field key validation: Alphanumeric + underscore only (regex: `^[a-z0-9_]+$`)
+
+Authorization:
+- Field Library CRUD: Admin role required (JWT claim: `role: 'admin'`)
+- Baseline operations: Owner or assigned user only
+- Utilization tracking: System service accounts exempt from user checks
+
+Data Protection:
+- Sensitive field values (e.g., SSN, credit card): Optional encryption at rest
+- Audit logs: Immutable, append-only (never delete correction history)
+
+**Testing Strategy:**
+
+Unit Tests (per milestone):
+- Field validation service: Test all character_types with valid/invalid inputs
+- Baseline state machine: Test all state transitions + invalid transitions
+- Field assignment validator: Test edge cases (empty, null, unicode, SQL injection attempts)
+
+Integration Tests:
+- Field Library CRUD: Create → Update → Archive flow
+- Baseline lifecycle: Draft → Reviewed → Confirmed → Utilized
+- Field assignment: Drag-drop → Validate → Correct → Re-validate
+
+E2E Tests (critical paths):
+1. Create field → Assign to baseline → Confirm baseline → Create record (utilization lock)
+2. Upload document → Extract text → Assign fields → Mark reviewed → Confirm
+3. Admin creates field → User assigns value → Validation fails → User corrects → Success
 
 ---
 
@@ -1653,6 +1632,14 @@ Establish the **desired user experience** for OCR job management now, with under
   - `preprocess_image(image_path)` - Image resize/contrast enhancement for OCR quality/speed tuning
   - Applied before Tesseract/cloud OCR processing
 
+  **Preprocessing Parameters:**
+  - **Image resize:** Max dimension 2000px (preserves aspect ratio, reduces processing time)
+  - **Contrast enhancement:** CLAHE (Contrast Limited Adaptive Histogram Equalization) with clip limit 2.0
+  - **Noise reduction:** Gaussian blur (kernel size 3x3) for images with estimated noise > 15%
+  - **Binarization threshold:** Otsu's method for optimal threshold detection
+  - **DPI normalization:** Upscale images < 150 DPI to 300 DPI using Lanczos interpolation
+  - **Rotation correction:** Auto-detect and correct skew angles between -10° and +10°
+
 **Frontend Components:**
 - `apps/web/app/components/ocr/OcrQueuePanel.tsx` - NEW global UI panel (**MINIMUM VIABLE UI/UX BASELINE**)
 
@@ -1698,6 +1685,113 @@ Establish the **desired user experience** for OCR job management now, with under
   - `dismissOcrJob(jobId)` - Client wrapper for dismiss action
   - `cancelOcrJob(jobId)` - Client wrapper for cancel action
   - `retryOcrJob(jobId)` - Client wrapper for retry action
+
+**API Specifications:**
+
+**GET /ocr/jobs**
+- **Authentication:** Required (JWT)
+- **Query Parameters:** None (automatically filters by authenticated user)
+- **Response 200:**
+```json
+{
+  "jobs": [
+    {
+      "id": "uuid",
+      "attachmentId": "uuid",
+      "taskId": "uuid",
+      "filename": "invoice_2024.pdf",
+      "fileType": "PDF" | "IMAGE" | "XLSX",
+      "status": "queued" | "processing" | "completed" | "failed",
+      "requestedAt": "2024-02-06T10:30:00Z",
+      "completedAt": "2024-02-06T10:32:15Z" | null,
+      "errorMessage": "Tesseract timeout after 60s" | null,
+      "taskTitle": "Process January Invoices",
+      "taskUrl": "/tasks/uuid"
+    }
+  ],
+  "queueDepth": 3,
+  "userLimits": {
+    "processing": 1,
+    "queued": 2,
+    "currentProcessing": 1,
+    "currentQueued": 2
+  }
+}
+```
+- **Response 401:** Unauthorized (missing or invalid JWT)
+- **Performance:** < 150ms (indexed query on userId + dismissed_at IS NULL)
+
+**POST /ocr/jobs/:jobId/dismiss**
+- **Authentication:** Required (JWT, must be job owner)
+- **Request Body:** None
+- **Response 200:**
+```json
+{
+  "success": true,
+  "jobId": "uuid",
+  "dismissedAt": "2024-02-06T10:35:00Z"
+}
+```
+- **Response 403:** Forbidden (not job owner)
+- **Response 404:** Job not found or already dismissed
+- **Response 409:** Cannot dismiss queued/processing jobs (use cancel instead)
+
+**POST /ocr/jobs/:jobId/cancel**
+- **Authentication:** Required (JWT, must be job owner)
+- **Request Body:**
+```json
+{
+  "reason": "User-initiated cancellation" // Optional, defaults to "Cancelled by user"
+}
+```
+- **Response 200:**
+```json
+{
+  "success": true,
+  "jobId": "uuid",
+  "status": "failed",
+  "errorMessage": "Cancelled by user",
+  "cancelledAt": "2024-02-06T10:36:00Z"
+}
+```
+- **Response 403:** Forbidden (not job owner)
+- **Response 404:** Job not found
+- **Response 409:** Cannot cancel completed/failed jobs (use dismiss instead)
+
+**POST /ocr/jobs/:jobId/retry**
+- **Authentication:** Required (JWT, must be job owner)
+- **Request Body:** None
+- **Response 200:**
+```json
+{
+  "success": true,
+  "newJobId": "uuid",
+  "oldJobId": "uuid",
+  "status": "queued",
+  "queuePosition": 3,
+  "estimatedStartTime": "2024-02-06T10:40:00Z" // Based on current queue depth
+}
+```
+- **Response 403:** Forbidden (not job owner or queue limit reached)
+- **Response 404:** Job not found
+- **Response 409:** Can only retry failed jobs
+- **Response 429:** Queue limit reached (user has 1 processing + 2 queued already)
+
+**Error Response Format (all endpoints):**
+```json
+{
+  "error": {
+    "code": "QUEUE_LIMIT_REACHED" | "JOB_NOT_FOUND" | "INVALID_STATE",
+    "message": "You have reached your queue limit (1 processing + 2 queued). Wait for completion or cancel existing jobs.",
+    "details": {
+      "currentProcessing": 1,
+      "currentQueued": 2,
+      "maxProcessing": 1,
+      "maxQueued": 2
+    }
+  }
+}
+```
 
 **Governance Alignment**
 - **Explicit Intent:** All job actions (dismiss/cancel/retry) require explicit user clicks; no automatic job cleanup
@@ -1772,16 +1866,1143 @@ When v8.9 implements the full batch processing system:
 - ✅ **Review Page Integration:** "Mark as Reviewed" reloads data, correction reason rules (draft=optional, reviewed=required), OCR completion resets reviewed → draft
 - ✅ **Cancellation Support:** Cancel queued/processing jobs from UI
 
+**v8.6.add1 Cross-Cutting Concerns**
+
+**Performance Requirements:**
+
+OCR Queue Operations:
+- List jobs (GET /ocr/jobs): < 150ms for 100 jobs (indexed query on userId + dismissed_at)
+- Dismiss job: < 100ms (single UPDATE query)
+- Cancel job: < 200ms (UPDATE + worker notification)
+- Retry job: < 300ms (INSERT new job + UPDATE old job)
+
+Queue Panel UI:
+- Initial render: < 200ms (collapsed state)
+- Expand animation: 300ms smooth transition
+- Auto-refresh polling: Every 3s (configurable, batched API call)
+- Job list scrolling: 60 FPS for 50+ jobs (virtual scrolling if > 20 jobs)
+
+OCR Worker:
+- Preprocessing: < 2s for 5MB image (resize + CLAHE + binarization)
+- Tesseract OCR: < 30s for single-page PDF (timeout after 60s)
+- Cloud OCR fallback: < 10s for Google Vision API
+
+**Error Handling Standards:**
+
+Queue API Errors:
+- 403 Forbidden: "You do not own this OCR job"
+- 404 Not Found: "Job not found or already dismissed"
+- 409 Conflict: "Cannot dismiss queued/processing jobs (use cancel instead)"
+- 429 Too Many Requests: "Queue limit reached (1 processing + 2 queued). Wait for completion or cancel existing jobs."
+
+OCR Worker Failures:
+- Tesseract timeout: Mark job as failed with error "OCR processing timeout after 60s"
+- Preprocessing error: Mark job as failed with error "Image preprocessing failed: [reason]"
+- Cloud API error: Retry once, then mark failed with error "Cloud OCR service unavailable"
+- File not found: Mark job as failed with error "Attachment file missing or corrupted"
+
+Queue Panel Error States:
+- API fetch failure: Show "Unable to load OCR jobs. Retrying..." (auto-retry after 5s)
+- Dismiss/cancel failure: Show toast "Action failed. Please try again."
+- Network offline: Show banner "Offline - OCR jobs will refresh when connection restored"
+
+**Security Considerations:**
+
+Authorization:
+- All queue endpoints: Verify userId matches job owner (JWT claim)
+- Job visibility: Users only see their own jobs (filtered by userId)
+- Admin exemption: Admins can view all jobs (for debugging, audit logs recorded)
+
+Input Validation:
+- Job ID: UUID format validation (reject malformed IDs)
+- Cancellation reason: Max 500 chars, sanitize HTML
+- Retry limit: Max 3 retries per attachment (prevent infinite retry loops)
+
+Data Protection:
+- Job error messages: Sanitize file paths (don't expose server filesystem structure)
+- Queue depth: Aggregate metric only (don't expose individual user queue counts)
+
+**Testing Strategy:**
+
+Unit Tests:
+- OcrQueueService: Test listActiveJobs filters by userId + dismissed_at IS NULL
+- OcrQueueService: Test dismissJob sets dismissed_at timestamp
+- OcrQueueService: Test cancelJob updates status to 'failed' with reason
+- OcrQueueService: Test retryJob creates new job + dismisses old job
+- OcrQueueService: Test per-user limits (1 processing + 2 queued enforced)
+
+Integration Tests:
+- Queue lifecycle: Upload → Queue → Process → Complete → Dismiss
+- Cancellation: Upload → Queue → Cancel → Job marked failed
+- Retry: Upload → Process → Fail → Retry → New job queued
+- Limit enforcement: Upload 4 files → 3rd queued → 4th rejected (HTTP 429)
+
+E2E Tests:
+1. Upload attachment → OCR queued → Panel shows "Queued" badge → Processing → Completed → Dismiss
+2. Upload attachment → OCR processing → Cancel from panel → Job fails → "X" button dismisses
+3. Upload attachment → OCR fails → "Try again" button → New job queued → Completes successfully
+4. Upload 3 attachments simultaneously → 1 processing + 2 queued → 4th upload blocked with error
+5. OCR completes → Reviewed baseline exists → Baseline reset to draft → User must re-review
+
 **Status**
 🚧 Tentative (UI/UX target established, backend subject to v8.9 redesign)
 **Last Updated:** 2026-02-06 (Post-B3 refinements)
 
 ---
 
-## v8.7 — ML Model Training & Fine-Tuning 📋 (Planned)
+## v8.7 — Table Review for Structured Document Data 📋 (Planned)
+
+**What this is**
+- User-driven table review for structured data (line items, loan summaries, usage breakdowns)
+- Column-to-field mapping with bulk validation
+- Light editing (fix OCR mistakes, remove rows)
+- Per-table confirmation workflow
+- Multiple tables per document support
+
+**What this is not**
+- ❌ Not automatic table detection (user must explicitly choose "Review as Table")
+- ❌ Not AI-guessed field mappings (user assigns fields from Field Library)
+- ❌ Not data transformation (no formulas, mass edits)
+- ❌ Not required (users can skip tables and use field-by-field assignment)
+
+**Design Intent**
+Allow users to review structured grids as tables instead of extracting every value one-by-one, while preserving validation, auditability, and explicit user control.
+
+**Dependencies**
+- **REQUIRES:** v8.6 (Field-Based Extraction Assignment & Baseline)
+- **EXTENDS:** v8.6 field validation system (reuses field_library rules)
+- **NEW DATA MODEL:** `baseline_tables`, `baseline_table_cells`, `baseline_table_column_mappings`
+
+**Key Principles**
+- **Nothing automatic** - User must choose "Review this section as a table"
+- **Field Library integration** - Only pre-configured fields allowed (no ad-hoc columns)
+- **Validation per column** - All cells validated against assigned field type
+- **Confirmation per table** - Independent of other tables or baseline confirmation
+- **Audit trail** - All actions logged (assign column, edit cell, confirm table)
+
+**Architecture**
+
+**Database Schema:**
+- `baseline_tables`: id, baselineId, tableIndex, tableLabel, status (draft/confirmed), rowCount, columnCount, confirmedAt, confirmedBy, createdAt, updatedAt
+  - Status: `draft` (user editing) | `confirmed` (locked, immutable)
+  - tableIndex: 0-based index for multiple tables in one document
+  - tableLabel: Optional user label (e.g., "Line Items", "Loan Summary")
+
+- `baseline_table_cells`: id, tableId, rowIndex, columnIndex, cellValue, validationStatus, validationError, correctedFrom, correctionReason
+  - Unique constraint: `(tableId, rowIndex, columnIndex)`
+  - validationStatus: `valid` | `invalid` | `pending`
+  - Stores values as TEXT, validated against field type rules
+
+- `baseline_table_column_mappings`: id, tableId, columnIndex, fieldKey (FK to field_library), assignedBy, assignedAt
+  - Unique constraint: `(tableId, columnIndex)` - one field per column
+  - Maps table columns to Field Library fields
+
+**User Flow:**
+1. User uploads document with tables (e.g., invoice with line items)
+2. User opens review page (v8.6 three-panel layout)
+3. User selects section and clicks "Review as Table"
+4. System displays editable grid
+5. User assigns field to each column (dropdown from Field Library)
+6. System validates all cells in column against field rules
+7. User fixes validation errors (edit cells or remove rows)
+8. User confirms table (locks data as immutable)
+9. Confirmed table data available for downstream use (record creation, export)
+
+**What Users Can Do:**
+- ✏️ **Edit individual cells** - Fix OCR mistakes (e.g., "INV-123" → "INV-1234")
+- 🗑 **Remove rows** - Delete incorrect lines (e.g., header row misdetected as data)
+- ✅ **Confirm table** - Lock data as immutable baseline
+
+**What Users CANNOT Do:**
+- ❌ Change table structure (add/remove columns)
+- ❌ Apply formulas or calculations
+- ❌ Mass transform data (e.g., "uppercase all values in column")
+- ❌ Bypass validation rules (must fix errors before confirming)
+
+**Multiple Tables Support:**
+- Single document may contain zero, one, or multiple tables
+- Each table reviewed independently
+- Each table has its own validation state
+- One table failing validation does not block others
+- Example: Invoice with "Line Items" table and "Tax Summary" table
+
+**Validation:**
+- Column assignment triggers validation of all cells in that column
+- Validation uses same rules as v8.6 field assignments (varchar, int, decimal, date, currency, etc.)
+- Invalid cells highlighted in red with error tooltip
+- Table cannot be confirmed until all validation errors resolved
+- User must explicitly fix errors (no auto-correction)
+
+**Confirmation:**
+- "Confirm Table" button disabled until all cells valid
+- Confirmation modal shows summary: "Confirm X rows × Y columns?"
+- On confirm, table status → `confirmed`, becomes read-only
+- Confirmation logged with audit entry (who, when, row/column count)
+
+**Utilization Tracking:**
+- Same rules as v8.6 baseline utilization (Category A/B/C)
+- Table data used for authoritative purposes → baseline marked as utilized
+- Utilized baselines lock all table edits (same as field assignments)
+- Categories:
+  - **A (Authoritative record)**: Table data used to create permanent record → never redo
+  - **B (Workflow approval)**: Table data used in workflow decision → never redo
+  - **C (Data export)**: Table data exported externally → redo only after archive
+
+**Governance Alignment**
+- **Explicit Intent:** User must choose "Review as Table" (no auto-detection or auto-conversion)
+- **Auditability:** All actions logged (table creation, column assignment, cell edits, row deletion, confirmation)
+- **Validation-first:** Cannot confirm until all validation errors resolved
+- **Read-only after confirmation:** Confirmed tables immutable (same as v8.6 baselines)
+- **Utilization locking:** Table edits blocked after data used for authoritative purposes
+
+**Milestones (8 total):**
+
+**Milestone 8.7.1: Table Data Model**
+
+NEW TABLES:
+
+`baseline_tables`
+- id: UUID PRIMARY KEY
+- baselineId: FK to extraction_baselines (one baseline can have multiple tables)
+- tableIndex: INT (0-based, for ordering multiple tables)
+- tableLabel: VARCHAR(255) NULLABLE (user-assigned name like "Line Items")
+- status: ENUM('draft', 'confirmed') DEFAULT 'draft'
+- rowCount: INT (number of data rows, excluding headers)
+- columnCount: INT (number of columns)
+- confirmedAt: TIMESTAMP NULLABLE
+- confirmedBy: FK to users NULLABLE
+- createdAt: TIMESTAMP
+- updatedAt: TIMESTAMP
+- UNIQUE(baselineId, tableIndex)
+
+`baseline_table_cells`
+- id: UUID PRIMARY KEY
+- tableId: FK to baseline_tables CASCADE DELETE
+- rowIndex: INT (0-based)
+- columnIndex: INT (0-based)
+- cellValue: TEXT (stored as string, validated against mapped field type)
+- validationStatus: ENUM('valid', 'invalid', 'pending') DEFAULT 'pending'
+- validationError: TEXT NULLABLE (e.g., "Expected integer, got 'abc'")
+- correctedFrom: TEXT NULLABLE (original value before user edit)
+- correctionReason: TEXT NULLABLE (required if correctedFrom is not null)
+- correctedAt: TIMESTAMP NULLABLE
+- correctedBy: FK to users NULLABLE
+- UNIQUE(tableId, rowIndex, columnIndex)
+- INDEX(tableId, validationStatus) for fast error queries
+
+`baseline_table_column_mappings`
+- id: UUID PRIMARY KEY
+- tableId: FK to baseline_tables CASCADE DELETE
+- columnIndex: INT (0-based)
+- fieldKey: FK to field_library.field_key
+- assignedBy: FK to users
+- assignedAt: TIMESTAMP
+- UNIQUE(tableId, columnIndex) - one field per column
+- INDEX(tableId) for fast column lookups
+
+Migration script:
+- Create three tables with indexes
+- Add foreign key constraints with CASCADE DELETE
+- Seed test data: Sample table with 5 rows × 3 columns
+
+**Milestone 8.7.2: Table CRUD Service**
+
+NEW SERVICE: `TableManagementService` (apps/api/src/baselines/table-management.service.ts)
+
+Methods:
+
+`createTable(baselineId, userId, options)`
+- Input: { rowCount, columnCount, tableLabel?, cellValues: string[][] }
+- Validation: Baseline must exist and be in draft/reviewed state
+- Creates baseline_tables entry + baseline_table_cells (rowCount × columnCount entries)
+- Returns: { tableId, rowCount, columnCount, cells: Cell[] }
+
+`updateCell(tableId, rowIndex, columnIndex, newValue, userId, correctionReason?)`
+- Validation: Table must be in draft state (not confirmed)
+- If cell has existing value: requires correctionReason
+- Updates baseline_table_cells
+- Triggers validation via FieldAssignmentValidator (if column mapped)
+- Returns: { cellId, newValue, validationStatus, validationError? }
+
+`deleteRow(tableId, rowIndex, userId, reason)`
+- Validation: Table must be in draft state
+- Deletes all cells in row (WHERE tableId = X AND rowIndex = Y)
+- Renumbers subsequent rows (rowIndex > deleted row → rowIndex - 1)
+- Logs audit event: { action: 'delete_row', tableId, rowIndex, reason }
+- Returns: { success: true, newRowCount }
+
+`assignColumnToField(tableId, columnIndex, fieldKey, userId)`
+- Validation: Field must exist in field_library
+- Creates baseline_table_column_mappings entry
+- Triggers bulk validation: All cells in column validated against field character_type
+- Updates baseline_table_cells.validationStatus for all cells in column
+- Returns: { columnIndex, fieldKey, validationResults: { rowIndex, status, error? }[] }
+
+`confirmTable(tableId, userId)`
+- Validation: All cells must have validationStatus='valid'
+- Sets baseline_tables.status='confirmed', confirmedAt=NOW(), confirmedBy=userId
+- Locks table (no further edits allowed)
+- Logs audit event: { action: 'confirm_table', tableId, userId, rowCount, columnCount }
+- Returns: { success: true, confirmedAt }
+
+**Milestone 8.7.3: Table API Endpoints**
+
+NEW CONTROLLER: `TableController` (apps/api/src/baselines/table.controller.ts)
+
+Endpoints:
+
+`POST /baselines/:baselineId/tables`
+- Body: { rowCount, columnCount, tableLabel?, cellValues: string[][] }
+- Auth: User must own baseline or be assigned
+- Returns 201: { table: Table, cells: Cell[] }
+- Returns 400: Invalid cell values (wrong dimensions)
+- Returns 403: Baseline already confirmed (cannot add tables)
+
+`GET /baselines/:baselineId/tables`
+- Query: ?includeConfirmed=true (default: false, only draft tables)
+- Returns 200: { tables: Table[], columnMappings: ColumnMapping[] }
+
+`GET /tables/:tableId`
+- Returns 200: { table: Table, cells: Cell[][], columnMappings: ColumnMapping[] }
+- Cells returned as 2D array grouped by row
+
+`PUT /tables/:tableId/cells/:rowIndex/:columnIndex`
+- Body: { value: string, correctionReason?: string }
+- Auth: User must own table's baseline
+- Returns 200: { cell: Cell, validationStatus, validationError? }
+- Returns 403: Table already confirmed (read-only)
+- Returns 409: Correction reason required (cell had previous value)
+
+`DELETE /tables/:tableId/rows/:rowIndex`
+- Body: { reason: string } (required)
+- Auth: User must own table's baseline
+- Returns 200: { success: true, newRowCount }
+- Returns 403: Table already confirmed
+
+`POST /tables/:tableId/columns/:columnIndex/assign`
+- Body: { fieldKey: string }
+- Auth: User must own table's baseline
+- Returns 200: { columnMapping: ColumnMapping, validationResults: ValidationResult[] }
+- Returns 400: Field not found or invalid type
+- Returns 409: Column already mapped (use PUT to change)
+
+`POST /tables/:tableId/confirm`
+- Body: None
+- Auth: User must own table's baseline
+- Returns 200: { success: true, confirmedAt }
+- Returns 400: Table has validation errors (cannot confirm)
+- Returns 403: Baseline already utilized (cannot modify)
+
+Error handling: All endpoints return standardized error format (same as v8.6)
+
+**Milestone 8.7.4: Table Selection UI**
+
+NEW COMPONENT: `TableCreationModal` (apps/web/app/components/tables/TableCreationModal.tsx)
+
+Trigger:
+- Review page (/attachments/:id/review) shows button: "Create Table from Selection"
+- Visible only when baseline status='draft' or 'reviewed'
+
+User Flow:
+1. User selects text segments from Extracted Text Pool (multi-select with checkboxes)
+2. User clicks "Create Table from Selection"
+3. Modal appears with two options:
+   - **Option A: Grid Detection** - "Auto-detect rows and columns" (uses spacing analysis)
+   - **Option B: Manual Definition** - "I'll define the table structure myself"
+
+Option A (Auto-detect):
+- System analyzes selected segments:
+  - Detect row breaks (vertical spacing > 1.5× average line height)
+  - Detect column breaks (horizontal spacing > 3× average character width)
+  - Display preview grid with detected cells
+- User reviews grid:
+  - Green borders: Detected cells
+  - Red borders: Ambiguous cells (low confidence < 0.7)
+- User can adjust:
+  - Merge cells (drag to combine)
+  - Split cells (click divider line)
+  - Remove rows (click row header × button)
+- Modal shows: "Detected X rows × Y columns"
+- Actions: [Cancel] [Adjust Grid] [Create Table]
+
+Option B (Manual):
+- User inputs:
+  - Row count: Number input (min 1, max 100)
+  - Column count: Number input (min 1, max 20)
+  - Table label: Text input (optional, e.g., "Line Items")
+- User assigns text segments to cells:
+  - Drag segment from list → Drop into grid cell
+  - Each cell shows assigned text (truncated)
+- Actions: [Cancel] [Create Empty Table] [Create Table]
+
+On "Create Table":
+- POST /baselines/:id/tables with cellValues
+- Redirect to Table Editor (Milestone 8.7.5)
+- Show success toast: "Table created with X rows × Y columns"
+
+**Milestone 8.7.5: Table Editor UI**
+
+NEW COMPONENT: `TableEditorPanel` (apps/web/app/components/tables/TableEditorPanel.tsx)
+
+Layout:
+- Replaces Field Assignment Panel when table is open
+- Fixed-height header: Table label + status badge + action buttons
+- Scrollable grid area (virtual scrolling for tables > 50 rows)
+- Bottom toolbar: Column mapping controls
+
+Grid Component:
+- Library: `react-data-grid` or `@tanstack/react-table` with editable cells
+- Features:
+  - Inline editing: Click cell → Edit mode → Blur to save
+  - Row selection: Checkbox column for bulk delete
+  - Column headers: Click to open mapping dropdown
+  - Validation indicators: Red border + error icon for invalid cells
+  - Keyboard navigation: Arrow keys, Tab, Enter to navigate/edit
+
+Column Mapping:
+- Column header shows:
+  - Current field (if mapped): "Invoice Number (varchar)" with green checkmark
+  - Unmapped: "Map to field..." with gray dropdown icon
+- Click header → Dropdown appears:
+  - Search field library fields (typeahead)
+  - Field list: [field_key] - Label (character_type)
+  - On select: POST /tables/:id/columns/:index/assign
+  - Show loading spinner during validation
+  - After validation: Update all cells in column with validation status
+
+Cell Editing:
+- Click cell → Input appears (type based on mapped field):
+  - varchar: Text input
+  - int: Number input (no decimals)
+  - decimal: Number input (2 decimals)
+  - date: Date picker
+  - currency: Text input with uppercase transform + ISO 4217 validation
+- On blur:
+  - PUT /tables/:id/cells/:row/:col with new value
+  - If cell had previous value: Show modal "Why are you correcting this?"
+  - Validation runs automatically
+  - Cell border color: Green (valid) / Red (invalid)
+  - Hover invalid cell → Tooltip shows error message
+
+Row Deletion:
+- Select rows via checkboxes
+- Click "Delete Rows" button
+- Modal: "Why are you deleting X rows?" (required reason)
+- DELETE /tables/:id/rows/:index (one request per row, sequential)
+- Rows removed from grid with fade animation
+
+Validation Status Bar:
+- Bottom bar shows: "X errors remaining" (count of invalid cells)
+- Click "Show Errors" → Filters grid to only invalid cells
+- "Confirm Table" button enabled only when errors = 0
+
+**Milestone 8.7.6: Table Confirmation UI**
+
+NEW COMPONENT: `TableConfirmationModal` (apps/web/app/components/tables/TableConfirmationModal.tsx)
+
+Trigger:
+- User clicks "Confirm Table" button (only enabled when all cells valid)
+
+Modal Content:
+- Header: "Confirm Table: [tableLabel]"
+- Summary:
+  - Rows: X data rows
+  - Columns: Y columns
+  - Mapped fields: Z/Y columns mapped
+  - Validation: All cells valid ✓
+- Warning: "Once confirmed, this table becomes read-only. You cannot edit cells or delete rows."
+- Checkbox: "I understand this table will be locked after confirmation"
+- Actions: [Cancel] [Confirm Table]
+
+On Confirm:
+- POST /tables/:id/confirm
+- Update UI:
+  - Status badge: Draft → Confirmed (green)
+  - Disable all inputs (cells, row delete, column mapping)
+  - Show read-only indicator: "🔒 Table confirmed on [date] by [user]"
+  - Remove "Confirm Table" button
+- Show success toast: "Table confirmed successfully"
+
+Read-Only Mode:
+- All cells display as plain text (no input fields)
+- No row checkboxes (cannot delete)
+- Column headers show mapped field (no dropdown)
+- Hover cells: Show tooltip "Table is locked (confirmed)"
+- Export button enabled: "Export to CSV" (downloads table data)
+
+**Milestone 8.7.7: Multiple Tables Support**
+
+NEW COMPONENT: `TableListPanel` (apps/web/app/components/tables/TableListPanel.tsx)
+
+Display:
+- Review page sidebar: "Tables (N)" section
+- Collapsible list of tables (collapsed by default)
+- Each table card shows:
+  - Table label or "Table #N" if no label
+  - Dimensions: "X rows × Y columns"
+  - Status badge: Draft (yellow) / Confirmed (green)
+  - Validation indicator: "X errors" (red) or "All valid" (green)
+  - Actions: [Open] [Delete] (delete only for draft tables)
+
+Interactions:
+- Click [Open] → Loads table in Table Editor Panel (replaces Field Assignment Panel)
+- Click [Delete] → Confirmation modal: "Delete table '[label]'? This cannot be undone."
+- Create new table → Button: "+ Create Table" (opens Table Creation Modal)
+- Switch between tables → Changes editor panel content, preserves scroll position
+
+Independent Confirmation:
+- Each table has its own status (draft/confirmed)
+- Confirming one table does NOT confirm others
+- Baseline can have mix: Table 1 (confirmed) + Table 2 (draft)
+- Baseline confirmation (Milestone 8.6.6) requires ALL tables confirmed
+- If any table has status='draft': Baseline confirmation blocked
+- Error message: "Cannot confirm baseline: Table 'Line Items' is not confirmed"
+
+**Milestone 8.7.8: Table Data Utilization**
+
+EXTEND: `UtilizationTrackingService` (from v8.6 Milestone 8.6.13)
+
+New Method:
+`markTableUtilized(tableId, type, metadata)`
+- Marks baseline as utilized (same rules as v8.6)
+- Logs which table was used: { tableId, utilizationType, recordId }
+- Sets baseline.utilized_at, baseline.utilization_type
+
+Utilization Categories (same as v8.6):
+- **Category A (Authoritative record)**: Table data used to create permanent record
+  - Example: Line items inserted into `invoice_line_items` table
+  - Locks: Entire baseline (including this table and all other tables)
+- **Category B (Workflow approval)**: Table data used in approval decision
+  - Example: Loan summary reviewed and approved by manager
+  - Locks: Entire baseline
+- **Category C (Data export)**: Table data exported externally
+  - Example: Table exported to CSV and sent to accounting system
+  - Locks: Entire baseline (redo allowed after archival)
+
+UI Changes:
+- Baseline utilization indicator (from v8.6) now shows table info:
+  - "⚠️ Table 'Line Items' used to create 12 invoice records"
+  - Click → Modal with details: Which table, which records, when, by whom
+- Table Editor: If baseline utilized, show banner:
+  - "🔒 This baseline is locked. Table data was used for [utilizationType]."
+  - All table interactions disabled (cell edit, row delete, column mapping)
+- Table List Panel: Utilized tables show lock icon 🔒
+
+Backend Enforcement:
+- All table mutation endpoints check baseline.utilization_type
+- If utilized: Return 403 with error message
+- Viewing table data always allowed (read-only access)
+
+**v8.7 Cross-Cutting Concerns**
+
+**Performance Requirements:**
+
+Table Operations:
+- Create table: < 500ms for 100 rows × 10 columns (1000 cell inserts)
+- Load table: < 300ms for 100 rows × 10 columns (single query with JOIN)
+- Update cell: < 100ms (single UPDATE + validation)
+- Bulk validation (all cells in column): < 1s for 1000 cells
+- Virtual scrolling: Render only visible rows (50 rows buffer), infinite scroll for 1000+ rows
+
+Grid Rendering:
+- Initial render: < 500ms for 100 visible rows
+- Scroll performance: 60 FPS (16ms per frame)
+- Cell edit response: < 50ms (optimistic update, background save)
+
+**Security Considerations:**
+
+SQL Injection Prevention:
+- All cell values: Parameterized queries (NEVER string interpolation)
+- Dynamic row/column queries: Whitelist-validated indexes (integers only)
+
+XSS Prevention:
+- Cell values: HTML-escaped before rendering in grid
+- Table labels: Sanitized (strip <script>, <iframe>, event handlers)
+
+Data Validation:
+- Max table size: 1000 rows × 50 columns (50,000 cells hard limit)
+- Cell value max length: 5000 characters
+- Table label max length: 255 characters
+
+Authorization:
+- All table endpoints: Verify user owns baseline
+- Column mapping: Verify field exists in field_library (prevent injection)
+- Utilization tracking: Only system services can mark utilized
+
+**Testing Strategy:**
+
+Unit Tests:
+- TableManagementService: Test create, update, delete, confirm operations
+- FieldAssignmentValidator: Test bulk validation (all character_types)
+- Cell validation: Edge cases (empty, null, max length, special characters)
+
+Integration Tests:
+- Table lifecycle: Create → Map columns → Edit cells → Confirm → Utilize → Lock
+- Multiple tables: Create 3 tables → Confirm 2 → Confirm baseline (should fail)
+- Concurrent edits: Two users editing different cells in same table (optimistic locking)
+
+E2E Tests:
+1. Create table from selection → Map columns → Fix validation errors → Confirm
+2. Create 2 tables → Confirm table 1 → Edit table 2 → Confirm table 2 → Confirm baseline
+3. Confirm table → Utilize (export CSV) → Attempt edit (should fail with 403)
+4. Delete row → Verify renumbering → Confirm table → Export (verify row counts match)
+
+**Status**
+📋 Planned (not started)
+
+---
+
+## v8.8 — ML-Assisted Field Suggestions 📋 (Planned)
+
+**What this is**
+- ML-based field-to-text matching suggestions using Sentence-BERT
+- ML-assisted table detection (suggests structured grids, user decides)
+- Confidence scoring (High/Medium/Low)
+- Explicit accept/modify/clear workflows
+- No auto-application (suggestions only)
+
+**What this is not**
+- ❌ Not automatic field assignment (user must accept suggestions)
+- ❌ Not automatic table creation (ML suggests, user converts)
+- ❌ Not required (manual workflow works without ML)
+- ❌ Not training/learning (that's v8.9)
+
+**Design Intent**
+Provide ML assistance to speed up field and table workflows, while preserving explicit user control and auditability.
+
+**Dependencies**
+- **REQUIRES:** v8.6 (baseline_field_assignments table must exist)
+- **REQUIRES:** v8.7 (baseline_tables for table detection suggestions)
+- **NEW INFRASTRUCTURE:** `apps/ml-service/` FastAPI microservice (Sentence-BERT)
+
+**Key Principles**
+- **Suggestions, not automation** - ML suggests, user decides
+- **Non-blocking UI** - Suggestions appear as banners, don't interrupt workflow
+- **Graceful degradation** - System works without ML (if ml-service down)
+- **Audit trail** - Track suggestion acceptance, modification, rejection
+
+**Architecture**
+
+**ML Service Infrastructure:**
+- NEW microservice: `apps/ml-service/` (FastAPI + Sentence-BERT)
+- Model: `all-MiniLM-L6-v2` (open source, Apache 2.0 license)
+- Backend network only (not exposed to internet)
+- Resource limits: 1GB memory, 1 CPU core
+
+**Database Schema:**
+- `ml_model_versions`: id, modelName, version, filePath, metrics (JSON), trainedAt, isActive, createdBy
+  - Tracks ML model versions for A/B testing and rollback
+
+- Extend `baseline_field_assignments`:
+  - Add `suggestionConfidence` DECIMAL(3,2) (0.00-1.00)
+  - Add `suggestionAccepted` BOOLEAN (true=accepted, false=modified/rejected, null=manual)
+  - Add `modelVersionId` FK to ml_model_versions
+
+- `ml_table_suggestions`: id, attachmentId, regionId, rowCount, columnCount, confidence, boundingBox (JSON), cellMapping (JSON), status (pending/ignored/converted), suggestedAt, ignoredAt, convertedAt
+  - Tracks ML-detected table regions
+
+**Capability A: Field Suggestion Workflow**
+
+1. User opens review page
+2. User clicks "Get Suggestions" button (explicit action)
+3. ML service:
+   - Embeds all extracted text segments using Sentence-BERT
+   - Embeds all active field labels from Field Library
+   - Computes cosine similarity between segments and fields
+   - Returns top match per segment with confidence score (>= 0.5)
+4. System creates field assignments with `suggestionConfidence` populated
+5. UI shows suggested values with confidence badges:
+   - **High (>= 0.80)**: Green badge
+   - **Medium (0.60-0.79)**: Yellow badge
+   - **Low (< 0.60)**: Red badge
+6. User actions:
+   - **Accept**: Confirms suggestion as-is (sets `suggestionAccepted = true`)
+   - **Modify**: Edits value, requires correction reason (sets `suggestionAccepted = false`, `correctedFrom` = original suggestion)
+   - **Clear**: Deletes assignment, requires reason (logs `suggestionAccepted = false` before delete)
+
+**Capability B: Table Detection Workflow**
+
+1. User opens review page
+2. System auto-triggers table detection (background, non-blocking)
+3. ML service analyzes extracted text segments:
+   - Grid pattern detection (aligned rows/columns)
+   - Spacing consistency analysis
+   - Header row detection
+   - Cell boundary detection
+4. If table detected (confidence >= 0.60):
+   - Non-blocking banner appears: "Detected a structured grid (Loan/Return - 5 rows × 3 columns). Convert to Table review?"
+   - Actions: **Preview** | **Ignore**
+5. User clicks "Preview":
+   - Modal shows grid preview with detected cells
+   - Confidence badge (High/Medium/Low)
+   - Dimensions displayed
+6. User clicks "Convert to Table":
+   - Creates draft table in `baseline_tables` (v8.7 workflow)
+   - Marks suggestion as `converted`
+   - Redirects to Table Editor
+7. User clicks "Ignore":
+   - Marks suggestion as `ignored`
+   - Banner disappears
+8. Multiple tables: Each table gets its own suggestion banner
+
+**What ML Suggests:**
+- Field-to-text matches (which segment matches which field)
+- Table regions (which segments form a structured grid)
+- Column boundaries (where columns start/end)
+- Row boundaries (which segments belong to same row)
+- Header rows (likely column headers)
+
+**What ML Does NOT Do:**
+- ❌ Auto-assign fields (user must accept)
+- ❌ Auto-create tables (user must convert)
+- ❌ Auto-map columns to fields (user assigns in Table Editor)
+- ❌ Auto-confirm data (user must explicitly confirm)
+
+**Error Handling:**
+- If ml-service is down: Return empty suggestions, show message "Suggestions unavailable. Continue with manual assignment."
+- If ml-service times out: Log error, return empty array
+- System never blocks on ML failures (graceful degradation)
+
+**Governance Alignment**
+- **Explicit Intent:** User must click "Get Suggestions" (not automatic on page load for fields)
+- **Non-blocking:** Table detection banner can be dismissed
+- **Auditability:** Track suggestion acceptance, modification, rejection with model version
+- **No auto-mutation:** Suggestions are annotations until user accepts/converts
+
+**Milestones (11 total):**
+
+**Capability A: ML Service Infrastructure (5 milestones)**
+- **8.8.1** - ML Data Model & Schema (extend tables for ML tracking)
+- **8.8.2** - ML Service Container Setup (FastAPI + Sentence-BERT)
+- **8.8.3** - Semantic Similarity Matching Service (field-to-text inference)
+- **8.8.4** - ML Client Service (NestJS HTTP client)
+- **8.8.5** - Suggestion API Endpoint (apply suggestions to baseline)
+
+**Capability B: Field Suggestion Application (3 milestones)**
+
+**Milestone 8.8.6: Suggestion Trigger UI**
+
+NEW COMPONENT: `SuggestionTrigger` (apps/web/app/components/suggestions/SuggestionTrigger.tsx)
+
+Location:
+- Review page (/attachments/:id/review) - Field Assignment Panel header
+- Positioned next to baseline status badge
+
+UI Elements:
+- Button: "✨ Get Suggestions" (primary blue, sparkle icon)
+- Loading state: "Generating suggestions..." (disabled, spinner animation)
+- Success state: "Suggestions applied ✓" (green checkmark, 2s timeout)
+- Error state: "Suggestions unavailable" (red, show retry button)
+
+Behavior:
+- Click → POST /baselines/:id/suggestions/generate
+- Request payload: { baselineId, modelVersion: 'latest' }
+- Response: { suggestedAssignments: FieldAssignment[], confidence: number }
+- On success:
+  - Apply suggestions to Field Assignment Panel (pre-fill fields with values)
+  - Add confidence badges to each suggested field (High/Medium/Low)
+  - Enable accept/modify/clear actions (Milestone 8.8.8)
+  - Show toast: "X field suggestions generated"
+- On error (ml-service down):
+  - Show error message: "Suggestion service temporarily unavailable. Continue with manual assignment."
+  - Button text: "Retry Suggestions"
+  - Manual workflow remains available (system not blocked)
+
+Grace Period (First-Time UX):
+- First time user opens review page: Button shows tooltip
+- Tooltip: "ML can suggest field matches. Click to try!" (auto-dismiss after 5s)
+- Tooltip shown once per user (localStorage: suggestions_tooltip_shown)
+
+**Milestone 8.8.7: Suggestion Display + Badges**
+
+NEW COMPONENT: `SuggestedFieldInput` (apps/web/app/components/suggestions/SuggestedFieldInput.tsx)
+
+Extends: FieldInput component (from v8.6 Milestone 8.6.12)
+
+Visual Changes:
+- Pre-filled value: Text shown in lighter gray (not black) to indicate suggestion
+- Confidence badge: Pill-shaped badge next to field label
+  - **High (>= 0.80)**: Green pill "High confidence" + green border on input
+  - **Medium (0.60-0.79)**: Yellow pill "Medium confidence" + yellow border on input
+  - **Low (0.50-0.59)**: Red pill "Low confidence" + red border on input
+- Suggestion source: Small text below input "Suggested from: [segment text, truncated to 30 chars]"
+- Hover behavior: Tooltip shows full extracted text segment + confidence score (e.g., "0.87")
+
+Interaction States:
+1. **Initial (suggested)**: Gray text, colored border, badge visible
+2. **Accepted**: Text turns black, green checkmark icon appears, badge remains
+3. **Modified**: User edits value → triggers correction reason modal (Milestone 8.8.8)
+4. **Cleared**: User deletes value → triggers clear reason modal (Milestone 8.8.8)
+
+Batch Suggestion Indicator:
+- Panel header shows: "X of Y fields auto-suggested" (e.g., "12 of 20 fields")
+- Progress bar: Green (accepted) / Yellow (pending) / Red (modified/cleared)
+- Click progress bar → Filter panel to show only suggested fields
+
+**Milestone 8.8.8: Accept/Modify/Clear Actions**
+
+NEW COMPONENT: `SuggestionActionModal` (apps/web/app/components/suggestions/SuggestionActionModal.tsx)
+
+Action Flows:
+
+**Accept Suggestion:**
+- User does NOT edit pre-filled value
+- User clicks "Accept" button (appears next to suggested fields)
+- No modal required (implicit acceptance)
+- Backend: POST /baselines/:id/assignments with { suggestionAccepted: true }
+- UI updates:
+  - Green checkmark icon appears
+  - Border color: Gray (neutral, suggestion consumed)
+  - Badge remains visible for audit trail
+  - Field added to "accepted" count
+
+**Modify Suggestion:**
+- User edits pre-filled value (onChange event)
+- On blur: Modal appears
+- Modal title: "Why are you changing this suggestion?"
+- Modal content:
+  - Original suggestion: "[value]" (High confidence)
+  - Your value: "[new value]"
+  - Reason dropdown: Pre-defined options + "Other"
+    - "OCR error in source text"
+    - "Wrong field match (should be different field)"
+    - "Formatting preference (e.g., uppercase)"
+    - "Partial match (missing info)"
+    - "Other (explain below)"
+  - Text area: Correction reason (required if "Other" selected, min 10 chars)
+- Actions: [Cancel] [Save Correction]
+- Backend: POST /baselines/:id/assignments with:
+  ```json
+  {
+    "fieldKey": "invoice_number",
+    "assignedValue": "INV-2024-001",
+    "correctedFrom": "INV2024001",
+    "correctionReason": "Formatting preference (added dashes)",
+    "suggestionAccepted": false,
+    "suggestionConfidence": 0.85,
+    "modelVersionId": "uuid"
+  }
+  ```
+- UI updates:
+  - Badge color: Orange "Modified"
+  - Text turns black
+  - Shows correction icon (pencil with checkmark)
+
+**Clear Suggestion:**
+- User deletes value entirely (backspace or clear button)
+- On blur: Modal appears
+- Modal title: "Why are you removing this suggestion?"
+- Modal content:
+  - Suggested value: "[value]" (High confidence)
+  - Reason dropdown:
+    - "Incorrect field match"
+    - "Field not applicable to this document"
+    - "Duplicate field (already assigned elsewhere)"
+    - "Other (explain below)"
+  - Text area: Reason (required if "Other", min 10 chars)
+- Actions: [Cancel] [Clear Field]
+- Backend: DELETE /baselines/:id/assignments/:fieldKey with body:
+  ```json
+  {
+    "reason": "Field not applicable to this document",
+    "suggestionRejected": true,
+    "suggestionConfidence": 0.72,
+    "modelVersionId": "uuid"
+  }
+  ```
+- UI updates:
+  - Field empty
+  - Badge removed
+  - Shows "cleared" in audit log
+
+Batch Actions (Enhancement):
+- Select multiple suggested fields (checkboxes)
+- Bulk actions:
+  - "Accept All Selected" → Accepts all without modals
+  - "Clear All Selected" → Requires single reason (applies to all)
+- Max selection: 20 fields at once
+- Progress indicator: "Accepting 12 of 20 fields..." (sequential API calls)
+
+**Capability C: Table Detection & Suggestion (3 milestones)**
+
+**Milestone 8.8.9: Table Detection Model**
+
+NEW SERVICE: ML Table Detection (apps/ml-service/detection/table_detector.py)
+
+Algorithm: Rule-Based + Heuristics (no ML training required for v8.8)
+
+Input:
+- `extracted_text_segments`: List of segments with { text, boundingBox, confidence }
+- `threshold`: Minimum confidence for table detection (default 0.60)
+
+Detection Steps:
+
+1. **Grid Pattern Analysis**
+   - Group segments by vertical position (± 5px tolerance)
+   - Identify potential rows: Groups with >= 2 segments at same Y-coordinate
+   - Calculate average horizontal spacing between segments
+   - Identify potential columns: Vertical alignment across rows (± 10px tolerance)
+
+2. **Spacing Consistency Check**
+   - Measure column gap consistency: Coefficient of variation < 0.3 (30% variance allowed)
+   - Measure row height consistency: Standard deviation < 10px
+   - If inconsistent: Reduce confidence score by 0.2
+
+3. **Header Row Detection**
+   - First row analysis: Check for bold text, larger font, or underline (from OCR metadata)
+   - Keyword matching: ["Item", "Description", "Qty", "Amount", "Total", "Date", "Invoice"]
+   - If header detected: Increase confidence by 0.15
+
+4. **Cell Boundary Detection**
+   - Column boundaries: Midpoint between adjacent segments
+   - Row boundaries: Average vertical spacing / 2
+   - Cell assignment: Each segment assigned to nearest cell (Euclidean distance)
+
+5. **Confidence Calculation**
+   ```python
+   base_confidence = 0.5
+   + (grid_regularity_score * 0.2)  # 0-1 based on spacing consistency
+   + (header_detected * 0.15)        # Binary: 0 or 0.15
+   + (min_rows_met * 0.1)            # >= 3 rows → 0.1
+   + (min_cols_met * 0.05)           # >= 2 cols → 0.05
+   = final_confidence (0-1.0)
+   ```
+
+Output:
+```json
+{
+  "tableDetected": true,
+  "confidence": 0.75,
+  "rowCount": 5,
+  "columnCount": 3,
+  "boundingBox": { "x1": 50, "y1": 100, "x2": 550, "y2": 300 },
+  "cells": [
+    { "rowIndex": 0, "columnIndex": 0, "segmentId": "uuid", "text": "Item" },
+    { "rowIndex": 0, "columnIndex": 1, "segmentId": "uuid", "text": "Quantity" }
+  ],
+  "headerRowIndex": 0,
+  "suggestedLabel": "Line Items"  // Based on header keywords
+}
+```
+
+False Positive Prevention:
+- Reject if row count < 2 (not a table, just aligned text)
+- Reject if column count < 2 (single column is a list, not a table)
+- Reject if confidence < 0.60 (too ambiguous)
+
+**Milestone 8.8.10: Table Detection API Integration**
+
+NEW ENDPOINT: POST /ml/detect-tables (apps/ml-service/routes.py)
+
+Request:
+```json
+{
+  "attachmentId": "uuid",
+  "segments": [
+    { "id": "uuid", "text": "Item", "boundingBox": { "x1": 50, "y1": 100, "x2": 100, "y2": 120 }, "confidence": 0.95 }
+  ],
+  "threshold": 0.60  // Optional, default 0.60
+}
+```
+
+Response:
+```json
+{
+  "tables": [
+    {
+      "id": "ml-table-suggestion-uuid",
+      "confidence": 0.75,
+      "rowCount": 5,
+      "columnCount": 3,
+      "boundingBox": { "x1": 50, "y1": 100, "x2": 550, "y2": 300 },
+      "cells": [...],
+      "suggestedLabel": "Line Items"
+    }
+  ],
+  "processingTime": 234  // milliseconds
+}
+```
+
+Backend Integration: `TableSuggestionService` (apps/api/src/ml/table-suggestion.service.ts)
+
+Methods:
+
+`detectTables(attachmentId, userId)`
+- Fetches extracted_text_segments for attachment
+- Calls ml-service POST /ml/detect-tables
+- Persists suggestions to ml_table_suggestions table
+- Returns: { suggestions: TableSuggestion[] }
+
+`ignoreSuggestion(suggestionId, userId)`
+- Updates ml_table_suggestions.status = 'ignored'
+- Sets ignoredAt timestamp
+- Logs audit event: { action: 'ignore_table_suggestion', suggestionId, userId }
+
+`convertSuggestionToTable(suggestionId, baselineId, userId)`
+- Validates: Baseline must exist and be in draft/reviewed state
+- Creates baseline_tables entry (from v8.7 Milestone 8.7.1)
+- Creates baseline_table_cells entries (from suggestion.cells)
+- Updates ml_table_suggestions.status = 'converted', convertedAt timestamp
+- Returns: { tableId, redirectUrl: `/tables/${tableId}` }
+
+NEW DATABASE TABLE: `ml_table_suggestions`
+- id: UUID PRIMARY KEY
+- attachmentId: FK to attachments
+- regionId: VARCHAR(255) (identifier for detected table region, e.g., "region-1")
+- rowCount: INT
+- columnCount: INT
+- confidence: DECIMAL(3,2) (0.00-1.00)
+- boundingBox: JSON ({ x1, y1, x2, y2 })
+- cellMapping: JSON (array of { rowIndex, columnIndex, segmentId, text })
+- suggestedLabel: VARCHAR(255) NULLABLE
+- status: ENUM('pending', 'ignored', 'converted') DEFAULT 'pending'
+- suggestedAt: TIMESTAMP DEFAULT NOW()
+- ignoredAt: TIMESTAMP NULLABLE
+- convertedAt: TIMESTAMP NULLABLE
+- INDEX(attachmentId, status) for fast queries
+
+**Milestone 8.8.11: Table Suggestion Banner UI**
+
+NEW COMPONENT: `TableSuggestionBanner` (apps/web/app/components/suggestions/TableSuggestionBanner.tsx)
+
+Location:
+- Review page - Above Field Assignment Panel
+- Non-blocking: Does not interrupt user workflow
+- Dismissible: User can close banner without taking action
+
+Layout:
+- Full-width banner (100% of panel width)
+- Light blue background (#EFF6FF) with blue left border (4px, #3B82F6)
+- Icon: Table icon (grid symbol) 24×24px
+- Content layout: Icon | Message | Actions (horizontal flex)
+
+Message Content:
+- Primary text: "Detected a structured grid: [suggestedLabel] ([rowCount] rows × [columnCount] columns)"
+- Confidence indicator: Badge with "High" / "Medium" / "Low" (same as field suggestions)
+- Secondary text: "This may be easier to review as a table."
+
+Actions:
+- **[Preview]** - Primary button (blue)
+- **[Ignore]** - Secondary button (gray text, no border)
+- **[X]** - Close icon (top-right corner, same as Ignore but icon-only)
+
+**Preview Modal:**
+- Modal title: "Table Preview: [suggestedLabel]"
+- Content:
+  - Grid preview (read-only, rendered with simplified table component)
+  - Shows first 10 rows (if more, show "...and X more rows")
+  - Column headers highlighted (if headerRowIndex detected)
+  - Dimensions: "[rowCount] rows × [columnCount] columns"
+  - Confidence: Badge with score (e.g., "75% confidence")
+- Actions:
+  - [Convert to Table] - Primary button
+  - [Cancel] - Secondary button
+
+On "Convert to Table":
+- POST /ml/table-suggestions/:id/convert
+- Redirects to Table Editor (v8.7 Milestone 8.7.5)
+- Banner disappears
+- Show toast: "Table created from suggestion. Review and map columns."
+
+On "Ignore" or [X]:
+- POST /ml/table-suggestions/:id/ignore
+- Banner slides up and disappears (300ms animation)
+- Suggestion status → 'ignored'
+- Does not reappear on page reload
+
+Multiple Table Suggestions:
+- If multiple tables detected: Show stacked banners (max 3 visible)
+- If > 3 tables: Show "...and X more table suggestions" with [View All] link
+- Each banner independently dismissible
+- Banners ordered by confidence (highest first)
+
+Auto-Trigger Behavior:
+- Table detection runs automatically on review page load (background)
+- Banner appears 2 seconds after page load (non-blocking delay)
+- If ml-service fails: No banner shown (graceful degradation)
+- Banner only shown if confidence >= 0.60
+
+**v8.8 Cross-Cutting Concerns**
+
+**Performance Requirements:**
+
+ML Inference:
+- Field suggestions: < 2s for 50 fields (embedding + similarity computation)
+- Table detection: < 1s for 500 text segments
+- Batch processing: Max 10 attachments queued (rate limiting)
+
+API Response Times:
+- POST /baselines/:id/suggestions/generate: < 3s (includes ML inference + DB write)
+- POST /ml/detect-tables: < 1.5s
+- GET /ml/table-suggestions/:attachmentId: < 200ms (cached results)
+
+UI Responsiveness:
+- Suggestion button click → Loading state: < 50ms
+- Pre-fill suggested values: < 300ms for 50 fields (batch UI update)
+- Banner appearance: 2s delay (configurable via feature flag)
+
+**Error Handling:**
+
+ML Service Failures:
+- Connection timeout (5s): Show "Suggestions unavailable" message
+- HTTP 500 from ml-service: Log error, show retry button
+- Model loading error: Fallback to manual workflow (no suggestions)
+- Invalid embeddings: Skip failed fields, continue with others
+
+Data Validation:
+- Confidence scores: Clamp to 0.0-1.0 range (reject if outside)
+- Suggestion acceptance: Validate field exists before saving
+- Table cell mapping: Validate rowIndex/columnIndex within bounds
+
+Rate Limiting:
+- Max 10 suggestion requests per user per hour
+- HTTP 429 response: "Suggestion quota exceeded. Try again in X minutes."
+- Admin users: Exempt from rate limiting
+
+**Security Considerations:**
+
+ML Model Protection:
+- ML service: Internal network only (not exposed to internet)
+- Model files: Read-only filesystem, no user uploads
+- Embeddings: Ephemeral (computed on-demand, not stored in DB)
+
+Data Privacy:
+- Text segments: Never sent to external APIs (Sentence-BERT runs locally)
+- User corrections: Anonymized before exporting for training (v8.9)
+- Suggestion audit trail: Track model version used (for A/B testing)
+
+Input Sanitization:
+- Text segments: Max 5000 chars (prevent memory overflow)
+- Table detection: Max 1000 segments per request
+- Confidence scores: Validated as numeric 0.0-1.0
+
+**Testing Strategy:**
+
+Unit Tests:
+- ML Service: Test table detection algorithm with synthetic grid data
+- Confidence calculation: Test edge cases (1 row, 1 column, irregular spacing)
+- Suggestion service: Mock ML responses, test acceptance/modification/rejection flows
+
+Integration Tests:
+- End-to-end suggestion flow: Request → ML inference → DB persist → UI update
+- Error handling: ML service down → Graceful degradation
+- Multiple tables: Detect 3 tables → Show 3 banners → Convert one → Ignore others
+
+E2E Tests:
+1. Click "Get Suggestions" → Accept all high-confidence → Confirm baseline
+2. Click "Get Suggestions" → Modify medium-confidence → Provide reason → Save
+3. Table detected → Preview → Convert → Map columns → Confirm table
+4. Table detected → Ignore → Banner disappears → Manual field assignment
+
+**Status**
+📋 Planned (not started)
+
+---
+
+## v8.9 — ML Model Training & Fine-Tuning 📋 (Planned)
 What this is
 
-Collect user corrections from v8.6 to build training dataset
+Collect user corrections from v8.8 to build training dataset
 Fine-tune Sentence-BERT on domain-specific field matching
 Improve suggestion accuracy over time (active learning loop)
 A/B test model versions to measure improvement
@@ -1794,7 +3015,7 @@ Not mandatory (v8.6 works with pre-trained models)
 
 
 Capability A: Correction Dataset Collection
-Milestone 8.7.1: Correction Data Schema
+Milestone 8.9.1: Correction Data Schema
 
 Use existing baseline_field_assignments table
 Filter records where corrected_from IS NOT NULL (user corrected suggestion)
@@ -1807,14 +3028,14 @@ json  {
     "confidence": 0.75,
     "accepted": true
   }
-Milestone 8.7.2: Training Data Export API
+Milestone 8.9.2: Training Data Export API
 
 GET /admin/ml/training-data (admin only)
 Query parameters: ?start_date, ?end_date, ?min_corrections=10
 Returns: JSON array of correction records
 Include: text, suggested field, actual field, confidence, accepted/rejected
 
-Milestone 8.7.3: Training Data Quality Filters
+Milestone 8.9.3: Training Data Quality Filters
 
 Exclude low-quality corrections:
 
@@ -1832,7 +3053,7 @@ Corrections on high-confidence suggestions (model was confident but wrong)
 
 
 Capability B: Model Fine-Tuning Pipeline
-Milestone 8.7.4: Fine-Tuning Script (Python)
+Milestone 8.9.4: Fine-Tuning Script (Python)
 
 NEW: /ml-service/training/finetune.py
 Process:
@@ -1846,7 +3067,7 @@ Save fine-tuned model to /ml-service/models/minilm-finetuned-v{date}.onnx
 
 Hyperparameters: learning rate, epochs, batch size (configurable)
 
-Milestone 8.7.5: Model Versioning
+Milestone 8.9.5: Model Versioning
 
 NEW TABLE: ml_model_versions (id, model_name, version, file_path, metrics, trained_at, is_active)
 
@@ -1858,7 +3079,7 @@ is_active: BOOLEAN (only one active version at a time)
 
 
 
-Milestone 8.7.6: Model Deployment (Hot Swap)
+Milestone 8.9.6: Model Deployment (Hot Swap)
 
 FastAPI endpoint: POST /ml/models/activate
 
@@ -1871,7 +3092,7 @@ Rollback: if new model fails health check, keep old model active
 
 
 Capability C: A/B Testing & Performance Tracking
-Milestone 8.7.7: Suggestion Acceptance Tracking
+Milestone 8.9.7: Suggestion Acceptance Tracking
 
 EXTEND baseline_field_assignments: add suggestion_accepted BOOLEAN
 
@@ -1882,7 +3103,7 @@ NULL: manually entered (no suggestion provided)
 
 Track per model version (link to ml_model_versions.id)
 
-Milestone 8.7.8: A/B Testing Framework
+Milestone 8.9.8: A/B Testing Framework
 
 Feature flag: ML_MODEL_AB_TEST=true
 When enabled:
@@ -1894,7 +3115,7 @@ When enabled:
 Track acceptance rate per model version
 After 1000 suggestions per model: compare metrics
 
-Milestone 8.7.9: Model Performance Dashboard (Admin)
+Milestone 8.9.9: Model Performance Dashboard (Admin)
 
 Page: /admin/ml/performance
 Display:
@@ -1908,7 +3129,7 @@ Recommendation: "Model v2024-02-01 has 5% higher acceptance rate. Activate?"
 
 
 Capability D: Continuous Improvement Loop
-Milestone 8.7.10: Scheduled Retraining (Weekly Batch)
+Milestone 8.9.10: Scheduled Retraining (Weekly Batch)
 
 Cron job: Every Sunday at 2 AM
 Steps:
@@ -1922,7 +3143,7 @@ Notify admin: "New model ready for testing"
 
 
 
-Milestone 8.7.11: Admin Retraining Trigger (Manual)
+Milestone 8.9.11: Admin Retraining Trigger (Manual)
 
 Admin can trigger retraining manually:
 
@@ -1934,7 +3155,7 @@ Notify admin when complete
 
 
 
-## v8.8 — Multi-Language OCR Support 📋 (Planned)
+## v8.10 — Multi-Language OCR Support 📋 (Planned)
 What this is
 
 Support OCR for non-English documents (Spanish, French, German, Chinese, etc.)
@@ -1949,7 +3170,7 @@ Not cross-language field matching (Spanish text → English fields)
 
 
 Capability A: Language Detection
-Milestone 8.8.1: Language Detection Service
+Milestone 8.10.1: Language Detection Service
 
 Integrate language detection library (langdetect or fasttext)
 NEW SERVICE: LanguageDetectionService
@@ -1961,14 +3182,14 @@ Confidence score (0-100%)
 
 
 
-Milestone 8.8.2: Language Field in Data Model
+Milestone 8.10.2: Language Field in Data Model
 
 EXTEND extracted_text_segments: add detected_language VARCHAR(5)
 EXTEND extraction_baselines: add primary_language VARCHAR(5)
 Store detected language for each text segment
 Baseline primary language = most common language in segments
 
-Milestone 8.8.3: Language Detection UI
+Milestone 8.10.3: Language Detection UI
 
 On OCR retrieval: automatically detect language
 Display detected language in Review Page header
@@ -1977,7 +3198,7 @@ If confidence <80%: show warning + manual language selector
 
 
 Capability B: Multi-Language OCR Engine
-Milestone 8.8.4: PaddleOCR Multi-Language Support
+Milestone 8.10.4: PaddleOCR Multi-Language Support
 
 PaddleOCR already supports 80+ languages
 Configure language models in FastAPI service:
@@ -1992,7 +3213,7 @@ python  ocr_engines = {
 
 On OCR request: detect language → select appropriate engine
 
-Milestone 8.8.5: Language-Specific Model Loading
+Milestone 8.10.5: Language-Specific Model Loading
 
 Lazy load language models (don't preload all 80 languages)
 Cache loaded models in memory (30 min TTL)
@@ -2000,14 +3221,14 @@ If language not cached: download model (one-time), then load
 
 
 Capability C: Language-Specific Field Matching
-Milestone 8.8.6: Multi-Language Embeddings
+Milestone 8.10.6: Multi-Language Embeddings
 
 Use multilingual Sentence-BERT model: paraphrase-multilingual-MiniLM-L12-v2
 Supports 50+ languages in same vector space
 Replace monolingual model in FastAPI service
 No code changes needed (API stays same)
 
-Milestone 8.8.7: Language-Aware Field Suggestions
+Milestone 8.10.7: Language-Aware Field Suggestions
 
 When suggesting field assignments:
 
@@ -2020,14 +3241,14 @@ Example: Spanish text "Número de factura" matches field "invoice_number"
 
 
 Capability D: Organization Language Settings
-Milestone 8.8.8: Org Default Language
+Milestone 8.10.8: Org Default Language
 
 EXTEND organizations.settings: add default_language VARCHAR(5)
 Admin can set default language in org settings
 Used as fallback if language detection fails
 Applied to new attachments automatically
 
-Milestone 8.8.9: User Language Preference
+Milestone 8.10.9: User Language Preference
 
 EXTEND users table: add preferred_language VARCHAR(5)
 User can set in profile settings
@@ -2035,7 +3256,7 @@ Affects UI language (labels, messages)
 Does not affect OCR language (OCR uses detected language)
 
 
-## v8.9 — Batch Extraction & Processing 📋 (Planned)
+## v8.11 — Batch Extraction & Processing 📋 (Planned)
 What this is
 
 Upload multiple documents at once
@@ -2043,6 +3264,9 @@ Batch OCR processing (queue-based, parallel)
 Bulk baseline confirmation (review all, confirm all)
 Progress tracking (X of Y documents processed)
 **BUILDS ON:** v8.6.add1 OCR Queue UI/UX (preserves user experience, upgrades backend)
+
+**Dependencies**
+- **REQUIRES:** v8.6.add1 (OCR Queue UI established)
 
 What this is not
 
@@ -2052,14 +3276,14 @@ Not a complete redesign of queue UI (v8.6.add1 established the target UX)
 
 
 Capability A: Bulk Upload
-Milestone 8.9.1: Multi-File Upload UI
+Milestone 8.11.1: Multi-File Upload UI
 
 On Task detail page: "Upload Multiple Files" button
 File picker: allow selecting multiple files (Ctrl+Click or Drag-drop)
 Display upload queue: list of files with progress bars
 Validation: check file types, max size (20MB each), max count (50 files)
 
-Milestone 8.9.2: Bulk Upload API
+Milestone 8.11.2: Bulk Upload API
 
 POST /attachments/bulk/upload
 
@@ -2072,7 +3296,7 @@ Backend: handle concurrent uploads (use async/await, rate limit per user)
 
 
 Capability B: Batch OCR Processing
-Milestone 8.9.3: OCR Job Queue
+Milestone 8.11.3: OCR Job Queue
 
 **REPLACES:** v8.6.add1 database polling with BullMQ infrastructure
 **PRESERVES:** API endpoints and UI components from v8.6.add1
@@ -2082,7 +3306,7 @@ NEW QUEUE: ocr-processing-queue
 Job structure: { attachmentId, userId, priority }
 Worker: processes jobs concurrently (5 workers, configurable)
 
-Milestone 8.9.4: Queue Job Lifecycle
+Milestone 8.11.4: Queue Job Lifecycle
 
 On bulk upload: create OCR job for each attachment
 Job states: pending → processing → completed → failed
@@ -2102,7 +3326,7 @@ Track retries: max 3 attempts, exponential backoff
   - Ability to adjust worker count dynamically
 - **Graceful Degradation:** If Redis is down, fall back to database polling (v8.6.add1 mode)
 
-Milestone 8.9.5: Capacity Planning & Configuration
+Milestone 8.11.5: Capacity Planning & Configuration
 
 **System Settings Table:**
 - `ocr_queue_max_global`: INT DEFAULT 100 (total jobs allowed system-wide)
@@ -2123,7 +3347,7 @@ Milestone 8.9.5: Capacity Planning & Configuration
   - "Bulk upload limit: 50 files maximum"
   - "Please wait 30 seconds before next bulk upload"
 
-Milestone 8.9.6: Progress Tracking UI
+Milestone 8.11.6: Progress Tracking UI
 
 **BUILDS ON v8.6.add1 OcrQueuePanel - Adds Enhanced Features:**
 
@@ -2149,7 +3373,7 @@ Milestone 8.9.6: Progress Tracking UI
 
 
 Capability C: Bulk Baseline Review
-Milestone 8.9.6: Batch Review UI
+Milestone 8.11.6: Batch Review UI
 
 New page: /tasks/:id/batch-review
 Display: grid view of all attachments (thumbnails)
@@ -2162,7 +3386,7 @@ Field assignment count (e.g., "5/10 fields assigned")
 
 Click thumbnail → opens Review Page (v8.6)
 
-Milestone 8.9.7: Bulk Confirmation
+Milestone 8.11.7: Bulk Confirmation
 
 On Batch Review page: "Confirm All Reviewed" button
 Enabled only if all baselines in "Reviewed" state
@@ -2177,7 +3401,7 @@ Action: loop through baselines, confirm each (atomic transaction)
 
 
 Capability D: Error Handling & Retry
-Milestone 8.9.8: Failed OCR Handling
+Milestone 8.11.8: Failed OCR Handling
 
 If OCR job fails (API timeout, invalid file, etc.):
 
@@ -2188,7 +3412,7 @@ Button: "Retry OCR" (re-queues job)
 
 
 
-Milestone 8.9.9: Partial Batch Completion
+Milestone 8.11.9: Partial Batch Completion
 
 If batch processing partially fails (some succeed, some fail):
 
@@ -2198,13 +3422,13 @@ Option: "Retry Failed" (re-process only failed files)
 Option: "Delete Failed" (remove failed attachments)
 
 Integration Notes
-v8.6 → v8.7 Integration:
+v8.8 → v8.9 Integration:
 
-v8.7 uses correction data from v8.6 (baseline_field_assignments)
-No schema changes to v8.6 tables
+v8.9 uses correction data from v8.8 (baseline_field_assignments)
+No schema changes to v8.8 tables
 ML model improvements transparent to users
 
-v8.7 → v8.8 Integration:
+v8.9 → v8.10 Integration:
 
 v8.8 replaces monolingual Sentence-BERT with multilingual version
 v8.7 fine-tuning pipeline works with multilingual model (no changes)
