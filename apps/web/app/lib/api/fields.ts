@@ -1,6 +1,6 @@
 import { apiFetchJson } from '../api';
 
-export type FieldCharacterType = 'varchar' | 'int' | 'decimal' | 'date' | 'currency';
+export type FieldCharacterType = 'varchar' | 'int' | 'decimal' | 'date' | 'currency' | 'email' | 'phone' | 'url' | 'percentage' | 'boolean';
 export type FieldStatus = 'active' | 'hidden' | 'archived';
 
 export type Field = {

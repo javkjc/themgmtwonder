@@ -134,7 +134,7 @@ export class BaselineAssignmentsService {
     async listAssignments(baselineId: string, userId: string) {
         await this.ensureBaselineOwnership(baselineId, userId);
 
-        return this.dbs.db
+        const rows = await this.dbs.db
             .select({
                 id: baselineFieldAssignments.id,
                 fieldKey: baselineFieldAssignments.fieldKey,
@@ -144,9 +144,21 @@ export class BaselineAssignmentsService {
                 assignedAt: baselineFieldAssignments.assignedAt,
                 correctedFrom: baselineFieldAssignments.correctedFrom,
                 correctionReason: baselineFieldAssignments.correctionReason,
+                validationValid: baselineFieldAssignments.validationValid,
+                validationError: baselineFieldAssignments.validationError,
+                validationSuggestion: baselineFieldAssignments.validationSuggestion,
             })
             .from(baselineFieldAssignments)
             .where(eq(baselineFieldAssignments.baselineId, baselineId));
+
+        return rows.map(row => ({
+            ...row,
+            validation: row.validationValid !== null ? {
+                valid: row.validationValid,
+                error: row.validationError ?? undefined,
+                suggestedCorrection: row.validationSuggestion ?? undefined,
+            } : undefined,
+        }));
     }
 
     async upsertAssignment(
@@ -163,12 +175,19 @@ export class BaselineAssignmentsService {
             field.characterLimit,
         );
 
-        if (!validation.valid) {
+        // If validation fails and user hasn't confirmed, require explicit confirmation
+        if (!validation.valid && !dto.confirmInvalid) {
             throw new BadRequestException({
-                message: 'Validation failed',
+                message: 'Validation failed - explicit confirmation required',
                 validation,
+                requiresConfirmation: true,
             });
         }
+
+        // Auto-normalize valid values that have suggestions (dates and decimals)
+        const normalizedValue = validation.valid && validation.suggestedCorrection
+            ? validation.suggestedCorrection
+            : dto.assignedValue;
 
         const [existing] = await this.dbs.db
             .select()
@@ -207,22 +226,28 @@ export class BaselineAssignmentsService {
             .values({
                 baselineId,
                 fieldKey: dto.fieldKey,
-                assignedValue: dto.assignedValue ?? null,
+                assignedValue: normalizedValue ?? null,
                 sourceSegmentId: dto.sourceSegmentId ?? null,
                 assignedBy: userId,
                 assignedAt: new Date(),
                 correctedFrom: correctedFromValue,
                 correctionReason: correctionReasonValue,
+                validationValid: validation.valid,
+                validationError: validation.error ?? null,
+                validationSuggestion: validation.suggestedCorrection ?? null,
             })
             .onConflictDoUpdate({
                 target: [baselineFieldAssignments.baselineId, baselineFieldAssignments.fieldKey],
                 set: {
-                    assignedValue: dto.assignedValue ?? null,
+                    assignedValue: normalizedValue ?? null,
                     sourceSegmentId: dto.sourceSegmentId ?? null,
                     assignedBy: userId,
                     assignedAt: new Date(),
                     correctedFrom: correctedFromValue,
                     correctionReason: correctionReasonValue,
+                    validationValid: validation.valid,
+                    validationError: validation.error ?? null,
+                    validationSuggestion: validation.suggestedCorrection ?? null,
                 },
             })
             .returning();
@@ -251,7 +276,7 @@ export class BaselineAssignmentsService {
         userId: string,
         correctionReason?: string | null,
     ) {
-        await this.ensureBaselineEditable(baselineId, userId);
+        const context = await this.ensureBaselineEditable(baselineId, userId);
 
         const [existing] = await this.dbs.db
             .select()

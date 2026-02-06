@@ -38,8 +38,9 @@ import {
 import type { Me } from '@/app/types';
 
 import ExtractedTextPool from '@/app/components/ocr/ExtractedTextPool';
-import FieldAssignmentPanel from '@/app/components/ocr/FieldAssignmentPanel';
+import FieldAssignmentPanel from '@/app/components/FieldAssignmentPanel';
 import CorrectionReasonModal from '@/app/components/ocr/CorrectionReasonModal';
+import ValidationConfirmationModal from '@/app/components/ValidationConfirmationModal';
 
 
 const DEFAULT_NOTIFICATION_TTL = 5000;
@@ -102,11 +103,22 @@ export default function AttachmentOcrReviewPage() {
   const [confirmingBaseline, setConfirmingBaseline] = useState(false);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isCorrectionModalOpen, setIsCorrectionModalOpen] = useState(false);
+  const [pendingLocalValues, setPendingLocalValues] = useState<Record<string, string>>({});
   const [correctionPendingAction, setCorrectionPendingAction] = useState<{
     type: 'upsert' | 'delete';
     fieldKey: string;
     value?: string;
     sourceSegmentId?: string;
+  } | null>(null);
+
+  const [isValidationModalOpen, setIsValidationModalOpen] = useState(false);
+  const [validationPendingAction, setValidationPendingAction] = useState<{
+    fieldKey: string;
+    fieldLabel: string;
+    value: string;
+    sourceSegmentId?: string;
+    validationError: string;
+    suggestedCorrection?: string;
   } | null>(null);
 
   const [isFieldBuilderOpen, setIsFieldBuilderOpen] = useState(true);
@@ -192,6 +204,25 @@ export default function AttachmentOcrReviewPage() {
         message: `${fieldKey} updated`,
       });
     } catch (e: any) {
+      // Check if this is a validation error that requires confirmation
+      // NestJS error structure: e.body can have validation and requiresConfirmation directly
+      const errorBody = e.body || {};
+      const hasValidation = errorBody.validation || errorBody.requiresConfirmation;
+
+      if (hasValidation && errorBody.validation) {
+        const field = libraryFields.find(f => f.fieldKey === fieldKey);
+        setValidationPendingAction({
+          fieldKey,
+          fieldLabel: field?.label || fieldKey,
+          value,
+          sourceSegmentId,
+          validationError: errorBody.validation.error || 'Invalid value',
+          suggestedCorrection: errorBody.validation.suggestedCorrection,
+        });
+        setIsValidationModalOpen(true);
+        return;
+      }
+
       addNotification({
         id: Date.now().toString(),
         type: 'error',
@@ -199,7 +230,7 @@ export default function AttachmentOcrReviewPage() {
         message: e.message,
       });
     }
-  }, [baseline, loadBaseline, addNotification]);
+  }, [baseline, loadBaseline, addNotification, libraryFields]);
 
   const handleAssignmentDelete = useCallback(async (fieldKey: string) => {
     if (!baseline) return;
@@ -256,6 +287,72 @@ export default function AttachmentOcrReviewPage() {
       setCorrectionPendingAction(null);
     }
   }, [baseline, correctionPendingAction, loadBaseline, addNotification]);
+
+  const handleValidationConfirm = useCallback(async () => {
+    if (!baseline || !validationPendingAction) return;
+    setIsValidationModalOpen(false);
+    const { fieldKey, value, sourceSegmentId } = validationPendingAction;
+
+    try {
+      await upsertAssignment(baseline.id, {
+        fieldKey,
+        assignedValue: value,
+        sourceSegmentId,
+        confirmInvalid: true
+      });
+      await loadBaseline();
+      addNotification({
+        id: Date.now().toString(),
+        type: 'success',
+        title: 'Assignment saved',
+        message: `${fieldKey} saved with validation warning`,
+      });
+    } catch (e: any) {
+      addNotification({
+        id: Date.now().toString(),
+        type: 'error',
+        title: 'Update failed',
+        message: e.message,
+      });
+    } finally {
+      setValidationPendingAction(null);
+    }
+  }, [baseline, validationPendingAction, loadBaseline, addNotification]);
+
+  const handleValidationUseSuggestion = useCallback(async () => {
+    if (!baseline || !validationPendingAction || !validationPendingAction.suggestedCorrection) return;
+    setIsValidationModalOpen(false);
+    const { fieldKey, sourceSegmentId, suggestedCorrection } = validationPendingAction;
+
+    try {
+      await upsertAssignment(baseline.id, {
+        fieldKey,
+        assignedValue: suggestedCorrection,
+        sourceSegmentId
+      });
+      await loadBaseline();
+      addNotification({
+        id: Date.now().toString(),
+        type: 'success',
+        title: 'Assignment saved',
+        message: `${fieldKey} updated with suggested value`,
+      });
+    } catch (e: any) {
+      addNotification({
+        id: Date.now().toString(),
+        type: 'error',
+        title: 'Update failed',
+        message: e.message,
+      });
+    } finally {
+      setValidationPendingAction(null);
+    }
+  }, [baseline, validationPendingAction, loadBaseline, addNotification]);
+
+  const handleValidationCancel = useCallback(() => {
+    setIsValidationModalOpen(false);
+    setValidationPendingAction(null);
+  }, []);
 
   const builderSectionRef = useRef<HTMLDivElement | null>(null);
 
@@ -509,6 +606,55 @@ export default function AttachmentOcrReviewPage() {
 
   const handleMarkReviewed = useCallback(async () => {
     if (!baseline) return;
+
+    // Check for unsaved local values
+    const pendingFields = Object.keys(pendingLocalValues);
+    if (pendingFields.length > 0) {
+      const fieldLabels = pendingFields.map(fieldKey => {
+        const field = libraryFields.find(f => f.fieldKey === fieldKey);
+        return field?.label || fieldKey;
+      }).join(', ');
+      addNotification({
+        id: Date.now().toString(),
+        type: 'error',
+        title: 'Cannot mark as reviewed',
+        message: `You have unsaved changes in: ${fieldLabels}. Please save or fix validation errors first.`,
+      });
+      return;
+    }
+
+    // Validate all assignments before allowing transition
+    const invalidAssignments = baseline.assignments?.filter(a =>
+      a.validation && !a.validation.valid
+    ) || [];
+
+    const emptyRequiredFields = libraryFields.filter(field => {
+      const assignment = baseline.assignments?.find(a => a.fieldKey === field.fieldKey);
+      return !assignment || !assignment.assignedValue;
+    });
+
+    if (invalidAssignments.length > 0) {
+      const fieldNames = invalidAssignments.map(a => a.fieldKey).join(', ');
+      addNotification({
+        id: Date.now().toString(),
+        type: 'error',
+        title: 'Cannot mark as reviewed',
+        message: `Please fix validation errors in: ${fieldNames}`,
+      });
+      return;
+    }
+
+    if (emptyRequiredFields.length > 0) {
+      const fieldNames = emptyRequiredFields.map(f => f.label || f.fieldKey).join(', ');
+      addNotification({
+        id: Date.now().toString(),
+        type: 'error',
+        title: 'Cannot mark as reviewed',
+        message: `Please assign values to all fields. Missing: ${fieldNames}`,
+      });
+      return;
+    }
+
     setReviewingBaseline(true);
     setBaselineError(null);
     try {
@@ -532,10 +678,45 @@ export default function AttachmentOcrReviewPage() {
     } finally {
       setReviewingBaseline(false);
     }
-  }, [addNotification, baseline, loadBaseline]);
+  }, [addNotification, baseline, loadBaseline, libraryFields, pendingLocalValues]);
 
   const handleConfirmBaseline = useCallback(async () => {
     if (!baseline) return;
+
+    // Validate all assignments before allowing transition
+    const invalidAssignments = baseline.assignments?.filter(a =>
+      a.validation && !a.validation.valid
+    ) || [];
+
+    const emptyRequiredFields = libraryFields.filter(field => {
+      const assignment = baseline.assignments?.find(a => a.fieldKey === field.fieldKey);
+      return !assignment || !assignment.assignedValue;
+    });
+
+    if (invalidAssignments.length > 0) {
+      const fieldNames = invalidAssignments.map(a => a.fieldKey).join(', ');
+      addNotification({
+        id: Date.now().toString(),
+        type: 'error',
+        title: 'Cannot confirm baseline',
+        message: `Please fix validation errors in: ${fieldNames}`,
+      });
+      setIsConfirmModalOpen(false);
+      return;
+    }
+
+    if (emptyRequiredFields.length > 0) {
+      const fieldNames = emptyRequiredFields.map(f => f.label || f.fieldKey).join(', ');
+      addNotification({
+        id: Date.now().toString(),
+        type: 'error',
+        title: 'Cannot confirm baseline',
+        message: `Please assign values to all fields. Missing: ${fieldNames}`,
+      });
+      setIsConfirmModalOpen(false);
+      return;
+    }
+
     setConfirmingBaseline(true);
     setBaselineError(null);
     try {
@@ -565,7 +746,7 @@ export default function AttachmentOcrReviewPage() {
     } finally {
       setConfirmingBaseline(false);
     }
-  }, [addNotification, baseline, targetTaskId]);
+  }, [addNotification, baseline, targetTaskId, libraryFields]);
 
   // Auth loading state
   if (authLoading) {
@@ -674,9 +855,10 @@ export default function AttachmentOcrReviewPage() {
         <FieldAssignmentPanel
           fields={libraryFields}
           assignments={baseline?.assignments || []}
-          isReadOnly={baseline?.status === 'confirmed' || baseline?.status === 'archived'}
+          isReadOnly={baseline?.status === 'confirmed' || baseline?.status === 'archived' || !!baseline?.utilizationType}
           onUpdate={handleAssignmentUpdate}
           onDelete={handleAssignmentDelete}
+          onLocalValuesChange={setPendingLocalValues}
         />
       </div>
     </div>
@@ -1097,6 +1279,16 @@ export default function AttachmentOcrReviewPage() {
           setCorrectionPendingAction(null);
         }}
         onConfirm={handleCorrectionConfirm}
+      />
+      <ValidationConfirmationModal
+        isOpen={isValidationModalOpen}
+        fieldLabel={validationPendingAction?.fieldLabel || ''}
+        enteredValue={validationPendingAction?.value || ''}
+        validationError={validationPendingAction?.validationError || ''}
+        suggestedCorrection={validationPendingAction?.suggestedCorrection}
+        onConfirm={handleValidationConfirm}
+        onUseSuggestion={validationPendingAction?.suggestedCorrection ? handleValidationUseSuggestion : undefined}
+        onCancel={handleValidationCancel}
       />
       <NotificationToast
         notifications={notifications}

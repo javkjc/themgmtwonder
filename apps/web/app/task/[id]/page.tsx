@@ -846,6 +846,35 @@ export default function TaskDetailsPage() {
     }
   }, []);
 
+  // Detect OCR job completion and refresh baseline status
+  const prevOcrJobsRef = useRef<OcrJob[]>([]);
+  useEffect(() => {
+    const prevJobs = prevOcrJobsRef.current;
+    const completedJobs = ocrJobs.filter((job) => {
+      const prevJob = prevJobs.find((pj) => pj.id === job.id);
+      return (
+        job.status === 'completed' &&
+        prevJob &&
+        (prevJob.status === 'processing' || prevJob.status === 'queued')
+      );
+    });
+
+    if (completedJobs.length > 0) {
+      // Refresh attachments and baseline status when jobs complete
+      fetchAttachments();
+
+      // Refresh viewer state for affected attachments if they're currently open
+      completedJobs.forEach((job) => {
+        const viewerState = attachmentOcrViewerState[job.attachmentId];
+        if (viewerState?.open) {
+          fetchAttachmentOcr(job.attachmentId);
+        }
+      });
+    }
+
+    prevOcrJobsRef.current = ocrJobs;
+  }, [ocrJobs, attachmentOcrViewerState, fetchAttachments, fetchAttachmentOcr]);
+
   const triggerAttachmentOcr = async (attachmentId: string) => {
     if (attachmentOcrTriggering[attachmentId]) return;
     setAttachmentOcrTriggering((prev) => ({

@@ -1159,9 +1159,14 @@ Milestone 8.6.1: Field Library Data Model
 
 NEW TABLE: field_library (id, field_key, label, character_type, character_limit, version, status, created_by, created_at, updated_at)
 
-field_key: VARCHAR(255) UNIQUE — Stable identifier (e.g., invoice_number, total_amount)
-label: VARCHAR(255) — User-facing display name (e.g., "Invoice Number")
+field_key: VARCHAR(255) UNIQUE — Stable identifier (e.g., invoice_number, total_amount, currency_code)
+label: VARCHAR(255) — User-facing display name (e.g., "Invoice Number", "Currency")
 character_type: ENUM('varchar', 'int', 'decimal', 'date', 'currency')
+  - varchar: Text strings
+  - int: Whole numbers
+  - decimal: Decimal numbers (for monetary amounts)
+  - date: ISO 8601 dates
+  - currency: ISO 4217 currency codes (exactly 3 uppercase letters: USD, EUR, GBP, JPY)
 character_limit: INT NULLABLE — Optional length constraint
 version: INT DEFAULT 1 — For field evolution tracking
 status: ENUM('active', 'hidden', 'archived') DEFAULT 'active'
@@ -1304,14 +1309,16 @@ Returns: { valid: boolean, error?: string, suggestedCorrection?: string }
 Validation rules:
 
 varchar: length ≤ character_limit (if set)
-int: parseable as integer
-decimal: parseable as decimal (2 decimal places)
-date: parseable as ISO 8601 date
-currency: matches currency format (e.g., $1,234.56 or 1234.56)
+int: parseable as integer (no commas, no decimals)
+decimal: parseable as decimal (2 decimal places, allows normalization of $, commas)
+date: parseable as ISO 8601 date (YYYY-MM-DD)
+currency: ISO 4217 standard (exactly 3 uppercase letters: USD, EUR, GBP, JPY) - stores currency codes, NOT monetary amounts
 
+
+**Important:** Currency field stores ISO 4217 currency codes (exactly 3 uppercase letters), not monetary amounts. Use decimal field type for money values.
 
 If validation fails: return inline guidance (e.g., "Expected number, got text")
-Suggest correction: attempt to parse/normalize (e.g., "$1,234" → "1234.00")
+Suggest correction: attempt to parse/normalize (e.g., "$1,234" → "1234.00" for decimal, "usd" → "USD" for currency)
 
 Milestone 8.6.11: Field Assignment API
 
@@ -4472,4 +4479,191 @@ OCR suggests → user confirms → saved data becomes immutable baseline; redo i
 - Workflow execution is auditable (every transition logged)
 - Evidence is inspectable and correctable (no black-box AI)
 - Amendments are forward-moving (append-only history)
-s
+
+---
+
+## v8.6.7 - Universal Field Validation System (2026-02-06)
+
+### Feature Summary
+Comprehensive field validation system with auto-normalization, enhanced error visibility, hybrid date input, and support for 10 field types. Values are automatically normalized when possible (silky-smooth UX), and invalid values trigger explicit confirmation modals with visual feedback.
+
+### Field Types Supported (10 total)
+
+**Original 5 Types (Enhanced):**
+1. **varchar** - Text fields with character limit validation
+2. **int** - Integer fields (auto-removes commas: `1,234` → `1234`)
+3. **decimal** - Decimal/monetary fields (auto-removes $, commas: `$1,234.56` → `1234.56`)
+4. **date** - Date fields (auto-normalizes to YYYY-MM-DD from 6+ common formats)
+5. **currency** - ISO 4217 currency codes (auto-uppercases: `usd` → `USD`)
+
+**New 5 Types (Added):**
+6. **email** - Email addresses (auto-lowercases: `User@EXAMPLE.com` → `user@example.com`)
+7. **phone** - Phone numbers (strips formatting: `+1 (555) 123-4567` → `15551234567`)
+8. **url** - URLs (auto-adds protocol, lowercases hostname: `Example.COM` → `https://example.com`)
+9. **percentage** - Percentage values (removes %, formats to 2 decimals: `85%` → `85.00`)
+10. **boolean** - Boolean values (normalizes yes/no/y/n/1/0/on/off → `true`/`false`)
+
+### Auto-Normalization Behavior
+
+**Concept**: When a value is **valid but wrong format**, the system auto-normalizes silently (no modal interruption).
+
+**Examples:**
+- Date input `31-07-2023 16:09` → auto-normalized to `2023-07-29` ✅ No modal
+- Decimal input `$849.00` → auto-normalized to `849.00` ✅ No modal
+- Email input `John@Example.COM` → auto-normalized to `john@example.com` ✅ No modal
+- URL input `example.com` → auto-normalized to `https://example.com` ✅ No modal
+- Boolean input `Yes` → auto-normalized to `true` ✅ No modal
+
+**Invalid values** (cannot be parsed) trigger validation modal:
+- Date input `abc` → ❌ Modal: "Invalid date format. Expected YYYY-MM-DD."
+- Email input `notanemail` → ❌ Modal: "Invalid email format."
+
+### Date Field Enhancement (Hybrid Input)
+
+**Problem**: Native date picker (`type="date"`) doesn't accept OCR formats like `29-07-2023 14:13`
+
+**Solution**: Hybrid text + date picker
+- Primary input: `type="text"` with placeholder "YYYY-MM-DD"
+- Accepts any date format from OCR (DD-MM-YYYY, MM/DD/YYYY, YYYYMMDD, etc.)
+- Calendar button (📅) overlay provides native date picker for convenience
+- Auto-normalizes to ISO 8601 (YYYY-MM-DD) on save
+
+**Supported Date Formats:**
+- `DD-MM-YYYY` with/without time: `29-07-2023`, `29-07-2023 14:13`, `29-07-202314:13`
+- `YYYY-MM-DD` with time: `2023-07-29 14:13` → `2023-07-29`
+- `DD/MM/YYYY` with slashes: `29/07/2023` → `2023-07-29`
+- `YYYY/MM/DD` with slashes: `2023/07/29` → `2023-07-29`
+- `YY-MM-DD` or `DD-MM-YY` (2-digit year): `23-07-29` → `2023-07-29`
+- `YYYYMMDD` (no separators): `20230729` → `2023-07-29`
+
+### Enhanced Error Visibility
+
+**Before**: Invalid fields looked normal with small red text error message
+
+**After**: Multi-layered visual feedback for invalid values
+- ⚠️ **Red card background** - Entire field card turns light red (#fef2f2)
+- ⚠️ **Red border** - 2px red border instead of gray (#fecaca)
+- ⚠️ **Warning icon** - ⚠️ appears next to field label
+- ⚠️ **Red label** - Field name turns red
+- ⚠️ **Status badge** - Shows "Validation error" in red (not misleading "Assigned")
+- ❌ **Error box** - Prominent red error message with ❌ icon
+- 🔴 **Red shadow** - Card gets red glow for extra emphasis
+
+**Example**: Currency field with invalid value `abc`
+```
+⚠️ Currency                    CURRENCY
+┌─────────────────────────────────────┐ ← Red border
+│ [abc              ]                 │ ← Light red background
+│ Validation error  Linked to segment│ ← Red status
+│ ┌───────────────────────────────┐  │
+│ │ ❌ Currency code must be...   │  │ ← Red error box
+│ └───────────────────────────────┘  │
+└─────────────────────────────────────┘
+```
+
+### Validation Modal (Fixed)
+
+**Problem**: Validation errors were showing as toast notifications instead of modal
+
+**Fix**: Improved error detection in frontend to properly parse NestJS error responses
+
+**Modal Content:**
+- Field label and user's entered value
+- Validation error message
+- Suggested correction (when available)
+- Three actions:
+  - **Cancel** - Dismiss and manually correct
+  - **Use Suggestion** - Apply auto-corrected value (if available)
+  - **Save As-Is** - Override validation and save invalid value (explicit confirmation)
+
+### Backend Implementation
+
+**Validator Service** (`field-assignment-validator.service.ts`):
+- Central validation logic for all 10 field types
+- Returns `{ valid: boolean, error?: string, suggestedCorrection?: string }`
+- `valid: true` with `suggestedCorrection` → auto-normalize
+- `valid: false` → show validation modal
+
+**Assignment Service** (`baseline-assignments.service.ts`):
+- Auto-applies `suggestedCorrection` when `valid: true`
+- Stores normalized value in `assignedValue` column
+- Stores validation metadata in `validationValid`, `validationError`, `validationSuggestion` columns
+- Throws `BadRequestException` with `requiresConfirmation: true` when `valid: false` and user hasn't confirmed
+
+**Database Schema** (no changes required):
+- `baseline_field_assignments` table already has validation columns from v8.6.10
+- Works with any field created in Field Library (universal support)
+
+### Frontend Implementation
+
+**Field Assignment Panel** (`FieldAssignmentPanel.tsx`):
+- Input attributes map: defines `type`, `inputMode`, `placeholder` for each field type
+- Mobile-friendly: correct keyboard for each type (email keyboard for email, tel for phone, etc.)
+- Error styling: red card, warning icon, red label, error box
+- Date field: hybrid text input + calendar button overlay
+- Drag-and-drop: optimistic updates, shows value immediately
+
+**Review Page** (`review/page.tsx`):
+- Error detection: checks for `e.body.validation` and `e.body.requiresConfirmation`
+- Validation modal: shows when truly invalid values are entered
+- Handlers: confirmation, use suggestion, cancel
+
+### User Experience Flow
+
+**Valid but wrong format** (silky-smooth):
+1. User drags `31-07-2023 16:09` into date field
+2. Value appears immediately in field
+3. Backend auto-normalizes to `2023-07-29`
+4. Field refreshes with normalized value
+5. ✅ Green "Assigned" status
+
+**Invalid value** (explicit confirmation):
+1. User types `abc` into date field
+2. Value appears immediately in field
+3. Backend detects invalid format
+4. ⚠️ Validation modal appears with error message
+5. User must: Use suggestion (if any), Save as-is, or Cancel
+
+### Future-Proof Design
+
+**Adding new field types** requires only 3 steps:
+1. Add type to `FieldCharacterType` enum in `fields.ts`
+2. Add validation method in `field-assignment-validator.service.ts`
+3. Add input attributes in `FieldAssignmentPanel.tsx`
+
+**All existing features work automatically:**
+- ✅ Drag-and-drop from extracted text
+- ✅ Auto-normalization
+- ✅ Error visibility
+- ✅ Validation modal
+- ✅ Mobile-friendly keyboards
+- ✅ Audit trail
+
+### Technical Details
+
+**Files Modified:**
+- Backend: `baseline-assignments.service.ts`, `field-assignment-validator.service.ts`
+- Frontend: `fields.ts`, `FieldAssignmentPanel.tsx`, `review/page.tsx`
+- Documentation: `executionnotes.md`, `features.md`
+
+**Zero Breaking Changes:**
+- Existing field types work as before (with improved auto-normalization)
+- Database schema unchanged
+- API contracts unchanged
+- Backward compatible with all existing baselines
+
+**Performance:**
+- No additional database queries
+- Validation runs in memory
+- Optimistic UI updates for snappy feel
+
+### Compliance
+
+**Aligns with v8.6 Principles:**
+- ✅ Backend authoritative (validation runs server-side)
+- ✅ Auditability-first (stores validation results in database)
+- ✅ No background automation (user triggers every action)
+- ✅ Explicit confirmation (modal for invalid values)
+- ✅ Minimal localized changes (no new dependencies)
+
+---

@@ -78,8 +78,8 @@
 - ROUTE: /attachments/[attachmentId]/review
   - Path: apps/web/app/attachments/[attachmentId]/review/page.tsx
   - Purpose: Visual OCR evidence review (attachment viewer + parsed field list + correction/history modals).
-  - Uses: PdfDocumentViewer, ExtractedTextPool (apps/web/app/components/ocr/ExtractedTextPool.tsx for truncated confidence badges and hover highlight), OcrFieldList, OcrFieldEditModal, OcrCorrectionHistoryModal, NotificationToast, lib/api/ocr.ts helpers (fetchAttachmentOcrResults, createOcrCorrection, fetchOcrCorrectionHistory), API_BASE_URL for downloads and document playback.
-  - Mutations at: POST /ocr-results/:ocrResultId/corrections via lib/api/ocr.ts; Task detail page links to this route when attachment OCR status is confirmed.
+  - Uses: PdfDocumentViewer, ExtractedTextPool (apps/web/app/components/ocr/ExtractedTextPool.tsx for truncated confidence badges and hover highlight), FieldAssignmentPanel (apps/web/app/components/FieldAssignmentPanel.tsx renders baseline assignment inputs with validation status), ValidationConfirmationModal (apps/web/app/components/ValidationConfirmationModal.tsx prompts user to confirm invalid values with optional suggested corrections), OcrFieldList, OcrFieldEditModal, OcrCorrectionHistoryModal, CorrectionReasonModal, NotificationToast, lib/api/ocr.ts helpers (fetchAttachmentOcrResults, createOcrCorrection, fetchOcrCorrectionHistory), lib/api/baselines.ts (upsertAssignment, deleteAssignment, fetchBaselineForAttachment, markBaselineReviewed, confirmBaseline), API_BASE_URL for downloads and document playback.
+  - Mutations at: POST /ocr-results/:ocrResultId/corrections via lib/api/ocr.ts; POST /baselines/:baselineId/assign for field assignments with validation (requires confirmInvalid flag for invalid values); Task detail page links to this route when attachment OCR status is confirmed.
 - ROUTE: /admin/fields
   - Path: apps/web/app/admin/fields/page.tsx
   - Purpose: Field library management (CRUD for extraction field definitions)

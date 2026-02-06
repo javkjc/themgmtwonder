@@ -13,6 +13,7 @@ import {
   attachmentOcrOutputs,
   attachments,
   extractedTextSegments,
+  extractionBaselines,
   ocrResults,
   todos,
 } from '../db/schema';
@@ -140,6 +141,47 @@ export class OcrService {
       .update(attachmentOcrOutputs)
       .set({ isCurrent: false })
       .where(eq(attachmentOcrOutputs.attachmentId, attachmentId));
+
+    // Reset any reviewed/confirmed baselines back to draft when new OCR is created
+    // First fetch the baselines that will be reset
+    const baselinesToReset = await this.dbs.db
+      .select()
+      .from(extractionBaselines)
+      .where(
+        and(
+          eq(extractionBaselines.attachmentId, attachmentId),
+          ne(extractionBaselines.status, 'archived'),
+          ne(extractionBaselines.status, 'draft'),
+        )
+      );
+
+    if (baselinesToReset.length > 0) {
+      await this.dbs.db
+        .update(extractionBaselines)
+        .set({ status: 'draft' })
+        .where(
+          and(
+            eq(extractionBaselines.attachmentId, attachmentId),
+            ne(extractionBaselines.status, 'archived'),
+          )
+        );
+
+      // Log baseline resets
+      for (const baseline of baselinesToReset) {
+        await this.auditService.log({
+          action: 'baseline.reset_to_draft' as AuditAction,
+          actorType: 'system',
+          module: 'baseline' as any,
+          resourceType: 'baseline',
+          resourceId: baseline.id,
+          details: {
+            attachmentId,
+            reason: 'New OCR extraction created',
+            previousStatus: baseline.status,
+          },
+        });
+      }
+    }
 
     const [record] = await this.dbs.db
       .insert(attachmentOcrOutputs)

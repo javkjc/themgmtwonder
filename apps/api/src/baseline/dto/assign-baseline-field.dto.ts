@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
 
 export class AssignBaselineFieldDto {
     @IsString()
@@ -17,4 +17,8 @@ export class AssignBaselineFieldDto {
     @IsString()
     @MinLength(10)
     correctionReason?: string | null;
+
+    @IsOptional()
+    @IsBoolean()
+    confirmInvalid?: boolean;
 }

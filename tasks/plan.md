@@ -106,7 +106,7 @@ Expected result: unique index on `(baseline_id, field_key)` plus baseline and fi
 
 ### A3 - Field Assignment Validation Service (8.6.10) ✅ ([Complexity: Medium])
 Status: Completed
-**Problem statement**  
+**Problem statement**
 Validate assigned values against `field_library.character_type` and `character_limit` without auto-mutation.
 
 **Files / Locations**
@@ -119,13 +119,21 @@ Validate assigned values against `field_library.character_type` and `character_l
 3. Add unit tests if test harness exists for baseline module.
 4. Update `tasks/codemapcc.md` to include the new service.
 
+**Field Type Validation Rules**
+- **varchar**: String length validation against character_limit
+- **int**: Integer format (no commas, no decimals)
+- **decimal**: Numeric with decimals, allows normalization of $, commas
+- **date**: ISO 8601 format (YYYY-MM-DD)
+- **currency**: ISO 4217 currency codes (exactly 3 uppercase letters: USD, EUR, GBP, JPY). Note: Monetary amounts use decimal field type.
+
 **Checkpoint A3 - Verification**
 - Manual: `validate('total_amount', '$1,234.50')` returns valid and suggested correction `1234.50` if normalization is expected.
+- Manual: `validate('currency_code', 'usd')` returns invalid with suggested correction `USD`.
 - DB: No changes.
 - Logs: Validation errors appear in API response with `error` and `suggestedCorrection` fields.
 - Regression: Field Library CRUD remains unaffected.
 
-**Estimated effort:** 2 hours  
+**Estimated effort:** 2 hours
 **Complexity flag:** Medium = GPT-4o preferred
 
 ### A4 - Assignment API + Audit (8.6.11) ✅ ([Complexity: Complex])
@@ -276,7 +284,7 @@ Render extracted text segments with confidence indicators and optional bounding-
 
 > **Context:** Enable explicit, validated field assignments with correction reasons.
 
-### C1 - Field Assignment Panel (Read + Inputs) (8.6.12) ([Complexity: Medium]) New
+### C1 - Field Assignment Panel (Read + Inputs) (8.6.12) ([Complexity: Medium]) [UNVERIFIED]
 
 **Problem statement**  
 Show active fields with type-specific inputs and current assignment values.
@@ -302,26 +310,41 @@ Show active fields with type-specific inputs and current assignment values.
 **Complexity flag:** Medium = GPT-4o preferred
 
 ### C2 - Manual Assignment + Validation (8.6.17) ([Complexity: Medium])
-Status: New
-**Problem statement**  
+Status: ✅ Completed
+**Problem statement**
 Allow manual entry with validation feedback and explicit confirmation on save.
 
 **Files / Locations**
 - Frontend: `apps/web/app/components/FieldAssignmentPanel.tsx` - input handlers.
-- Backend: `apps/api/src/baseline/baseline-assignments.service.ts` - validation integration.
+- Frontend: `apps/web/app/components/ValidationConfirmationModal.tsx` - new validation confirmation modal.
+- Frontend: `apps/web/app/attachments/[attachmentId]/review/page.tsx` - validation confirmation flow.
+- Frontend: `apps/web/app/lib/api/baselines.ts` - added confirmInvalid flag to AssignPayload.
+- Backend: `apps/api/src/baseline/baseline-assignments.service.ts` - validation integration with confirmInvalid support.
+- Backend: `apps/api/src/baseline/dto/assign-baseline-field.dto.ts` - added confirmInvalid boolean flag.
 
 **Implementation plan**
-1. On blur or save, call assignment API and show validation errors.
-2. Require explicit user confirmation for save when validation warnings exist.
-3. Preserve user-entered value even if invalid, but force acknowledgement.
+1. On blur or save, call assignment API and show validation errors. ✅
+2. Require explicit user confirmation for save when validation warnings exist. ✅
+3. Preserve user-entered value even if invalid, but force acknowledgement. ✅
+
+**Implementation details**
+- Backend now throws validation error with requiresConfirmation flag when value is invalid and confirmInvalid is not set
+- ValidationConfirmationModal displays validation error, user's entered value, and optional suggested correction
+- Modal provides three actions: "Save As-Is" (confirms with confirmInvalid=true), "Use Suggestion" (saves suggested value), or "Cancel"
+- Frontend catches validation errors and shows modal before saving invalid values
+- Valid values save immediately without prompts
+- **Currency field clarification**: Currency field stores ISO 4217 currency codes (exactly 3 uppercase letters: USD, EUR, GBP), not monetary amounts. Monetary amounts use decimal field type.
 
 **Checkpoint C2 - Verification**
-- Manual: Enter `total_amount=abc` shows validation error and requires explicit confirmation.
-- DB: Value is saved only after confirmation.
-- Logs: API response includes `error` and `suggestedCorrection` fields for invalid values.
-- Regression: Valid values save without extra prompts.
+- Manual: Enter `total_amount=abc` shows validation error modal with "Invalid integer format" and requires explicit confirmation.
+- Manual: Entering valid values (e.g., `123` for int fields, `123.45` for decimal) saves without prompts.
+- Manual: Validation modal shows "Use Suggestion" button when suggestedCorrection is available (e.g., decimal with thousands separators).
+- DB: Value is saved only after user confirms via "Save As-Is" button or uses suggested correction.
+- Logs: API response includes `error` and `suggestedCorrection` fields for invalid values in the validation object.
+- Regression: Valid values save without extra prompts. ✅
+- Build: Both API and Web builds pass without errors. ✅
 
-**Estimated effort:** 2 hours  
+**Estimated effort:** 2 hours
 **Complexity flag:** Medium = GPT-4o preferred
 
 ### C3 - Correction Reason Requirement (8.6.18) ([Complexity: Medium])

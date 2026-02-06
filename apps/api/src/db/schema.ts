@@ -288,6 +288,9 @@ export const baselineFieldAssignments = pgTable(
         assignedAt: timestamp('assigned_at').defaultNow().notNull(),
         correctedFrom: text('corrected_from'),
         correctionReason: text('correction_reason'),
+        validationValid: boolean('validation_valid'),
+        validationError: text('validation_error'),
+        validationSuggestion: text('validation_suggestion'),
     },
     (table) => ({
         baselineFieldUnique: unique('baseline_field_unique').on(table.baselineId, table.fieldKey),

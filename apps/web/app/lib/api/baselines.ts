@@ -8,6 +8,12 @@ export type BaselineUtilizationType =
   | 'data_exported'
   | null;
 
+export interface AssignmentValidation {
+  valid: boolean;
+  error?: string;
+  suggestedCorrection?: string;
+}
+
 export interface Assignment {
   id: string;
   fieldKey: string;
@@ -17,6 +23,7 @@ export interface Assignment {
   assignedAt: string;
   correctedFrom: string | null;
   correctionReason: string | null;
+  validation?: AssignmentValidation;
 }
 
 export interface Segment {
@@ -47,16 +54,33 @@ export interface AssignPayload {
   assignedValue: string;
   sourceSegmentId?: string;
   correctionReason?: string;
+  confirmInvalid?: boolean;
 }
 
-export async function upsertAssignment(baselineId: string, payload: AssignPayload): Promise<any> {
+export interface AssignmentUpsertResponse {
+  assignment: Assignment;
+  validation: AssignmentValidation;
+}
+
+export async function upsertAssignment(
+  baselineId: string,
+  payload: AssignPayload,
+): Promise<AssignmentUpsertResponse> {
   return apiFetchJson(`/baselines/${baselineId}/assign`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 }
 
-export async function deleteAssignment(baselineId: string, fieldKey: string, reason?: string | null): Promise<any> {
+export interface DeleteAssignmentResponse {
+  deleted: boolean;
+}
+
+export async function deleteAssignment(
+  baselineId: string,
+  fieldKey: string,
+  reason?: string | null,
+): Promise<DeleteAssignmentResponse> {
   const payload = reason ? { correctionReason: reason } : {};
   return apiFetchJson(`/baselines/${baselineId}/assign/${fieldKey}`, {
     method: 'DELETE',
@@ -70,6 +94,12 @@ export async function fetchBaselineForAttachment(
   return apiFetchJson(`/attachments/${attachmentId}/baseline`, {
     method: 'GET',
   });
+}
+
+export async function listAssignments(baselineId: string): Promise<Assignment[]> {
+  return apiFetchJson(`/baselines/${baselineId}/assignments`, {
+    method: 'GET',
+  }) as Promise<Assignment[]>;
 }
 
 export async function createDraftBaseline(
