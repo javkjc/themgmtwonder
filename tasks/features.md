@@ -1145,7 +1145,7 @@ Based on your existing document and ML architecture decisions, here's the comple
 
 **Status:** 🚧 Partially Complete
 **What's Done:** Milestones 8.6.1-8.6.6 (Field Library CRUD, Admin UI, Baseline Data Model, State Machine, Baseline Confirmation UI)
-**What's Pending:** Milestones 8.6.7-8.6.16 (Extracted Text Pool, Field Assignment UI, Review Page Layout, Utilization & Locking, File Type Validation)
+**What's Pending:** Milestones 8.6.7-8.6.19 (Extracted Text Pool, Field Assignment UI, Review Page Layout, Utilization & Locking, File Type Validation)
 
 **Dependencies:**
 - **REQUIRES:** v8.1 (OCR retrieval & confirmation workflow)
@@ -1400,7 +1400,7 @@ Audit log: record before/after + reason
 
 
 Capability F — Review Page Layout & Interaction
-Milestone 8.6.10: Three-Panel Layout
+Milestone 8.6.13: Three-Panel Layout
 
 Review Page structure:
 
@@ -1411,13 +1411,13 @@ Right Panel (30% width): Field Assignment Panel (interactive form)
 
 Responsive: on mobile, collapse to tabs (Document / Text / Fields)
 
-Milestone 8.6.11: Persistent Panel (Non-Modal)
+Milestone 8.6.14: Persistent Panel (Non-Modal)
 
 Field Assignment Panel is always visible (not a modal)
 User can scroll through fields while viewing document
 Back button in navbar: returns to Task detail page
 
-Milestone 8.6.12: Document Preview Handling
+Milestone 8.6.15: Document Preview Handling
 
 PDF/Image: Show preview with pdf.js (existing from v3)
 XLSX: No preview, show message "Excel files have no preview. Download to view."
@@ -1427,7 +1427,7 @@ DOC/DOCX: Explicitly excluded, show error "Word documents not supported"
 **Note:** Review → Confirm Lifecycle (Capability G) was completed in Milestones 8.6.4-8.6.6 (Baseline Data Model, State Machine, Confirmation UI) and enhanced in v8.6.add1. See above for details.
 
 Capability H — Utilization & Locking (Pending)
-Milestone 8.6.13: Utilization Tracking for Baselines
+Milestone 8.6.16: Utilization Tracking for Baselines
 
 EXTEND existing UtilizationTrackingService (from v8.1):
 
@@ -1443,7 +1443,7 @@ Sets: utilized_at (first call wins), utilization_type
 
 
 
-Milestone 8.6.14: Utilization Lockout (UI + Backend)
+Milestone 8.6.17: Utilization Lockout (UI + Backend)
 
 If baseline has utilization_type set:
 
@@ -1454,7 +1454,7 @@ Backend: Reject edit/delete requests with 403 error
 
 Viewing does NOT count as usage (reading baseline data doesn't lock it)
 
-Milestone 8.6.15: Utilization Indicator (Task Detail)
+Milestone 8.6.18: Utilization Indicator (Task Detail)
 
 On Task detail page, show baseline utilization status:
 
@@ -1468,7 +1468,7 @@ Click indicator → shows detail (which record, when, by whom)
 
 
 Capability I — Supported File Types
-Milestone 8.6.16: File Type Validation
+Milestone 8.6.19: File Type Validation
 
 Supported for extraction:
 

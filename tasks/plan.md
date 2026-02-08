@@ -2,7 +2,7 @@
 # v8.6 - Field-Based Extraction Assignment & Baseline
 
 **Date:** 2026-02-05  
-**Scope:** Complete remaining v8.6 milestones (8.6.7-8.6.28) to enable field-based baseline assignments on the attachment review page with explicit, auditable user actions and no change to OCR authority.  
+**Scope:** Complete remaining v8.6 milestones (8.6.7-8.6.19) to enable field-based baseline assignments on the attachment review page with explicit, auditable user actions and no change to OCR authority.  
 **Principles:** Minimal localized changes. Backend authoritative. No new dependencies. No background automation. Preserve auditability-first.
 
 ---
@@ -10,15 +10,17 @@
 ## 0) Preconditions / Guardrails
 
 **Prerequisites:**
-- [ ] v8.1 OCR confirmation flow exists and review page is active at `/attachments/[attachmentId]/review`. Evidence: `tasks/executionnotes.md` entry "v8 Task 5: OCR Evidence Review UI" and "Task D1: Verify OCR state machine UI (v8.1)".
-- [ ] v8.5 Field Builder infrastructure is complete. Evidence: `tasks/executionnotes.md` entry "Milestone 8.5 Verification & Closure".
-- [ ] v8.6.1-8.6.6 are complete (Field Library CRUD/UI, Baseline Data Model, Baseline State Machine, Baseline Confirmation UI). Evidence: `tasks/executionnotes.md` entries "8.6.2", "8.6.3", "8.6.4", "8.6.5", "8.6.6".
-- [ ] `extracted_text_segments` is present in `apps/api/src/db/schema.ts` and documented in `tasks/codemapcc.md` data model section.
-- [ ] Review `tasks/lessons.md` for v8.6 patterns before starting.
+- [x] v8.1 OCR confirmation flow exists and review page is active at `/attachments/[attachmentId]/review`. Evidence: `tasks/executionnotes.md` entry "v8 Task 5: OCR Evidence Review UI" and "Task D1: Verify OCR state machine UI (v8.1)".
+- [x] v8.5 Field Builder infrastructure is complete. Evidence: `tasks/executionnotes.md` entry "Milestone 8.5 Verification & Closure".
+- [x] v8.6.1-8.6.6 are complete (Field Library CRUD/UI, Baseline Data Model, Baseline State Machine, Baseline Confirmation UI). Evidence: `tasks/executionnotes.md` entries "8.6.2", "8.6.3", "8.6.4", "8.6.5", "8.6.6".
+- [x] `extracted_text_segments` is present in `apps/api/src/db/schema.ts` and documented in `tasks/codemapcc.md` data model section.
+- [x] Review `tasks/lessons.md` for v8.6 patterns before starting.
 
 **Out of Scope:**
-- [ ] v8.7 training pipeline, v8.8 multi-language OCR, v8.9 batch processing, v9+ workflow runtime.
-- [ ] Table/line-item extraction, implicit assignment, auto-confirm, auto-utilization, background jobs.
+- [ ] v8.7 Table review (user-driven table extraction - separate version).
+- [ ] v8.8 ML suggestions (field matching, table detection - separate version).
+- [ ] v8.9 ML training pipeline, v8.10 multi-language OCR, v8.11 batch processing, v9+ workflow runtime.
+- [ ] Implicit assignment, auto-confirm, auto-utilization, background jobs.
 - [ ] New dependencies without explicit approval.
 
 **Note on v8.6.add1 Overlap:**
@@ -28,12 +30,54 @@ During v8.6 implementation, some features were completed early as part of v8.6.a
 - **D3** (Task Detail Status) - Enhanced with queue state badges (Queued/In Progress/Reviewed)
 See `features.md` v8.6.add1 section for full implementation details. These features are marked as ✅ Completed in this plan.
 
+**Milestone Alignment (plan.md ↔ features.md):**
+This plan is aligned with features.md v8.6 structure (19 milestones: 8.6.1-8.6.19). Mapping:
+
+**Completed (8.6.1-8.6.6):**
+- 8.6.1: Field Library Data Model ✅
+- 8.6.2: Field Library CRUD APIs ✅
+- 8.6.3: Field Library UI (Admin Page) ✅
+- 8.6.4: Baseline Data Model ✅
+- 8.6.5: Baseline State Machine ✅
+- 8.6.6: Baseline Confirmation UI ✅
+
+**Backend (Section 1):**
+- A1: Verify Extracted Text Segments → 8.6.7 ✅
+- A2: Field Assignment Data Model → 8.6.9 ✅
+- A3: Field Assignment Validation Service → 8.6.10 ✅
+- A4: Assignment API + Audit → 8.6.11 ✅
+- A5: Baseline Review Payload Aggregation → 8.6.8, 8.6.12 ✅
+
+**Review Page Layout (Section 2):**
+- B1: Three-Panel Layout + Persistent Panel → 8.6.13, 8.6.14 ✅
+- B2: Document Preview Handling → 8.6.15 ✅
+- B3: Extracted Text Pool Display → 8.6.8 ✅
+
+**Field Assignment UI (Section 3):**
+- C1: Field Assignment Panel → 8.6.12 (core UI)
+- C2: Manual Assignment + Validation → 8.6.12 (editing behavior) ✅
+- C3: Correction Reason Requirement → 8.6.12 (correction workflow) ✅
+- C4: Drag-and-Drop Assignment → 8.6.12 (interaction mode) ✅
+
+**Review & Confirm Lifecycle (Section 4):**
+- D1: Reviewed State UI → 8.6.6 + v8.6.add1 ✅
+- D2: Confirm Baseline → 8.6.6
+- D3: Task Detail Status → v8.6.add1 enhancement ✅
+
+**Utilization & Locking (Section 5):**
+- E1: Utilization Tracking → 8.6.16
+- E2: Utilization Lockout → 8.6.17
+- E3: Utilization Indicator → 8.6.18
+
+**File Type Validation (Section 6):**
+- F1: Upload Validation → 8.6.19
+
 **STOP Events (Halt Execution & Request Clarification):**
 - **STOP - Missing Infrastructure:** If `extracted_text_segments` table is not in `apps/api/src/db/schema.ts` and no migration exists to create it.
 - **STOP - Missing File/Codemap Entry:** If required files or tables are not listed in `tasks/codemapcc.md` and cannot be verified.
-- **STOP - New Dependency Request:** If ML suggestions require new Python/Node packages beyond current `apps/ocr-worker/requirements.txt` or `apps/api/package.json`.
+- **STOP - New Dependency Request:** If new Python/Node packages are needed beyond current `apps/ocr-worker/requirements.txt` or `apps/api/package.json`.
 - **STOP - Ambiguous Requirement:** If validation rules for `currency` or `date` are unclear for specific formats (e.g., ISO vs locale).
-- **STOP - Scope Creep:** If work requires v8.7+ (training pipeline), v8.8+ (language detection), or v8.9+ (batch workflows).
+- **STOP - Scope Creep:** If work requires v8.7+ (table review), v8.8+ (ML suggestions), v8.9+ (ML training), or v8.10+ features.
 
 ---
 
@@ -203,7 +247,7 @@ Expose baseline status, utilization, assignments, and extracted segments in a si
 
 > **Context:** Build the three-panel review workspace and wire extracted text + assignment data.
 
-### B1 - Three-Panel Layout + Persistent Panel (8.6.19-8.6.20) ([Complexity: Medium]) ✅
+### B1 - Three-Panel Layout + Persistent Panel (8.6.13-8.6.14) ([Complexity: Medium]) ✅
 Status: Completed
 **Problem statement**  
 Provide a persistent three-panel layout with document preview, extracted text pool, and field assignment panel.
@@ -227,7 +271,7 @@ Provide a persistent three-panel layout with document preview, extracted text po
 **Estimated effort:** 2 hours  
 **Complexity flag:** Medium = GPT-4o preferred
 
-### B2 - Document Preview Handling (8.6.21) ([Complexity: Simple]) ✅
+### B2 - Document Preview Handling (8.6.15) ([Complexity: Simple]) ✅
 Status: Completed
 **Problem statement**  
 Handle preview rules for PDF/images and explicit messaging for XLSX/DOC/DOCX.
@@ -309,7 +353,7 @@ Show active fields with type-specific inputs and current assignment values.
 **Estimated effort:** 3 hours  
 **Complexity flag:** Medium = GPT-4o preferred
 
-### C2 - Manual Assignment + Validation (8.6.17) ([Complexity: Medium])
+### C2 - Manual Assignment + Validation (8.6.12 - part of Field Assignment UI) ([Complexity: Medium])
 Status: ✅ Completed
 **Problem statement**
 Allow manual entry with validation feedback and explicit confirmation on save.
@@ -347,7 +391,7 @@ Allow manual entry with validation feedback and explicit confirmation on save.
 **Estimated effort:** 2 hours
 **Complexity flag:** Medium = GPT-4o preferred
 
-### C3 - Correction Reason Requirement (8.6.18) ([Complexity: Medium])
+### C3 - Correction Reason Requirement (8.6.12 - part of Field Assignment UI) ([Complexity: Medium])
 Status: ✅ Completed (enhanced in v8.6.add1 with draft/reviewed differentiation)
 **Problem statement**
 Require correction reason for edits to existing assignments or suggestions.
@@ -374,8 +418,8 @@ Require correction reason for edits to existing assignments or suggestions.
 **Estimated effort:** 2 hours  
 **Complexity flag:** Medium = GPT-4o preferred
 
-### C4 - Drag-and-Drop Assignment (8.6.16) ([Complexity: Complex])
-Status: New
+### C4 - Drag-and-Drop Assignment (8.6.12 - part of Field Assignment UI) ([Complexity: Complex])
+Status: ✅ Completed
 **Problem statement**  
 Allow drag-drop from extracted text segments into fields with explicit confirmation.
 
@@ -409,7 +453,7 @@ Expected result: `source_segment_id` set and value matches segment.
 
 > **Context:** Ensure baseline review/confirm UX matches v8.6 lifecycle requirements.
 
-### D1 - Reviewed State UI (8.6.22) ([Complexity: Simple])
+### D1 - Reviewed State UI (8.6.6 - Baseline Confirmation UI, enhanced in v8.6.add1) ([Complexity: Simple])
 Status: ✅ Completed (enhanced in v8.6.add1 with OCR completion lifecycle)
 **Problem statement**
 Allow user to mark baseline as reviewed while keeping it editable.
@@ -434,7 +478,7 @@ Allow user to mark baseline as reviewed while keeping it editable.
 **Estimated effort:** 1 hour  
 **Complexity flag:** Simple = GPT-4o-mini OK
 
-### D2 - Confirm Baseline with Summary (8.6.23) ([Complexity: Medium])
+### D2 - Confirm Baseline with Summary (8.6.6 - Baseline Confirmation UI) ([Complexity: Medium])
 Status: New
 **Problem statement**  
 Confirm baseline only after review and show counts of assigned vs empty fields.
@@ -461,7 +505,7 @@ Expected result: `confirmed` with timestamps set.
 **Estimated effort:** 2 hours  
 **Complexity flag:** Medium = GPT-4o preferred
 
-### D3 - Confirm Only on Review Page + Task Detail Status (8.6.24) ([Complexity: Simple])
+### D3 - Confirm Only on Review Page + Task Detail Status (v8.6.add1 enhancement) ([Complexity: Simple])
 Status: ✅ Completed (enhanced in v8.6.add1 with queue state badges)
 **Problem statement**
 Ensure confirm action exists only on review page; task detail shows read-only status.
@@ -490,108 +534,12 @@ Ensure confirm action exists only on review page; task detail shows read-only st
 **Complexity flag:** Simple = GPT-4o-mini OK
 
 ---
-## 5) ML Suggestions (P1)
 
-> **Context:** Optional ML-assisted suggestions, blocked unless ML endpoint can be added without new dependencies.
-
-### E1+E2 - ML Service Container + Suggestion API (8.6.13-8.6.14) ([Complexity: Complex])
-Status: New
-**Problem statement**
-Provide ML-based field-to-text matching suggestions using a separate microservice container. This replaces the original E1 (add endpoint to ocr-worker) and E2 (suggestion application service) with a complete ML service implementation that includes both inference and training capabilities.
-
-**Architecture Decision**
-- **NEW separate container**: `ml-service` (not added to ocr-worker)
-- **Backend network only**: Like `db`, accessible only via API container
-- **Open source ML**: Sentence-BERT (all-MiniLM-L6-v2) with Apache 2.0 license
-- **Includes training**: Full training pipeline for future fine-tuning (v8.7 capabilities built-in)
-
-**Files / Locations**
-- NEW: `apps/ml-service/` - Complete FastAPI microservice
-  - `ml-service/main.py` - FastAPI app with `/health` and `/ml/suggest-assignments` endpoints
-  - `ml-service/ml.Dockerfile` - Container definition
-  - `ml-service/requirements.txt` - Python dependencies (sentence-transformers, fastapi, etc.)
-  - `ml-service/inference/matcher.py` - Semantic field matching logic
-  - `ml-service/training/finetune.py` - Model training script for future use
-- Backend: `apps/api/src/ml/ml-client.service.ts` - HTTP client to call ml-service
-- Backend: `apps/api/src/ml/ml.service.ts` - Training data export service
-- Backend: `apps/api/src/ml/ml.controller.ts` - Admin endpoints for training data
-- Backend: `apps/api/src/ml/ml.module.ts` - NestJS module
-- Backend: `apps/api/src/baseline/baseline.controller.ts` - Add `POST /baselines/:baselineId/suggest`
-- Backend: `apps/api/src/db/schema.ts` - Add `ml_model_versions` table + extend `baseline_field_assignments`
-- Infrastructure: `docker-compose.yml` - Add ml-service container
-- Infrastructure: `.env` - Add ML_SERVICE_URL
-
-**Implementation plan**
-1. Create ml-service container with FastAPI + Sentence-BERT model
-2. Implement `/ml/suggest-assignments` endpoint using semantic similarity
-3. Add ml_model_versions table and extend baseline_field_assignments with suggestion tracking
-4. Create ML module in API with client service for calling ml-service
-5. Add suggestion application endpoint in baseline controller
-6. Wire up training data export API for future fine-tuning
-
-**Checkpoint E1+E2 - Verification**
-- Manual: `docker-compose up ml-service` starts without errors
-- Manual: `curl http://ml-service:5000/health` returns `{"status": "ok", "model": "all-MiniLM-L6-v2"}`
-- Manual: POST to `/ml/suggest-assignments` with test payload returns semantically relevant suggestions
-- Manual: `POST /baselines/:baselineId/suggest` creates assignments with confidence scores
-- DB:
-```sql
-SELECT field_key, assigned_value, suggestion_confidence, suggestion_accepted
-FROM baseline_field_assignments
-WHERE baseline_id = '<BASELINE_ID>';
-```
-Expected result: rows created with `suggestion_confidence` populated, `suggestion_accepted = null`
-- DB:
-```sql
-SELECT * FROM ml_model_versions;
-```
-Expected result: Table exists (may be empty initially)
-- Logs: ml-service logs show successful model loading and inference requests
-- Logs: API audit entry `baseline.suggest.apply` includes `baselineId`, `appliedCount`, `modelVersion`
-- Regression: Existing OCR worker `/ocr` endpoint continues to work
-- Regression: Manual assignment still works without ML suggestions
-
-**Estimated effort:** 8 hours (combined E1+E2 plus training infrastructure)
-**Complexity flag:** Complex = GPT-4o required
-
-**Reference Plan:** See `~/.claude/plans/cheeky-imagining-boot.md` for complete implementation details
-
-### E3 - Suggestion Display + Accept/Modify/Clear (8.6.15) ([Complexity: Medium])
-Status: New
-**Problem statement**  
-Show suggestions with confidence badges and enforce explicit accept/modify/clear flows.
-
-**Files / Locations**
-- Frontend: `apps/web/app/components/FieldAssignmentPanel.tsx` - suggestion display and actions.
-- Frontend: `apps/web/app/attachments/[attachmentId]/review/page.tsx` - trigger suggestions.
-
-**Implementation plan**
-1. Pre-fill suggested values with High/Medium/Low badges.
-2. Accept requires explicit confirm; modify requires correction reason.
-3. Clear suggestion requires reason and removes assignment.
-
-**Checkpoint E3 - Verification**
-- Manual: Accept, modify, and clear each show correct prompts and results.
-- DB:
-```sql
-SELECT assigned_value, corrected_from, correction_reason
-FROM baseline_field_assignments
-WHERE baseline_id = '<BASELINE_ID>' AND field_key = 'total_amount';
-```
-Expected result: modify sets corrected fields; clear deletes row.
-- Logs: Audit entries include `suggestedValue` and final value.
-- Regression: Read-only lock still applies when utilized.
-
-**Estimated effort:** 2 hours  
-**Complexity flag:** Medium = GPT-4o preferred
-
----
-
-## 6) Utilization & Locking (P1)
+## 5) Utilization & Locking (P1)
 
 > **Context:** Baseline editing must lock after utilization, both UI and backend.
 
-### F1 - Utilization Tracking for Baselines (8.6.25) ([Complexity: Medium])
+### E1 - Utilization Tracking for Baselines (8.6.16) ([Complexity: Medium])
 Status: New
 **Problem statement**  
 Persist utilization timestamps and types when baseline data is used.
@@ -620,7 +568,7 @@ Expected result: fields set once.
 **Estimated effort:** 2 hours  
 **Complexity flag:** Medium = GPT-4o preferred
 
-### F2 - Utilization Lockout (8.6.26) ([Complexity: Medium])
+### E2 - Utilization Lockout (8.6.17) ([Complexity: Medium])
 Status: New
 **Problem statement**  
 Prevent edits when baseline is utilized, in both UI and backend.
@@ -644,7 +592,7 @@ Prevent edits when baseline is utilized, in both UI and backend.
 **Estimated effort:** 2 hours  
 **Complexity flag:** Medium = GPT-4o preferred
 
-### F3 - Utilization Indicator on Task Detail (8.6.27) ([Complexity: Simple])
+### E3 - Utilization Indicator on Task Detail (8.6.18) ([Complexity: Simple])
 Status: New
 **Problem statement**  
 Surface baseline utilization status on task detail page.
@@ -669,11 +617,11 @@ Surface baseline utilization status on task detail page.
 
 ---
 
-## 7) File Type Validation (P1)
+## 6) File Type Validation (P1)
 
 > **Context:** Restrict uploads to supported file types with clear errors.
 
-### G1 - Upload Validation (8.6.28) ([Complexity: Simple])
+### F1 - Upload Validation (8.6.19) ([Complexity: Simple])
 Status: New
 **Problem statement**  
 Reject unsupported file types with explicit user-facing errors.
@@ -688,7 +636,7 @@ Reject unsupported file types with explicit user-facing errors.
 2. Reject DOC/DOCX with error "Word documents not supported. Please convert to PDF."
 3. Preserve existing 20MB size limit and duplicate-name checks.
 
-**Checkpoint G1 - Verification**
+**Checkpoint F1 - Verification**
 - Manual: Upload DOCX -> error shown; upload PDF/XLSX -> succeeds.
 - DB: No attachment row created for rejected files.
 - Logs: Error includes MIME type and filename.
@@ -699,7 +647,7 @@ Reject unsupported file types with explicit user-facing errors.
 
 ---
 
-## 8) Execution Order (Do Not Skip)
+## 7) Execution Order (Do Not Skip)
 
 **Critical path dependencies:**
 1. **A1** Verify extracted text segments storage - no dependencies.
@@ -717,26 +665,24 @@ Reject unsupported file types with explicit user-facing errors.
 13. **D1** Reviewed state UI - depends on A5.
 14. **D2** Confirm baseline with summary - depends on D1 and C1.
 15. **D3** Confirm only on review page + task detail status - depends on D2.
-16. **E1+E2** ML service container + suggestion API - depends on A4 (assignment API exists).
-17. **E3** Suggestion display - depends on E1+E2 and C1.
-19. **F1** Utilization tracking - depends on A2.
-20. **F2** Utilization lockout - depends on F1 and C1.
-21. **F3** Utilization indicator - depends on F1.
-22. **G1** File type validation - no dependencies.
+16. **E1** Utilization tracking - depends on A2.
+17. **E2** Utilization lockout - depends on E1 and C1.
+18. **E3** Utilization indicator - depends on E1.
+19. **F1** File type validation - no dependencies.
 
 **Parallel execution opportunities:**
 - B2 can run in parallel with B3 after B1 completes.
 - D1 can run in parallel with B3 after A5 completes.
-- F1 can run in parallel with UI tasks after A2 completes.
+- E1 can run in parallel with UI tasks after A2 completes.
+- F1 can run anytime (no dependencies).
 
 **Blocking relationships:**
 - UI assignments (C-series) are blocked until assignment API (A4) is complete.
-- ML service (E1+E2) is blocked until assignment API (A4) is complete.
-- Suggestion UI (E3) is blocked until ML service (E1+E2) and field assignment panel (C1) are complete.
+- Utilization lockout (E2) is blocked until utilization tracking (E1) is complete.
 
 ---
 
-## 9) Definition of Done
+## 8) Definition of Done
 
 **Feature Completeness:**
 - [ ] Extracted Text Pool: Segments render with confidence badges and optional bounding-box highlight.
@@ -753,8 +699,8 @@ Reject unsupported file types with explicit user-facing errors.
 - [ ] All assignment mutations emit audit log entries with before/after and reason.
 
 **No Regressions:**
-- [ ] API boots without errors (`npm run build` in `apps/api`).
-- [ ] Web builds without errors (`npm run build` in `apps/web`).
+- [x] API boots without errors (`npm run build` in `apps/api`).
+- [x] Web builds without errors (`npm run build` in `apps/web`).
 - [ ] OCR confirmation and review page still work for existing attachments.
 
 **Documentation:**
@@ -763,11 +709,11 @@ Reject unsupported file types with explicit user-facing errors.
 
 ---
 
-## 10) Manual Test Checklist (Run After Each Checkpoint)
+## 9) Manual Test Checklist (Run After Each Checkpoint)
 
 **Smoke Tests (Run After Every Task):**
-- [ ] API boots: `cd apps/api && npm run build` -> no errors.
-- [ ] Web builds: `cd apps/web && npm run build` -> exit code 0.
+- [x] API boots: `cd apps/api && npm run build` -> no errors.
+- [x] Web builds: `cd apps/web && npm run build` -> exit code 0.
 - [ ] Login flow works: Navigate to `/login` -> enter credentials -> redirects to `/`.
 
 **Feature-Specific Tests:**
@@ -790,7 +736,7 @@ Reject unsupported file types with explicit user-facing errors.
 
 ---
 
-## 11) Post-Completion Checklist
+## 10) Post-Completion Checklist
 
 - [ ] Update `tasks/executionnotes.md`: completion date.
 - [ ] Update `tasks/executionnotes.md`: what was built (reference task IDs).
