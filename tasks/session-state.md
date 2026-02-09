@@ -1,51 +1,40 @@
-﻿# Session State - 2026-02-09
+# Session State - 2026-02-09
 
 ## Current Status
-- Milestone 8.6: Field-Based Extraction Assignment & Baseline
+- Milestone 8.6: Field-Based Extraction Assignment & Baseline (COMPLETE)
+- Milestone 8.7: Table Review for Structured Document Data (IN PROGRESS)
 - Completed Tasks:
-  - Task A1-A5 ✓ Backend Core & Aggregation (verified)
-  - Task B1-B3 ✓ Review Layout & Text Pool (verified)
-  - Task C1-C4 ✓ Manual Assignment, Validation & Drag-Drop (fully verified on 2026-02-09)
-  - Task D1-D2 ✓ Reviewed State & Confirmation (verified)
-  - Task D3 ✓ Task Detail Status Display (verified)
-  - Task E1-E3 ✓ Utilization Tracking, Lockout & Indicators (fully verified on 2026-02-09)
-  - Task F1 ✓ Upload Validation (fully verified on 2026-02-09)
-  - Task G1 ✓ UX Bug Fixes - Button States & Status Sync (verified on 2026-02-09)
-- Status: Milestone 8.6 is FULLY COMPLETED with all 20 tasks verified (100%)
-- Next Steps: Proceed to Milestone 8.7 (Table Review) or mark v8.6 as shipped
+  - Task A1 ? Table Data Model (Milestone 8.7.1) (verified on 2026-02-09)
+  - Task A2 ? Table Management Service (Milestone 8.7.2) (verified on 2026-02-09)
+  - Task A3 ? Baseline Confirmation Guard for Tables (Milestone 8.7.7 dependency) (verified on 2026-02-09)
+  - Task B1 ? Table Controller + DTOs (Milestone 8.7.3) (verified on 2026-02-09)
+  - Task B2 – Table Read Models (Milestone 8.7.3) (verified on 2026-02-09)
+- Next Task: **Task C1 – Table Creation Modal**
 
 ## Achievements (2026-02-09 Session)
-- **Task E1-E3 (Utilization)**: Implemented tracking, lockout, and task detail indicators.
-- **Task F1 (Upload Validation)**: Implemented server-side and client-side file type validation.
-  - Allowed: PDF, PNG, JPG/JPEG, XLSX.
-  - Rejected: DOC/DOCX with specific conversion message.
-  - Optimized error handling in `AttachmentsController`.
-
-## Implementation Details
-- Backend Changes:
-  - `apps/api/src/attachments/attachments.service.ts`: MIME/Ext validation logic.
-  - `apps/api/src/attachments/attachments.controller.ts`: Refactored upload error handling.
-- Frontend Changes:
-  - `apps/web/app/task/[id]/page.tsx`: Added client-side validation to file selection and drag-drop handlers.
+- **A2/B1 Alignment Patch**:
+  - Enforced table size limits and 50,000-cell cap during creation.
+  - Enforced 5000-character cell value max during creation.
+  - Inserted all cells (including empty values) to satisfy rowCount * columnCount expectation.
+  - Routed table deletion through service-level edit guards.
+- **B1 Manual Verification**:
+  - Invalid size returns 400 with explicit message.
+  - Nonexistent fieldKey assignment returns 404.
+  - DB cell count matches rowCount * columnCount.
+- **B1 Browser Verification**:
+  - Created table via browser fetch; invalid size rejected with 400.
 
 ## Context
-- Milestone 8.6 "Field-Based Extraction Assignment & Baseline" is now complete.
-- The system supports a full lifecycle from document upload (with type validation) to verified field assignments and utilization-locked baselines.
+- Table APIs are now live with guardrails aligned to plan.md.
+- CSRF-protected routes require `todo_csrf` cookie + `x-csrf-token` header for manual testing.
 
 ## Next Immediate Step
-- Conduct full end-to-end regression testing.
-- Update `features.md` to mark v8.6 as complete.
-- Start planning for Milestone 8.7 (Table Review).
+- Start Task C1 (Table Creation Modal) after confirming review page data readiness.
 
 ## Verification Status
-- ✓ API builds without errors.
-- ✓ Web builds without errors.
-- ✓ Manual UI testing completed for Confirmation (D2) and Utilization (E3).
-- ✓ Manual UI testing completed for Drag-and-drop (C4) and Upload Rejection (F1) on 2026-02-09.
+- ? B1 checkpoint manual tests executed (API + browser).
+- ? DB count check executed for created table.
+- ✅ B2 verification passed (script + DB query).
 
 ## Known Issues (Non-Blocking)
-- XLSX OCR extraction fails with "Unable to decode an image from provided bytes" (expected - OCR worker requires image/PDF format)
-
-## Fixed Issues (2026-02-09)
-- ✅ OCR status badge not updating to "Failed" - Fixed by prioritizing processingStatus check in badge logic
-- ✅ Orange box on hover - Clarified as intended feature (bounding box highlight for OCR verification)
+- None.

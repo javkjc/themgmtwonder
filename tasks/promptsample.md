@@ -29,7 +29,7 @@
   }
 }
 
-# for simple tesk *******************
+# for simple task *******************
 
 [Task Name] - [Task ID]
 
@@ -353,6 +353,9 @@ Output must be anti-hallucination: explicit sources, no assumptions, verificatio
 - No assumptions: If tasks/plan.md doesn't specify → STOP and ask
 - No code until prerequisites verified
 
+**Credentials to use for testing:** 
+- User/email: test@test.com
+- Password: 12341234
 **Format**: Clear ## headers, - bullets, no paragraphs. Full verification (don't truncate).
 
 **Length target**: Core 200-300 words + full verification section (don't compress verification).

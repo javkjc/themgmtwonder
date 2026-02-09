@@ -105,6 +105,7 @@ export class BaselineController {
     const baseline = await this.getBaselineOrThrow(baselineId);
     await this.ensureUserOwnsAttachment(req.user.userId, baseline.attachmentId);
 
+    // Guard: Service will check for and block unconfirmed tables (A3)
     return await this.baselineService.confirmBaseline(
       baselineId,
       req.user.userId,

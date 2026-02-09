@@ -10,6 +10,7 @@ import {
     extractedTextSegments,
     extractionBaselines,
     ocrResults,
+    baselineTables,
 } from '../db/schema';
 import { fieldLibrary } from '../field-library/schema';
 import { eq, and, desc } from 'drizzle-orm';
@@ -250,6 +251,40 @@ export class BaselineManagementService {
                 throw new BadRequestException(
                     `Cannot confirm: baseline status is '${existing.status}', expected 'reviewed'`,
                 );
+            }
+
+            // Check for unconfirmed tables
+            const draftTables = await tx
+                .select({
+                    id: baselineTables.id,
+                    tableLabel: baselineTables.tableLabel,
+                    tableIndex: baselineTables.tableIndex,
+                    status: baselineTables.status,
+                })
+                .from(baselineTables)
+                .where(
+                    and(
+                        eq(baselineTables.baselineId, baselineId),
+                        eq(baselineTables.status, 'draft'),
+                    ),
+                );
+
+            if (draftTables.length > 0) {
+                const count = draftTables.length;
+                const labels = draftTables.map((t) => t.tableLabel || `Table #${t.tableIndex}`);
+                const message =
+                    count === 1
+                        ? `Cannot confirm baseline: Table "${labels[0]}" is not confirmed`
+                        : `Cannot confirm baseline: ${count} tables are not confirmed: "${labels.join('", "')}"`;
+
+                throw new BadRequestException({
+                    error: message,
+                    draftTables: draftTables.map((t) => ({
+                        id: t.id,
+                        label: t.tableLabel || `Table #${t.tableIndex}`,
+                        status: t.status,
+                    })),
+                });
             }
 
             // 2. Find any existing confirmed baseline for the same attachment

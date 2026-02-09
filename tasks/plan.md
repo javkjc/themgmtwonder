@@ -38,7 +38,9 @@
 
 > **Context:** Establish authoritative storage and enforcement for table baselines before UI work.
 
-### A1 � Table Data Model (Milestone 8.7.1) ([Complexity: Medium])
+### A1 – Table Data Model (Milestone 8.7.1) ([Complexity: Medium])
+
+**Status:** ✅ Completed on 2026-02-09 (Verified 2026-02-09)
 
 **Problem statement**  
 We need durable storage for tables, cells, and column mappings tied to a baseline, including validation state and auditability.
@@ -81,7 +83,9 @@ ORDER BY table_name;
 
 ### A2 � Table Management Service (Milestone 8.7.2) ([Complexity: Complex])
 
-**Problem statement**  
+**Status:** ✅ Completed on 2026-02-09
+
+**Problem statement**
 Provide backend operations for creating tables, updating cells, deleting rows, mapping columns, and confirming tables with full validation and auditability.
 
 **Files / Locations**
@@ -129,7 +133,9 @@ WHERE id = '<TABLE_ID>';
 **Estimated effort:** 3 hours  
 **Complexity flag:** Complex = GPT-4o required
 
-### A3 � Baseline Confirmation Guard for Tables (Milestone 8.7.7 dependency) ([Complexity: Medium])
+### A3  Baseline Confirmation Guard for Tables (Milestone 8.7.7 dependency) ([Complexity: Medium])
+
+**Status:** ✅ Completed on 2026-02-09
 
 **Problem statement**  
 Baseline confirmation must be blocked when any table tied to that baseline is still in draft.
@@ -173,6 +179,8 @@ SELECT status FROM baseline_tables WHERE baseline_id = '<BASELINE_ID>';
 > **Context:** Expose table CRUD endpoints to the review UI with strict validation.
 
 ### B1 � Table Controller + DTOs (Milestone 8.7.3) ([Complexity: Medium])
+
+**Status:** ✅ Completed on 2026-02-09
 
 **Problem statement**  
 The UI needs a stable API to create tables, edit cells, delete rows, map columns, and confirm tables.
@@ -225,6 +233,8 @@ WHERE table_id = '<TABLE_ID>';
 **Complexity flag:** Medium = GPT-4o preferred
 
 ### B2 � Table Read Models (Milestone 8.7.3) ([Complexity: Simple])
+
+**Status:** ✅ Completed on 2026-02-09
 
 **Problem statement**  
 The UI needs table data grouped by row plus current column mappings and validation status.
@@ -682,4 +692,3 @@ WHERE id = '<BASELINE_ID>';
 - [ ] Tag commit: `git tag v8.7 -m "Table Review for Structured Document Data complete"`
 
 ---
-

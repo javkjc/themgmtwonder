@@ -76,7 +76,12 @@ export type AuditAction =
   | 'baseline.assignment.denied'
   | 'baseline.utilized.record_created'
   | 'baseline.utilized.workflow_committed'
-  | 'baseline.utilized.data_exported';
+  | 'baseline.utilized.data_exported'
+  | 'table.create'
+  | 'table.cell.update'
+  | 'table.row.delete'
+  | 'table.column.assign'
+  | 'table.confirm';
 
 export type AuditModule =
   | 'auth'
@@ -88,7 +93,9 @@ export type AuditModule =
   | 'admin'
   | 'process'
   | 'field_library'
-  | 'baseline';
+  | 'field_library'
+  | 'baseline'
+  | 'table';
 
 export type CreateAuditLogDto = {
   userId?: string | null;

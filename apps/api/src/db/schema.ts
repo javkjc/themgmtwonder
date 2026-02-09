@@ -300,6 +300,71 @@ export const baselineFieldAssignments = pgTable(
     })
 );
 
+// Baseline Tables table
+export const baselineTables = pgTable(
+    'baseline_tables',
+    {
+        id: uuid('id').primaryKey().defaultRandom(),
+        baselineId: uuid('baseline_id')
+            .notNull()
+            .references(() => extractionBaselines.id, { onDelete: 'cascade' }),
+        tableIndex: integer('table_index').notNull(),
+        tableLabel: text('table_label'),
+        status: varchar('status', { length: 20 }).default('draft').notNull(),
+        rowCount: integer('row_count').notNull().default(0),
+        columnCount: integer('column_count').notNull().default(0),
+        confirmedAt: timestamp('confirmed_at'),
+        confirmedBy: uuid('confirmed_by').references(() => users.id),
+        createdAt: timestamp('created_at').defaultNow().notNull(),
+        updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    },
+    (table) => ({
+        baselineTableUnique: unique('baseline_table_unique').on(table.baselineId, table.tableIndex),
+    })
+);
+
+// Baseline Table Cells table
+export const baselineTableCells = pgTable(
+    'baseline_table_cells',
+    {
+        id: uuid('id').primaryKey().defaultRandom(),
+        tableId: uuid('table_id')
+            .notNull()
+            .references(() => baselineTables.id, { onDelete: 'cascade' }),
+        rowIndex: integer('row_index').notNull(),
+        columnIndex: integer('column_index').notNull(),
+        cellValue: text('cell_value'),
+        validationStatus: varchar('validation_status', { length: 20 }).default('valid').notNull(),
+        errorText: text('error_text'),
+        correctionFrom: text('correction_from'),
+        correctionReason: text('correction_reason'),
+        updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    },
+    (table) => ({
+        cellUnique: unique('baseline_table_cell_unique').on(table.tableId, table.rowIndex, table.columnIndex),
+        validationStatusIdx: index('idx_baseline_table_cells_validation').on(table.tableId, table.validationStatus),
+    })
+);
+
+// Baseline Table Column Mappings table
+export const baselineTableColumnMappings = pgTable(
+    'baseline_table_column_mappings',
+    {
+        id: uuid('id').primaryKey().defaultRandom(),
+        tableId: uuid('table_id')
+            .notNull()
+            .references(() => baselineTables.id, { onDelete: 'cascade' }),
+        columnIndex: integer('column_index').notNull(),
+        fieldKey: varchar('field_key', { length: 255 })
+            .notNull()
+            .references(() => fieldLibrary.fieldKey),
+    },
+    (table) => ({
+        columnMappingUnique: unique('baseline_table_column_mapping_unique').on(table.tableId, table.columnIndex),
+        tableIdx: index('idx_baseline_table_column_mappings_table_id').on(table.tableId),
+    })
+);
+
 // Audit Logs table
 export const auditLogs = pgTable(
     'audit_logs',
@@ -414,6 +479,7 @@ export const extractedTextSegmentsRelations = relations(extractedTextSegments, (
 
 export const extractionBaselinesRelations = relations(extractionBaselines, ({ many }) => ({
     assignments: many(baselineFieldAssignments),
+    tables: many(baselineTables),
 }));
 
 export const baselineFieldAssignmentsRelations = relations(baselineFieldAssignments, ({ one }) => ({
@@ -432,6 +498,37 @@ export const baselineFieldAssignmentsRelations = relations(baselineFieldAssignme
     user: one(users, {
         fields: [baselineFieldAssignments.assignedBy],
         references: [users.id],
+    }),
+}));
+
+export const baselineTablesRelations = relations(baselineTables, ({ one, many }) => ({
+    baseline: one(extractionBaselines, {
+        fields: [baselineTables.baselineId],
+        references: [extractionBaselines.id],
+    }),
+    confirmedByUser: one(users, {
+        fields: [baselineTables.confirmedBy],
+        references: [users.id],
+    }),
+    cells: many(baselineTableCells),
+    columnMappings: many(baselineTableColumnMappings),
+}));
+
+export const baselineTableCellsRelations = relations(baselineTableCells, ({ one }) => ({
+    table: one(baselineTables, {
+        fields: [baselineTableCells.tableId],
+        references: [baselineTables.id],
+    }),
+}));
+
+export const baselineTableColumnMappingsRelations = relations(baselineTableColumnMappings, ({ one }) => ({
+    table: one(baselineTables, {
+        fields: [baselineTableColumnMappings.tableId],
+        references: [baselineTables.id],
+    }),
+    field: one(fieldLibrary, {
+        fields: [baselineTableColumnMappings.fieldKey],
+        references: [fieldLibrary.fieldKey],
     }),
 }));
 

@@ -1,4 +1,4 @@
-# CodeMap (codemapcc.md)
+﻿# CodeMap (codemapcc.md)
 
 ## 0) Repo Index
 - Root: docker-compose.yml, .env, README.md
@@ -253,13 +253,27 @@
     - POST /baselines/:baselineId/assign ? assignField() ? BaselineAssignmentsService.upsertAssignment()
     - DELETE /baselines/:baselineId/assign/:fieldKey ? deleteAssignment() ? BaselineAssignmentsService.deleteAssignment()
   - Guards/errors: JwtAuthGuard; attachment ownership enforced; lifecycle transitions validated (400 on invalid state)
+- Controller: TableController
+  - Path: apps/api/src/baseline/table.controller.ts
+  - Base route: /baselines/:baselineId/tables, /tables/:tableId
+  - Endpoints:
+    - POST /baselines/:baselineId/tables â†’ createTable() â†’ TableManagementService.createTable()
+    - GET /baselines/:baselineId/tables → listTables() → returns table list with columnMappings summary
+    - GET /tables/:tableId → getTable() → returns { table, cells: Cell[][], columnMappings } (cells include validationStatus + errorText)
+    - DELETE /tables/:tableId â†’ deleteTable() â†’ DB delete (baseline_tables)
+    - PUT /tables/:tableId/cells/:rowIndex/:columnIndex â†’ updateCell() â†’ TableManagementService.updateCell()
+    - DELETE /tables/:tableId/rows/:rowIndex â†’ deleteRow() â†’ TableManagementService.deleteRow()
+    - POST /tables/:tableId/columns/:columnIndex/assign â†’ assignColumn() â†’ TableManagementService.assignColumnToField()
+    - POST /tables/:tableId/confirm â†’ confirmTable() â†’ TableManagementService.confirmTable()
+  - DTOs: apps/api/src/baseline/dto/{create-table.dto.ts,update-cell.dto.ts,assign-column.dto.ts,delete-row.dto.ts}
+  - Guards/errors: JwtAuthGuard; ownership enforced (Baseline â†’ Attachment â†’ Todo); strict validation on inputs
 - Service: BaselineManagementService
   - Path: apps/api/src/baseline/baseline-management.service.ts
-  - Lifecycle: draft → reviewed → confirmed → archived (strict state machine)
+  - Lifecycle: draft â†’ reviewed â†’ confirmed â†’ archived (strict state machine)
   - Methods:
     - createDraftBaseline(attachmentId, userId): Creates baseline with status='draft', auto-populates segments from OCR, pre-fills assignments from parsed fields
-    - markReviewed(baselineId, userId): Transitions draft → reviewed (still editable)
-    - confirmBaseline(baselineId, userId): Transactional confirm (reviewed → confirmed) + auto-archives previous confirmed baseline atomically
+    - markReviewed(baselineId, userId): Transitions draft â†’ reviewed (still editable)
+    - confirmBaseline(baselineId, userId): Transactional confirm (reviewed â†’ confirmed) + auto-archives previous confirmed baseline atomically; blocked if any draft tables exist
     - markBaselineUtilized(baselineId, type, metadata): First-write-wins utilization tracking (record_created/workflow_committed/data_exported)
   - Audit: all transitions emit baseline.create/review/confirm/archive/utilized events
 - Service: FieldAssignmentValidatorService
@@ -300,6 +314,9 @@ Overlap logic:
   - field_library ? id (uuid pk), fieldKey (text unique), label, characterType (enum: varchar/int/decimal/date/boolean), characterLimit (int nullable, varchar only), status (enum: active/hidden/archived), version (int, increments on characterType change), createdAt, updatedAt; admin-managed via FieldLibraryController
   - extraction_baselines ? id (uuid pk), attachmentId fk attachments.id (cascade), status (enum: draft/reviewed/confirmed/archived), confirmedAt, confirmedBy fk users.id, utilizedAt, utilizationType (enum: record_created/workflow_committed/data_exported nullable), archivedAt, archivedBy fk users.id, createdAt; partial unique index on (attachmentId) WHERE status='confirmed' enforces one confirmed baseline per attachment
   - baseline_field_assignments ? id (uuid pk), baselineId fk extraction_baselines.id (cascade), fieldKey fk field_library.fieldKey, assignedValue, sourceSegmentId (uuid fk extracted_text_segments.id, set null), correctedFrom, correctionReason, assignedBy fk users.id, assignedAt; unique(baselineId, fieldKey); indexes on baselineId, fieldKey, sourceSegmentId; defined in apps/api/src/db/schema.ts
+  - baseline_tables ? id (uuid pk), baselineId fk extraction_baselines.id (cascade), tableIndex, tableLabel, status (draft/confirmed), rowCount, columnCount, confirmedAt, confirmedBy, createdAt, updatedAt; unique(baselineId, tableIndex); defined in apps/api/src/db/schema.ts
+  - baseline_table_cells ? id (uuid pk), tableId fk baseline_tables.id (cascade), rowIndex, columnIndex, cellValue, validationStatus, errorText, correctionFrom, correctionReason, updatedAt; unique(tableId, rowIndex, columnIndex); index on (tableId, validationStatus); defined in apps/api/src/db/schema.ts
+  - baseline_table_column_mappings ? id (uuid pk), tableId fk baseline_tables.id (cascade), columnIndex, fieldKey fk field_library.fieldKey; unique(tableId, columnIndex); index on (tableId); defined in apps/api/src/db/schema.ts
   - remarks ? id (uuid pk), todoId fk todos.id, userId fk users.id, content (text max 150 chars), createdAt
   - audit_logs ? id (uuid pk), userId fk users.id nullable, action, resourceType, resourceId, details json string, ipAddress, userAgent, createdAt
   - system_settings ? id int pk default 1, minDurationMin, maxDurationMin, defaultDurationMin, createdAt, updatedAt
@@ -324,3 +341,4 @@ Overlap logic:
 - Validation pipes: apps/api/src/main.ts global ValidationPipe
 - Error handling filters/interceptors: UNKNOWN (no custom filters/interceptors defined)
 - Toast contract: NotificationToast props in apps/web/app/components/NotificationToast.tsx; showToast API in apps/web/app/components/ToastProvider.tsx
+
