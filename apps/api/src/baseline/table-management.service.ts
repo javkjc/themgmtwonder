@@ -11,6 +11,7 @@ import {
     baselineTableColumnMappings,
     extractionBaselines,
     fieldLibrary,
+    users,
 } from '../db/schema';
 import { eq, and, gt, desc, sql, inArray } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
@@ -532,15 +533,24 @@ export class TableManagementService {
      * Get full table details with 2D cell grid
      */
     async getTableDetails(tableId: string) {
-        const [table] = await this.dbs.db
-            .select()
+        const [row] = await this.dbs.db
+            .select({
+                table: baselineTables,
+                confirmedByEmail: users.email,
+            })
             .from(baselineTables)
+            .leftJoin(users, eq(baselineTables.confirmedBy, users.id))
             .where(eq(baselineTables.id, tableId))
             .limit(1);
 
-        if (!table) {
+        if (!row) {
             throw new NotFoundException('Table not found');
         }
+
+        const table = {
+            ...row.table,
+            confirmedByEmail: row.confirmedByEmail ?? null,
+        };
 
         const cellsFlat = await this.dbs.db
             .select()
@@ -612,15 +622,24 @@ export class TableManagementService {
      * List tables for a baseline with mapping summaries
      */
     async listTablesForBaseline(baselineId: string) {
-        const tables = await this.dbs.db
-            .select()
+        const tableRows = await this.dbs.db
+            .select({
+                table: baselineTables,
+                confirmedByEmail: users.email,
+            })
             .from(baselineTables)
+            .leftJoin(users, eq(baselineTables.confirmedBy, users.id))
             .where(eq(baselineTables.baselineId, baselineId))
             .orderBy(baselineTables.tableIndex);
 
-        if (tables.length === 0) {
+        if (tableRows.length === 0) {
             return [];
         }
+
+        const tables = tableRows.map(row => ({
+            ...row.table,
+            confirmedByEmail: row.confirmedByEmail ?? null,
+        }));
 
         const tableIds = tables.map(t => t.id);
 

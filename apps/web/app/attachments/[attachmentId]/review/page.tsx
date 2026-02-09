@@ -41,6 +41,9 @@ import ExtractedTextPool from '@/app/components/ocr/ExtractedTextPool';
 import FieldAssignmentPanel from '@/app/components/FieldAssignmentPanel';
 import CorrectionReasonModal from '@/app/components/ocr/CorrectionReasonModal';
 import ValidationConfirmationModal from '@/app/components/ValidationConfirmationModal';
+import TableCreationModal from '@/app/components/tables/TableCreationModal';
+import TableEditorPanel from '@/app/components/tables/TableEditorPanel';
+import { createTable, fetchTable, type CreateTablePayload, type FullTableResponse, type Table } from '@/app/lib/api/tables';
 
 type ResetLocalField = {
   key: string;
@@ -131,9 +134,16 @@ export default function AttachmentOcrReviewPage() {
   const [shouldScrollToBuilder, setShouldScrollToBuilder] = useState(false);
   const [selectionText, setSelectionText] = useState('');
   const [createModalInitials, setCreateModalInitials] = useState<{ fieldName?: string; fieldValue?: string }>({});
+
+  const [selectedSegmentIds, setSelectedSegmentIds] = useState<Set<string>>(new Set());
+  const [isTableCreationOpen, setIsTableCreationOpen] = useState(false);
+  const [isCreatingTable, setIsCreatingTable] = useState(false);
   const [libraryFields, setLibraryFields] = useState<any[]>([]);
   const [highlightedSegment, setHighlightedSegment] = useState<Segment | null>(null);
   const [activeTab, setActiveTab] = useState<'document' | 'text' | 'fields'>('document');
+
+  const [activeTable, setActiveTable] = useState<FullTableResponse | null>(null);
+  const [tableLoading, setTableLoading] = useState(false);
 
 
   const addNotification = useCallback((notification: Notification) => {
@@ -767,6 +777,63 @@ export default function AttachmentOcrReviewPage() {
     }
   }, [addNotification, baseline, targetTaskId, libraryFields]);
 
+  const handleToggleSegmentSelection = useCallback((id: string) => {
+    setSelectedSegmentIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleSelectAllSegments = useCallback((all: boolean) => {
+    if (all && baseline?.segments) {
+      setSelectedSegmentIds(new Set(baseline.segments.filter(s => s.id).map(s => s.id as string)));
+    } else {
+      setSelectedSegmentIds(new Set());
+    }
+  }, [baseline]);
+
+  const handleCreateTable = useCallback(async (payload: CreateTablePayload) => {
+    if (!baseline) return;
+    setIsCreatingTable(true);
+    try {
+      await createTable(baseline.id, payload);
+      setIsTableCreationOpen(false);
+      setSelectedSegmentIds(new Set());
+      addNotification({
+        id: Date.now().toString(),
+        type: 'success',
+        title: 'Table created',
+        message: payload.tableLabel ? `Table "${payload.tableLabel}" created` : 'Table created successfully',
+      });
+      // Milestone 8.7.5 will handle opening the editor panel.
+      // For now, we just refresh the data if needed or stay on fields.
+      await loadBaseline();
+    } catch (err: any) {
+      throw err; // Let modal handle error display
+    } finally {
+      setIsCreatingTable(false);
+    }
+  }, [baseline, addNotification, loadBaseline]);
+
+  const loadTableDetail = useCallback(async (tableId: string) => {
+    setTableLoading(true);
+    try {
+      const data = await fetchTable(tableId);
+      setActiveTable(data);
+    } catch (err: any) {
+      addNotification({
+        id: Date.now().toString(),
+        type: 'error',
+        title: 'Failed to load table',
+        message: err.message,
+      });
+    } finally {
+      setTableLoading(false);
+    }
+  }, [addNotification]);
+
   // Auth loading state
   if (authLoading) {
     return null;
@@ -859,6 +926,9 @@ export default function AttachmentOcrReviewPage() {
           onDragStart={(e, s) => {
             e.dataTransfer.setData('application/json', JSON.stringify(s));
           }}
+          selectedIds={selectedSegmentIds}
+          onToggleSelection={handleToggleSegmentSelection}
+          onSelectAll={handleSelectAllSegments}
         />
       </div>
     </div>
@@ -910,14 +980,54 @@ export default function AttachmentOcrReviewPage() {
                   padding: '8px 14px',
                   borderRadius: 10,
                   border: '1px solid #bfdbfe',
-                  background: baselineLoading || reviewingBaseline ? '#e2e8f0' : '#eff6ff',
-                  color: '#1d4ed8',
-                  fontSize: 14,
-                  fontWeight: 700,
                   cursor: baselineLoading || reviewingBaseline ? 'not-allowed' : 'pointer',
                 }}
               >
                 {reviewingBaseline ? 'Marking...' : 'Mark as Reviewed'}
+              </button>
+            )}
+
+            {baseline?.tables && baseline.tables.length > 0 && (
+              <div style={{ display: 'flex', gap: 8 }}>
+                {baseline.tables.map((t: Table) => (
+                  <button
+                    key={t.id}
+                    onClick={() => loadTableDetail(t.id)}
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: 10,
+                      border: '1px solid #e2e8f0',
+                      background: activeTable?.table.id === t.id ? '#eff6ff' : '#ffffff',
+                      color: activeTable?.table.id === t.id ? '#2563eb' : '#475569',
+                      fontSize: 14,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {t.tableLabel || `Table #${t.tableIndex + 1}`}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {(baseline?.status === 'draft' || baseline?.status === 'reviewed') && (
+              <button
+                onClick={() => setIsTableCreationOpen(true)}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: 10,
+                  border: '1px solid #e2e8f0',
+                  background: '#ffffff',
+                  color: '#475569',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <span>➕</span> Create Table
               </button>
             )}
             {baseline?.status === 'reviewed' && (
@@ -1159,6 +1269,21 @@ export default function AttachmentOcrReviewPage() {
           {activeTab === 'text' && renderPanel2()}
           {activeTab === 'fields' && renderPanel3()}
         </div>
+      ) : activeTable ? (
+        <div style={{ height: 'calc(100vh - 250px)', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
+          <TableEditorPanel
+            table={activeTable.table}
+            cells={activeTable.cells}
+            columnMappings={activeTable.columnMappings}
+            fields={libraryFields}
+            isReadOnly={isFieldBuilderReadOnly}
+            onRefresh={async () => {
+              await loadTableDetail(activeTable.table.id);
+              await loadBaseline();
+            }}
+            onClose={() => setActiveTable(null)}
+          />
+        </div>
       ) : (
         <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
           {renderPanel1()}
@@ -1329,6 +1454,14 @@ export default function AttachmentOcrReviewPage() {
         onConfirm={handleValidationConfirm}
         onUseSuggestion={validationPendingAction?.suggestedCorrection ? handleValidationUseSuggestion : undefined}
         onCancel={handleValidationCancel}
+      />
+      <TableCreationModal
+        isOpen={isTableCreationOpen}
+        onClose={() => setIsTableCreationOpen(false)}
+        onCreate={handleCreateTable}
+        selectedSegments={
+          baseline?.segments?.filter(s => selectedSegmentIds.has(s.id as string)) || []
+        }
       />
       <NotificationToast
         notifications={notifications}

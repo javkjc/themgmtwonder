@@ -316,6 +316,9 @@ Output must be anti-hallucination: explicit sources, no assumptions, verificatio
    - List 2-3 extracted patterns as bullets with "DON'T:" prefix
 
 8. **Verification**
+   - "**Credentials to use for testing:** "
+    - User/email: test@test.com
+    - Password: 12341234
    - "**Manual Tests** (from tasks/plan.md Checkpoint [Task ID]):"
    - Copy each test exactly - don't summarize
    - "**Database Check** (if in Checkpoint):"
@@ -353,9 +356,7 @@ Output must be anti-hallucination: explicit sources, no assumptions, verificatio
 - No assumptions: If tasks/plan.md doesn't specify → STOP and ask
 - No code until prerequisites verified
 
-**Credentials to use for testing:** 
-- User/email: test@test.com
-- Password: 12341234
+
 **Format**: Clear ## headers, - bullets, no paragraphs. Full verification (don't truncate).
 
 **Length target**: Core 200-300 words + full verification section (don't compress verification).

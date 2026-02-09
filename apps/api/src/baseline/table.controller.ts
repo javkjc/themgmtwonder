@@ -42,14 +42,21 @@ export class TableController {
     ) {
         await this.ensureUserOwnsBaseline(req.user.userId, baselineId);
 
-        // Validate array dimensions
-        if (!dto.cellValues || !Array.isArray(dto.cellValues)) {
-            throw new BadRequestException('cellValues must be an array');
+        let cellValues = dto.cellValues;
+        if (!cellValues || !Array.isArray(cellValues)) {
+            if (!dto.rowCount || !dto.columnCount) {
+                throw new BadRequestException('rowCount and columnCount are required when cellValues is not provided');
+            }
+            const rowCount = dto.rowCount;
+            const columnCount = dto.columnCount;
+            cellValues = Array.from({ length: rowCount }, () =>
+                Array.from({ length: columnCount }, () => ''),
+            );
         }
 
         return await this.tableService.createTable(baselineId, req.user.userId, {
             label: dto.label,
-            cellValues: dto.cellValues,
+            cellValues,
         });
     }
 

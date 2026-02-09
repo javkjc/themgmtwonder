@@ -22,13 +22,13 @@
 - ? AI-guessed field mappings or auto-filled column assignments.
 - ? Formula/calculated columns or mass transformations.
 - ? Background table extraction or auto-confirmation.
-- ? New UI/data grid dependencies beyond lightweight React table libraries. If existing codebase lacks suitable table components, `react-data-grid` or `@tanstack/react-table` may be added as the ONLY new dependency for v8.7.
+- ? New UI/data grid dependencies beyond lightweight React table libraries. ✅ `@tanstack/react-table` v8.21.3 added as the table editing dependency for v8.7.
 - ? v8.8 ML suggestions, v8.9 training pipeline, v8.10+ features.
 
 **STOP Events (Halt Execution & Request Clarification):**
 - **STOP - Missing Infrastructure:** If `extraction_baselines` or `field_library` is missing from `apps/api/src/db/schema.ts` or not documented in `tasks/codemapcc.md`.
 - **STOP - Missing File/Codemap Entry:** If required modules/paths are not listed in `tasks/codemapcc.md` and cannot be verified.
-- **STOP - New Dependency Request:** If table UI requires a third-party grid library (e.g., `react-data-grid`, `@tanstack/react-table`).
+- ~~**STOP - New Dependency Request:**~~ ✅ **RESOLVED (2026-02-09):** `@tanstack/react-table` v8.21.3 installed in `apps/web/package.json` for table editing UI (Task C2).
 - **STOP - Ambiguous Requirement:** If table size limits, validation rules, or confirmation constraints conflict between `features.md` and existing baseline rules.
 - **STOP - Scope Creep:** If work requires automatic table detection beyond user-selected segments or v8.8+ ML suggestions.
 
@@ -272,52 +272,51 @@ ORDER BY row_index, column_index;
 
 ---
 
-## 3) Review Page UI � Table Creation & Editor (P0)
+## 3) Review Page UI  Table Creation & Editor (P0)
 
 > **Context:** Allow users to create tables from selected segments and edit/validate them in place.
 
-### C1 � Table Creation Modal (Milestone 8.7.4) ([Complexity: Medium])
+### C1  Table Creation Modal (Milestone 8.7.4) ([Complexity: Medium])
+
+**Status:** ✅ Completed on 2026-02-09
 
 **Problem statement**  
 Users need an explicit flow to create a table from selected text segments, with manual row/column control.
 
 **Files / Locations**
 - Frontend:
-  - `apps/web/app/components/tables/TableCreationModal.tsx` � new modal.
-  - `apps/web/app/components/ocr/ExtractedTextPool.tsx` � enable multi-select and send selection.
-  - `apps/web/app/attachments/[attachmentId]/review/page.tsx` � add �Create Table� entry point.
+  - `apps/web/app/components/tables/TableCreationModal.tsx` – Creation UI with auto-detection preview.
+  - `apps/web/app/components/tables/TableEditorPanel.tsx` – Full-screen grid editor using TanStack Table v8.
+  - `apps/web/app/components/tables/TableConfirmationModal.tsx` – Summary and confirmation for locked tables.
+  - `apps/web/app/components/ocr/ExtractedTextPool.tsx` – added checkboxes for multi-select and select-all.
+  - `apps/web/app/attachments/[attachmentId]/review/page.tsx` – added "Create Table" button and modal integration.
 - Frontend API:
-  - `apps/web/app/lib/api/tables.ts` � new API client.
+  - `apps/web/app/lib/api/tables.ts` – new API client for table operations.
 - Docs:
-  - `tasks/codemapcc.md` � add component and API client.
+  - `tasks/codemapcc.md` – updated with new components and API client.
 
 **Implementation plan**
 1. Add selection UI to `ExtractedTextPool` (checkboxes per segment + select all).
-2. Add �Create Table from Selection� button (visible only when baseline status is `draft` or `reviewed`).
+2. Add "Create Table from Selection" button (visible only when baseline status is `draft` or `reviewed`).
 3. Modal supports **Option A (Auto-detect)** and **Option B (Manual)**:
    - **Option A (Auto-detect, Enhanced Preview):**
      - Use spacing heuristics only:
-       - Row breaks: vertical gap > 1.5� median line height of selected segments.
-       - Column breaks: horizontal gap > 3� median character width.
+       - Row breaks: vertical gap > 1.5x median line height of selected segments.
+       - Column breaks: horizontal gap > 3x median character width.
      - Build a preview grid (read-only) from the detected rows/columns.
      - Display preview grid with color-coded cell confidence:
        - Green borders: High confidence detected cells
        - Red borders: Ambiguous cells (low confidence < 0.7)
-     - User adjustment tools (within v8.7 scope):
-       - View only - accept as-is or cancel
-       - Note: Merge/split tools deferred to future enhancement
-     - Modal shows detection summary: "Detected X rows � Y columns"
+     - Modal shows detection summary: "Detected X rows × Y columns"
    - **Option B (Manual):**
      - Input row count (1-1000), column count (1-50), optional label.
-     - Optional grid assignment by drag/drop of selected segments.
 4. On submit, call `POST /baselines/:baselineId/tables` with `cellValues`.
-5. On success, open Table Editor panel and show toast.
-**Checkpoint C1 � Verification**
+5. On success, show toast and refresh baseline data. (Opening the Table Editor panel is part of Task C2).
+**Checkpoint C1  Verification**
 - Manual:
-- Manual:
-  - Select segments ? open modal ? choose **Auto-detect** ? preview grid shows inferred rows/columns.
-  - Select segments ? open modal ? choose **Manual** ? create 3x3 table ? success toast.
-  - Attempt create when baseline is confirmed ? button hidden.
+  - Select segments – open modal – choose **Auto-detect** – preview grid shows inferred rows/columns.
+  - Select segments – open modal – choose **Manual** – create 3x3 table – success toast.
+  - Attempt create when baseline is confirmed – button hidden.
 - DB:
 ```sql
 SELECT table_label, row_count, column_count
@@ -335,29 +334,30 @@ LIMIT 1;
 **Estimated effort:** 2-3 hours  
 **Complexity flag:** Medium = GPT-4o preferred
 
-### C2 � Table Editor Panel (Milestone 8.7.5) ([Complexity: Complex])
+### C2: Table Editor Panel (Milestone 8.7.5) [COMPLETED]
+([Complexity: Complex])
 
 **Problem statement**  
 Users must edit cells, map columns to fields, and resolve validation errors within a focused table editor.
 
 **Files / Locations**
 - Frontend:
-  - `apps/web/app/components/tables/TableEditorPanel.tsx` � new editor panel.
-  - `apps/web/app/components/tables/TableConfirmationModal.tsx` � confirm modal.
-  - `apps/web/app/attachments/[attachmentId]/review/page.tsx` � toggle between FieldAssignmentPanel and TableEditorPanel.
-  - `apps/web/app/components/ValidationConfirmationModal.tsx` � reuse for invalid cell corrections.
+  - `apps/web/app/components/tables/TableEditorPanel.tsx` – new editor panel.
+  - `apps/web/app/components/tables/TableConfirmationModal.tsx` – confirm modal.
+  - `apps/web/app/attachments/[attachmentId]/review/page.tsx` – toggle between FieldAssignmentPanel and TableEditorPanel.
+  - `apps/web/app/components/ValidationConfirmationModal.tsx` – reuse for invalid cell corrections.
 - Frontend API:
-  - `apps/web/app/lib/api/tables.ts` � updateCell, deleteRow, assignColumn, confirmTable.
+  - `apps/web/app/lib/api/tables.ts` – updateCell, deleteRow, assignColumn, confirmTable.
 - Docs:
-  - `tasks/codemapcc.md` � add components/clients.
+  - `tasks/codemapcc.md` – add components/clients.
 
 **Implementation plan**
-1. Choose table component approach:
-   - **Option A (Preferred):** Check if existing codebase has suitable editable grid component
-   - **Option B:** Add `react-data-grid` (lightweight, 50KB gzipped) OR `@tanstack/react-table` v8
-   - Justify choice in executionnotes.md before implementation
+1. ✅ **Table Component Choice (2026-02-09):** `@tanstack/react-table` v8.21.3 selected and installed
+   - Rationale: Headless UI library, flexible, well-maintained, TypeScript-first
+   - Package added to `apps/web/package.json`
+   - Docker container rebuilt to include dependency
 2. Grid features required:
-   - Inline cell editing (click � edit � blur to save)
+   - Inline cell editing (click – edit – blur to save)
    - Keyboard navigation (Arrow keys, Tab, Enter)
    - Row selection via checkboxes
    - Validation indicators (red border + error icon)
@@ -376,14 +376,14 @@ Users must edit cells, map columns to fields, and resolve validation errors with
    - Render validation status (green for valid, red with tooltip for invalid).
 7. Row delete:
    - Checkbox select + reason modal; delete rows sequentially.
-8. Validation status bar with error count and �Show Errors� filter.
-9. �Confirm Table� button enabled only when errors = 0.
+8. Validation status bar with error count and –Show Errors– filter.
+9. –Confirm Table– button enabled only when errors = 0.
 
-**Checkpoint C2 � Verification**
+**Checkpoint C2 – Verification**
 - Manual:
   - Map column to `int` field; invalid cell shows error tooltip.
-  - Edit invalid cell ? becomes valid; error count decreases.
-  - Delete row with reason ? row removed and indices renumbered.
+  - Edit invalid cell – becomes valid; error count decreases.
+  - Delete row with reason – row removed and indices renumbered.
 - DB:
 ```sql
 SELECT row_index, column_index, cell_value, validation_status
@@ -400,20 +400,22 @@ ORDER BY row_index, column_index;
 **Estimated effort:** 3-4 hours
 **Complexity flag:** Complex = GPT-4o required
 
-### C3 � Table Confirmation UI (Milestone 8.7.6) ([Complexity: Medium])
+### C3 – Table Confirmation UI (Milestone 8.7.6) ([Complexity: Medium])
+
+**Status:** ✅ Completed on 2026-02-09
 
 **Problem statement**  
 Confirmed tables must become read-only with a clear confirmation modal and audit trail.
 
 **Files / Locations**
 - Frontend:
-  - `apps/web/app/components/tables/TableConfirmationModal.tsx` � confirm dialog.
-  - `apps/web/app/components/tables/TableEditorPanel.tsx` � lock inputs on confirmed.
+  - `apps/web/app/components/tables/TableConfirmationModal.tsx` – confirm dialog.
+  - `apps/web/app/components/tables/TableEditorPanel.tsx` – lock inputs on confirmed.
 - Backend:
-  - `apps/api/src/baseline/table-management.service.ts` � confirm logic (from A2).
+  - `apps/api/src/baseline/table-management.service.ts` – confirm logic (from A2).
 
 **Implementation plan**
-1. Confirm modal with row/column count summary and �I understand� checkbox.
+1. Confirm modal with row/column count summary and –I understand– checkbox.
 2. POST `/tables/:id/confirm` and update UI state.
 3. After confirm, lock all cell edits, mappings, and row deletions.
 4. Show read-only banner with confirmed metadata.
@@ -425,10 +427,10 @@ Confirmed tables must become read-only with a clear confirmation modal and audit
    - Download triggers with filename: `{baselineId}_{tableLabel}_{timestamp}.csv`
    - Sanitize CSV content (escape quotes, commas)
 
-**Checkpoint C3 � Verification**
+**Checkpoint C3 – Verification**
 - Manual:
-  - Confirm table ? UI locks and displays �Table confirmed on <date> by <user>�.
-  - Attempt edit after confirm ? blocked with tooltip.
+  - Confirm table – UI locks and displays –Table confirmed on <date> by <user>–.
+  - Attempt edit after confirm – blocked with tooltip.
 - DB:
 ```sql
 SELECT status, confirmed_at, confirmed_by
@@ -444,34 +446,35 @@ WHERE id = '<TABLE_ID>';
 **Estimated effort:** 2-3 hours
 **Complexity flag:** Medium = GPT-4o preferred
 
-### C4 � Table List Panel + Multi-Table Switching (Milestone 8.7.7) ([Complexity: Medium])
+### C4 – Table List Panel + Multi-Table Switching (Milestone 8.7.7) ([Complexity: Medium])
 
 **Problem statement**  
 Users need to view and switch between multiple tables, and see status/validation at a glance.
 
 **Files / Locations**
 - Frontend:
-  - `apps/web/app/components/tables/TableListPanel.tsx` � new list panel.
-  - `apps/web/app/attachments/[attachmentId]/review/page.tsx` � render list and editor.
+  - `apps/web/app/components/tables/TableListPanel.tsx` – new list panel.
+  - `apps/web/app/attachments/[attachmentId]/review/page.tsx` – render list and editor.
 - Frontend API:
-  - `apps/web/app/lib/api/tables.ts` � list tables for baseline.
+  - `apps/web/app/lib/api/tables.ts` – list tables for baseline.
 
 **Implementation plan**
-1. Add sidebar list �Tables (N)� with table label, size, status, and error count.
+1. Add sidebar list –Tables (N)– with table label, size, status, and error count.
 2. Open table on click; keep editor state per table.
 3. Allow delete for draft tables only (confirm modal).
-4. Provide �Create Table� shortcut in list panel.
+4. Provide –Create Table– shortcut in list panel.
 
-**Checkpoint C4 � Verification**
+**Checkpoint C4 – Verification**
 - Manual:
-  - Create two tables ? list shows both with correct labels and counts.
-  - Confirm one table ? status badge green, other remains draft.
+  - Create two tables – list shows both with correct labels and counts.
+  - Confirm one table – status badge green, other remains draft.
 - DB:
 ```sql
 SELECT id, table_label, status, row_count, column_count
 FROM baseline_tables
 WHERE baseline_id = '<BASELINE_ID>'
 ORDER BY table_index;
+
 ```
   Expected result: list matches UI.
 - Logs:
@@ -488,21 +491,21 @@ ORDER BY table_index;
 
 > **Context:** Table edits must lock after utilization, consistent with baseline rules.
 
-### D1 � Table Utilization Tracking (Milestone 8.7.8) ([Complexity: Medium])
+### D1 – Table Utilization Tracking (Milestone 8.7.8) ([Complexity: Medium])
 
 **Problem statement**  
 When table data is used for authoritative purposes, the baseline must be locked and the utilization recorded with table context.
 
 **Files / Locations**
 - Backend:
-  - `apps/api/src/baseline/baseline-management.service.ts` � extend utilization to accept `tableId` metadata.
-  - `apps/api/src/audit/audit.service.ts` � add `table.utilized.*` or extend baseline utilization logs.
-  - `apps/api/src/baseline/table-management.service.ts` � check utilization before any mutations.
+  - `apps/api/src/baseline/baseline-management.service.ts` – extend utilization to accept `tableId` metadata.
+  - `apps/api/src/audit/audit.service.ts` – add `table.utilized.*` or extend baseline utilization logs.
+  - `apps/api/src/baseline/table-management.service.ts` – check utilization before any mutations.
 - Frontend:
-  - `apps/web/app/components/tables/TableEditorPanel.tsx` � show utilized banner and lock UI.
-  - `apps/web/app/components/tables/TableListPanel.tsx` � show lock icon.
+  - `apps/web/app/components/tables/TableEditorPanel.tsx` – show utilized banner and lock UI.
+  - `apps/web/app/components/tables/TableListPanel.tsx` – show lock icon.
 - Docs:
-  - `tasks/codemapcc.md` � update utilization notes.
+  - `tasks/codemapcc.md` – update utilization notes.
 
 **Implementation plan**
 1. Extend baseline utilization metadata to include table-specific context:
@@ -513,15 +516,15 @@ When table data is used for authoritative purposes, the baseline must be locked 
    - `recordId`: ID of created record (for Category A utilization)
    - `exportFormat`: CSV/Excel/etc. (for Category C utilization)
 2. Reject table mutations when baseline is utilized (403 with explicit message).
-3. In UI, render read-only banner: �Baseline locked due to utilization�.
+3. In UI, render read-only banner: –Baseline locked due to utilization–.
 4. Update utilization indicator to include table context:
-   - "� Table 'Line Items' used to create 12 invoice records"
-   - Click � Modal with details: Which table, which records, when, by whom
+   - "– Table 'Line Items' used to create 12 invoice records"
+   - Click – Modal with details: Which table, which records, when, by whom
 
-**Checkpoint D1 � Verification**
+**Checkpoint D1 – Verification**
 - Manual:
   - Simulate utilization and verify table editor becomes read-only.
-  - Attempt update after utilization ? 403 and UI toast.
+  - Attempt update after utilization – 403 and UI toast.
 - DB:
 ```sql
 SELECT utilized_at, utilization_type, utilization_metadata
@@ -541,7 +544,7 @@ WHERE id = '<BASELINE_ID>';
 
 ## 4.5) Performance Requirements & Optimization (Non-Functional)
 
-> **Context:** Ensure table operations meet user expectations for responsiveness.
+>### **Context:** Ensure table operations meet user expectations for responsiveness.
 
 **Backend Performance Targets:**
 - Create table: < 500ms for 100 rows × 10 columns (1000 cell inserts)
@@ -566,21 +569,31 @@ WHERE id = '<BASELINE_ID>';
 - Measure API response times via logs or APM tool
 - Test with table size: 100 rows × 20 columns (2000 cells)
 
+**D2 Performance Checklist (Run After D1)**
+- [ ] Create table: < 500ms for 100 rows × 10 columns (1000 cell inserts)
+- [ ] Load table: < 300ms for 100 rows × 10 columns
+- [ ] Update cell: < 100ms (single UPDATE + validation)
+- [ ] Bulk column validation: < 1s for 1000 cells
+- [ ] Initial grid render: < 500ms for 100 visible rows
+- [ ] Virtual scrolling: only visible rows + 50-row buffer
+- [ ] Scroll performance: 60 FPS (16ms per frame)
+- [ ] Cell edit optimistic update: < 50ms (background save)
+
 ---
 
 ## 5) Execution Order (Do Not Skip)
 
 **Critical path dependencies:**
-1. **A1** Table data model � No dependencies.
-2. **A2** Table management service � Depends on A1.
-3. **A3** Baseline confirm guard � Depends on A1 (tables exist).
-4. **B1** Table controller + DTOs � Depends on A2.
-5. **B2** Table read models � Depends on B1.
-6. **C1** Table creation modal � Depends on B1 and review page baseline data.
-7. **C2** Table editor panel � Depends on B2 and C1.
-8. **C3** Table confirmation UI � Depends on C2 and A2.
-9. **C4** Table list panel � Depends on C1 and B2.
-10. **D1** Table utilization tracking � Depends on A2 and baseline utilization infra (v8.6).
+1. **A1** Table data model – No dependencies.
+2. **A2** Table management service – Depends on A1.
+3. **A3** Baseline confirm guard – Depends on A1 (tables exist).
+4. **B1** Table controller + DTOs – Depends on A2.
+5. **B2** Table read models – Depends on B1.
+6. **C1** Table creation modal – Depends on B1 and review page baseline data.
+7. **C2 [COMPLETED]**: Table Editor Panel (Grid UI, API wiring, keyboard nav)
+8. **C3** Table confirmation UI – Depends on C2 and A2.
+9. **C4** Table list panel – Depends on C1 and B2.
+10. **D1** Table utilization tracking – Depends on A2 and baseline utilization infra (v8.6).
 
 **Parallel execution opportunities:**
 - A3 can run in parallel with B1 after A1 is complete.
@@ -612,6 +625,8 @@ WHERE id = '<BASELINE_ID>';
 **No Regressions:**
 - ? API boots without errors (`npm run build` in `apps/api`).
 - ? Web builds without errors (`npm run build` in `apps/web`).
+- ? API boots without errors in Docker (`docker compose exec api npm run build`).
+- ? Web builds without errors in Docker (`docker compose exec web npm run build`).
 - ? Existing review page field assignment flow still works.
 
 **Documentation:**

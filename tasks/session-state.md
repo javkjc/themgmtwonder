@@ -2,39 +2,40 @@
 
 ## Current Status
 - Milestone 8.6: Field-Based Extraction Assignment & Baseline (COMPLETE)
-- Milestone 8.7: Table Review for Structured Document Data (IN PROGRESS)
-- Completed Tasks:
-  - Task A1 ? Table Data Model (Milestone 8.7.1) (verified on 2026-02-09)
-  - Task A2 ? Table Management Service (Milestone 8.7.2) (verified on 2026-02-09)
-  - Task A3 ? Baseline Confirmation Guard for Tables (Milestone 8.7.7 dependency) (verified on 2026-02-09)
-  - Task B1 ? Table Controller + DTOs (Milestone 8.7.3) (verified on 2026-02-09)
-  - Task B2 – Table Read Models (Milestone 8.7.3) (verified on 2026-02-09)
-- Next Task: **Task C1 – Table Creation Modal**
+- Milestone 8.7: Table Review for Structured Document Data (In Progress)
+    - ✅ Task A1: Table Data Model
+    - ✅ Task A2: Table Management Service
+    - ✅ Task A3: Table API Guardrails
+    - ✅ Task B1: Table Controller + DTOs
+    - ✅ Task B2: Table Read Models
+    - ✅ Task C1: Table Creation Modal
+    - ✅ Task C2: Table Editor Panel
+    - ✅ Task C3: Table Confirmation UI
 
-## Achievements (2026-02-09 Session)
-- **A2/B1 Alignment Patch**:
-  - Enforced table size limits and 50,000-cell cap during creation.
-  - Enforced 5000-character cell value max during creation.
-  - Inserted all cells (including empty values) to satisfy rowCount * columnCount expectation.
-  - Routed table deletion through service-level edit guards.
-- **B1 Manual Verification**:
-  - Invalid size returns 400 with explicit message.
-  - Nonexistent fieldKey assignment returns 404.
-  - DB cell count matches rowCount * columnCount.
-- **B1 Browser Verification**:
-  - Created table via browser fetch; invalid size rejected with 400.
+## Recent Achievements
+- (2026-02-09) Implemented Table Confirmation Modal with "I understand" agreement.
+- (2026-02-09) Integrated confirmation flow into Table Editor Panel.
+- (2026-02-09) Implemented UI locking for confirmed tables.
+- (2026-02-09) Added CSV Export functionality for confirmed tables.
+- (2026-02-09) Verified build stability for Web and API.
+- (2026-02-09) Fixed manual table creation payload (rowCount/columnCount support) and baseline table list visibility.
+- (2026-02-09) Tuned auto-detect row grouping (center-Y clustering) while keeping column gap threshold at 3x median char width.
 
 ## Context
-- Table APIs are now live with guardrails aligned to plan.md.
-- CSRF-protected routes require `todo_csrf` cookie + `x-csrf-token` header for manual testing.
+- Table Editor now supports full lifecycle: Create -> Edit -> Validate -> Confirm -> Export / Lock.
+- Confirmed tables are correctly locked in the UI, enforcing the "read-only" requirement.
+- Next steps involve managing multiple tables (List Panel) and handling utilization locking (Backend + UI).
 
 ## Next Immediate Step
-- Start Task C1 (Table Creation Modal) after confirming review page data readiness.
+- Start Task C4 (Table List Panel + Multi-Table Switching).
 
 ## Verification Status
-- ? B1 checkpoint manual tests executed (API + browser).
-- ? DB count check executed for created table.
-- ✅ B2 verification passed (script + DB query).
+- ✅ A1-A3 Backend Core verified.
+- ✅ B1-B2 API Surface verified.
+- ✅ C1-C2 Table UI flows verified (Creation, Editing).
+- ? C3 Confirmation UI verification pending (manual/DB/log/regression).
+- ? C4 Multi-table list pending.
+- ? D1 Utilization tracking pending.
 
 ## Known Issues (Non-Blocking)
 - None.

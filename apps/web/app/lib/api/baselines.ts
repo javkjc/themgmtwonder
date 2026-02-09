@@ -34,6 +34,8 @@ export interface Segment {
   pageNumber: number | null;
 }
 
+import { Table } from './tables';
+
 export interface Baseline {
   id: string;
   attachmentId: string;
@@ -47,6 +49,7 @@ export interface Baseline {
   createdAt: string;
   assignments?: Assignment[];
   segments?: Segment[];
+  tables?: Table[];
 }
 
 export interface AssignPayload {

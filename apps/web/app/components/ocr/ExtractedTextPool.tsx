@@ -7,6 +7,9 @@ interface ExtractedTextPoolProps {
     segments: Segment[];
     onHighlight: (segment: Segment | null) => void;
     onDragStart?: (e: React.DragEvent, segment: Segment) => void;
+    selectedIds?: Set<string>;
+    onToggleSelection?: (id: string) => void;
+    onSelectAll?: (all: boolean) => void;
 }
 
 const getConfidenceColor = (confidenceValue: string | null) => {
@@ -42,6 +45,9 @@ export default function ExtractedTextPool({
     segments,
     onHighlight,
     onDragStart,
+    selectedIds = new Set(),
+    onToggleSelection,
+    onSelectAll,
 }: ExtractedTextPoolProps) {
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
@@ -63,10 +69,31 @@ export default function ExtractedTextPool({
         );
     }
 
+    const allSelected = segments.length > 0 && segments.every(s => selectedIds.has(s.id));
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, padding: '0 8px' }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Extracted Text Pools
+                </span>
+                {onSelectAll && (
+                    <button
+                        onClick={() => onSelectAll(!allSelected)}
+                        style={{
+                            fontSize: 12, fontWeight: 600, color: '#2563eb',
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            padding: '4px 8px', borderRadius: 6, transition: 'background 0.2s'
+                        }}
+                    >
+                        {allSelected ? 'Deselect All' : 'Select All'}
+                    </button>
+                )}
+            </div>
+
             {segments.map((segment) => {
                 const isExpanded = expandedIds.has(segment.id);
+                const isSelected = selectedIds.has(segment.id);
                 const text = segment.text || '';
                 const shouldTruncate = text.length > 120;
                 const displayLines = isExpanded ? text : (shouldTruncate ? text.slice(0, 117) + '...' : text);
@@ -78,34 +105,61 @@ export default function ExtractedTextPool({
                         onDragStart={(e) => onDragStart?.(e, segment)}
                         onMouseEnter={() => onHighlight(hasBoundingBox(segment) ? segment : null)}
                         onMouseLeave={() => onHighlight(null)}
-                        onClick={() => toggleExpand(segment.id)}
                         style={{
                             padding: '12px 16px',
                             borderRadius: 12,
-                            border: '1px solid #e2e8f0',
-                            background: '#ffffff',
-                            cursor: 'pointer',
+                            border: `2px solid ${isSelected ? '#3b82f6' : '#e2e8f0'}`,
+                            background: isSelected ? '#eff6ff' : '#ffffff',
+                            cursor: 'default',
                             transition: 'all 0.2s',
                             position: 'relative',
-                            boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                            boxShadow: isSelected ? '0 4px 6px -1px rgba(59, 130, 246, 0.1)' : '0 2px 4px rgba(0,0,0,0.02)',
                         }}
                     >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, gap: 8 }}>
-                            {segment.confidence !== null && (
-                                <span
-                                    style={{
-                                        fontSize: 10,
-                                        fontWeight: 700,
-                                        padding: '2px 6px',
-                                        borderRadius: 6,
-                                        color: getConfidenceColor(segment.confidence),
-                                        background: getConfidenceBg(segment.confidence),
-                                        textTransform: 'uppercase',
-                                    }}
-                                >
-                                    {Math.round(parseFloat(segment.confidence) * 100)}% Conf
-                                </span>
-                            )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, gap: 12 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                {onToggleSelection && (
+                                    <div
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onToggleSelection(segment.id);
+                                        }}
+                                        style={{
+                                            width: 18,
+                                            height: 18,
+                                            borderRadius: 4,
+                                            border: `2px solid ${isSelected ? '#2563eb' : '#cbd5e1'}`,
+                                            background: isSelected ? '#2563eb' : '#ffffff',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            transition: 'all 0.2s'
+                                        }}
+                                    >
+                                        {isSelected && (
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                                                <polyline points="20 6 9 17 4 12"></polyline>
+                                            </svg>
+                                        )}
+                                    </div>
+                                )}
+                                {segment.confidence !== null && (
+                                    <span
+                                        style={{
+                                            fontSize: 10,
+                                            fontWeight: 700,
+                                            padding: '2px 6px',
+                                            borderRadius: 6,
+                                            color: getConfidenceColor(segment.confidence),
+                                            background: getConfidenceBg(segment.confidence),
+                                            textTransform: 'uppercase',
+                                        }}
+                                    >
+                                        {Math.round(parseFloat(segment.confidence) * 100)}% Conf
+                                    </span>
+                                )}
+                            </div>
                             {segment.pageNumber !== null && (
                                 <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 500 }}>
                                     Page {segment.pageNumber}
@@ -113,18 +167,23 @@ export default function ExtractedTextPool({
                             )}
                         </div>
                         <div
+                            onClick={() => toggleExpand(segment.id)}
                             style={{
                                 fontSize: 13,
                                 color: '#1e293b',
                                 lineHeight: 1.5,
                                 wordBreak: 'break-word',
                                 whiteSpace: 'pre-wrap',
+                                cursor: 'pointer'
                             }}
                         >
                             {displayLines}
                         </div>
                         {shouldTruncate && (
-                            <div style={{ marginTop: 4, fontSize: 11, color: '#2563eb', fontWeight: 600 }}>
+                            <div
+                                onClick={() => toggleExpand(segment.id)}
+                                style={{ marginTop: 4, fontSize: 11, color: '#2563eb', fontWeight: 600, cursor: 'pointer' }}
+                            >
                                 {isExpanded ? 'Show less' : 'Show more'}
                             </div>
                         )}

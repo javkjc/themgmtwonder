@@ -10,6 +10,7 @@ import {
     attachmentOcrOutputs,
     attachments,
     baselineFieldAssignments,
+    baselineTables,
     extractedTextSegments,
     extractionBaselines,
     ocrResults,
@@ -114,10 +115,17 @@ export class BaselineAssignmentsService {
             }
         }
 
+        const tables = await this.dbs.db
+            .select()
+            .from(baselineTables)
+            .where(eq(baselineTables.baselineId, baselineRecord.id))
+            .orderBy(baselineTables.tableIndex);
+
         return {
             ...baselineRecord,
             assignments,
             segments,
+            tables,
             currentOcrId: currentOcr?.id || null,
         };
     }

@@ -78,7 +78,7 @@
 - ROUTE: /attachments/[attachmentId]/review
   - Path: apps/web/app/attachments/[attachmentId]/review/page.tsx
   - Purpose: Visual OCR evidence review (attachment viewer + parsed field list + correction/history modals).
-  - Uses: PdfDocumentViewer, ExtractedTextPool (apps/web/app/components/ocr/ExtractedTextPool.tsx for truncated confidence badges and hover highlight), FieldAssignmentPanel (apps/web/app/components/FieldAssignmentPanel.tsx renders baseline assignment inputs with validation status and read-only reason banners), ValidationConfirmationModal (apps/web/app/components/ValidationConfirmationModal.tsx prompts user to confirm invalid values with optional suggested corrections), OcrFieldList, OcrFieldEditModal, OcrCorrectionHistoryModal, CorrectionReasonModal, NotificationToast, lib/api/ocr.ts helpers (fetchAttachmentOcrResults, createOcrCorrection, fetchOcrCorrectionHistory), lib/api/baselines.ts (upsertAssignment, deleteAssignment, fetchBaselineForAttachment, markBaselineReviewed, confirmBaseline), API_BASE_URL for downloads and document playback.
+  - Uses: PdfDocumentViewer, ExtractedTextPool (apps/web/app/components/ocr/ExtractedTextPool.tsx for truncated confidence badges and hover highlight), FieldAssignmentPanel (apps/web/app/components/FieldAssignmentPanel.tsx renders baseline assignment inputs with validation status and read-only reason banners), TableCreationModal (apps/web/app/components/tables/TableCreationModal.tsx for table structure detection and creation), TableEditorPanel (apps/web/app/components/tables/TableEditorPanel.tsx for inline cell editing, mapping, validation), TableConfirmationModal (apps/web/app/components/tables/TableConfirmationModal.tsx confirm/read-only lock), ValidationConfirmationModal (apps/web/app/components/ValidationConfirmationModal.tsx prompts user to confirm invalid values with optional suggested corrections), OcrFieldList, OcrFieldEditModal, OcrCorrectionHistoryModal, CorrectionReasonModal, NotificationToast, lib/api/ocr.ts helpers (fetchAttachmentOcrResults, createOcrCorrection, fetchOcrCorrectionHistory), lib/api/baselines.ts (upsertAssignment, deleteAssignment, fetchBaselineForAttachment, markBaselineReviewed, confirmBaseline), lib/api/tables.ts (createTable, fetchTablesForBaseline, fetchTable, updateCell, deleteRow, assignColumn, confirmTable), API_BASE_URL for downloads and document playback.
   - Mutations at: POST /ocr-results/:ocrResultId/corrections via lib/api/ocr.ts; POST /baselines/:baselineId/assign for field assignments with validation (requires confirmInvalid flag for invalid values); Task detail page links to this route when attachment OCR status is confirmed.
 - ROUTE: /admin/fields
   - Path: apps/web/app/admin/fields/page.tsx
@@ -97,10 +97,11 @@
   - Auth/session entry points: apps/web/app/hooks/useAuth.ts (login/register/logout/changePassword/refreshMe hitting /auth endpoints), apps/web/app/components/ForcePasswordChange.tsx
   - Calendar v2 anchors: renderer DraggableEvent inside apps/web/app/calendar/page.tsx; DndContext provider + onDragEnd in apps/web/app/components/DragContext.tsx (DragProvider.handleDragEnd); drop-time calc in apps/web/app/calendar/page.tsx getDropTime(); DnD overlay via DragOverlay in DragContext
   - Calendar availability helpers: useScheduledEvents (apps/web/app/hooks/useScheduledEvents.ts), useDurationSettings (apps/web/app/hooks/useDurationSettings.ts), useCategories color map (apps/web/app/hooks/useCategories.ts)
-  - Extracted text pool: apps/web/app/components/ocr/ExtractedTextPool.tsx renders truncated segments with confidence badges and bounding-box hover highlighting for review; supports drag-and-drop to field assignment panel.
+  - Extracted text pool: apps/web/app/components/ocr/ExtractedTextPool.tsx renders truncated segments with confidence badges and bounding-box hover highlighting for review; supports checkboxes for multi-select and select-all.
   - Field assignment panel: apps/web/app/components/FieldAssignmentPanel.tsx renders active field library fields with type-specific inputs (text/number/decimal/date/currency), validation status indicators, user-friendly labels, example tooltips, drag-drop zones, and read-only mode for confirmed/utilized baselines.
   - Validation modals: apps/web/app/components/ValidationConfirmationModal.tsx (invalid value confirmation with "Save As-Is" / "Use Suggestion" / "Cancel" actions), apps/web/app/components/CorrectionReasonModal.tsx (requires 10+ char reason for overwrite/delete on reviewed baselines).
   - Baseline API client: apps/web/app/lib/api/baselines.ts (fetchBaselineForAttachment, upsertAssignment with confirmInvalid flag, deleteAssignment, markBaselineReviewed, confirmBaseline).
+  - Table API client: apps/web/app/lib/api/tables.ts (createTable, fetchTablesForBaseline, fetchTable, updateCell, deleteRow, assignColumn, confirmTable).
 
 ## 3) Backend Map (NestJS)
 - Controller: AppController
@@ -276,6 +277,9 @@
     - confirmBaseline(baselineId, userId): Transactional confirm (reviewed â†’ confirmed) + auto-archives previous confirmed baseline atomically; blocked if any draft tables exist
     - markBaselineUtilized(baselineId, type, metadata): First-write-wins utilization tracking (record_created/workflow_committed/data_exported)
   - Audit: all transitions emit baseline.create/review/confirm/archive/utilized events
+- Service: TableManagementService
+  - Path: apps/api/src/baseline/table-management.service.ts
+  - Responsibilities: table CRUD, validation, column mapping, row deletion, confirmation, audit logging for table actions
 - Service: FieldAssignmentValidatorService
   - Path: apps/api/src/baseline/field-assignment-validator.service.ts
   - Purpose: validate assigned values against field types (varchar/int/decimal/date/currency) and suggest corrections
@@ -341,4 +345,3 @@ Overlap logic:
 - Validation pipes: apps/api/src/main.ts global ValidationPipe
 - Error handling filters/interceptors: UNKNOWN (no custom filters/interceptors defined)
 - Toast contract: NotificationToast props in apps/web/app/components/NotificationToast.tsx; showToast API in apps/web/app/components/ToastProvider.tsx
-

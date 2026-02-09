@@ -2248,14 +2248,14 @@ Layout:
 - Replaces Field Assignment Panel when table is open
 - Fixed-height header: Table label + status badge + action buttons
 - Scrollable grid area (virtual scrolling for tables > 50 rows)
-- Bottom toolbar: Column mapping controls
+- Bottom toolbar: Focused-column mapping controls + keyboard hints
 
 Grid Component:
-- Library: `react-data-grid` or `@tanstack/react-table` with editable cells
+- Library: `@tanstack/react-table` v8 (headless) with manual row virtualization
 - Features:
   - Inline editing: Click cell → Edit mode → Blur to save
   - Row selection: Checkbox column for bulk delete
-  - Column headers: Click to open mapping dropdown
+  - Column headers: Searchable mapping dropdown (search + select)
   - Validation indicators: Red border + error icon for invalid cells
   - Keyboard navigation: Arrow keys, Tab, Enter to navigate/edit
 
