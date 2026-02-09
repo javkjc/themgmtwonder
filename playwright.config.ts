@@ -5,13 +5,14 @@ export default defineConfig({
   testDir: './tests',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: 0,
+  retries: process.env.CI ? 2 : 0,
   workers: 1,
-  reporter: 'line',
+  reporter: process.env.CI ? 'github' : 'line',
   use: {
     baseURL: 'http://localhost:3001',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
   },
   projects: [
     {
@@ -19,4 +20,10 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
+  webServer: process.env.CI ? undefined : {
+    command: 'docker-compose up',
+    url: 'http://localhost:3001',
+    reuseExistingServer: true,
+    timeout: 120000,
+  },
 });
