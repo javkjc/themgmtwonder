@@ -47,7 +47,7 @@ export class AttachmentsController {
     private readonly ocrQueueService: OcrQueueService,
     private readonly todosService: TodosService,
     private readonly remarksService: RemarksService,
-  ) {}
+  ) { }
 
   // List attachments for a todo
   @Get('todo/:todoId')
@@ -71,7 +71,7 @@ export class AttachmentsController {
     @UploadedFile() file: UploadedFileType,
   ) {
     if (!file) {
-      return { error: 'No file provided' };
+      throw new BadRequestException('No file provided');
     }
 
     // Additional size check (defensive)

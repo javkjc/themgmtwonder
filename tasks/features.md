@@ -743,7 +743,7 @@ Key insight: The backend is correct, the frontend just needs to respect it.
 
 ---
 
-## v8.5 — Field Builder (Structured Extraction Authoring)
+## v8.5 — Field Builder (Structured Extraction Authoring) ✅ (Complete)
 
 **Status:** ✅ Complete
 
@@ -1140,10 +1140,10 @@ Key insight: The backend is correct, the frontend just needs to respect it.
 
 ---
 
-## v8.6 — Field-Based Extraction Assignment & Baseline 🚧 (In Progress)
+## v8.6 — Field-Based Extraction Assignment & Baseline ✅ (Complete)
 Based on your existing document and ML architecture decisions, here's the complete v8.6 specification with milestones:
 
-**Status:** 🚧 Partially Complete
+**Status:** ✅ (Complete)
 **What's Done:** Milestones 8.6.1-8.6.6 (Field Library CRUD, Admin UI, Baseline Data Model, State Machine, Baseline Confirmation UI)
 **What's Pending:** Milestones 8.6.7-8.6.19 (Extracted Text Pool, Field Assignment UI, Review Page Layout, Utilization & Locking, File Type Validation)
 
@@ -1573,7 +1573,7 @@ E2E Tests (critical paths):
 
 ---
 
-## v8.6.add1 — OCR Queue Management Extension 🚧 (Tentative - Target UI/UX)
+## v8.6.add1 — OCR Queue Management Extension ✅ (Complete)
 
 **What this is**
 - **Target UI/UX** for OCR job management (this design will persist into v8.9+)

@@ -1,8 +1,7 @@
-﻿
-# v8.6 - Field-Based Extraction Assignment & Baseline
+## v8.7 � Table Review for Structured Document Data
 
-**Date:** 2026-02-05  
-**Scope:** Complete remaining v8.6 milestones (8.6.7-8.6.19) to enable field-based baseline assignments on the attachment review page with explicit, auditable user actions and no change to OCR authority.  
+**Date:** 2026-02-09  
+**Scope:** Add user-driven table review (create, edit, validate, confirm, and list tables) on the review page with backend enforcement, auditability, and utilization locking.  
 **Principles:** Minimal localized changes. Backend authoritative. No new dependencies. No background automation. Preserve auditability-first.
 
 ---
@@ -10,740 +9,677 @@
 ## 0) Preconditions / Guardrails
 
 **Prerequisites:**
-- [x] v8.1 OCR confirmation flow exists and review page is active at `/attachments/[attachmentId]/review`. Evidence: `tasks/executionnotes.md` entry "v8 Task 5: OCR Evidence Review UI" and "Task D1: Verify OCR state machine UI (v8.1)".
-- [x] v8.5 Field Builder infrastructure is complete. Evidence: `tasks/executionnotes.md` entry "Milestone 8.5 Verification & Closure".
-- [x] v8.6.1-8.6.6 are complete (Field Library CRUD/UI, Baseline Data Model, Baseline State Machine, Baseline Confirmation UI). Evidence: `tasks/executionnotes.md` entries "8.6.2", "8.6.3", "8.6.4", "8.6.5", "8.6.6".
-- [x] `extracted_text_segments` is present in `apps/api/src/db/schema.ts` and documented in `tasks/codemapcc.md` data model section.
-- [x] Review `tasks/lessons.md` for v8.6 patterns before starting.
+- ? v8.6 baseline review flow complete and verified.  
+  - Evidence: `tasks/executionnotes.md` entry �2026-02-09 - v8.6 Milestone Completion & Quality Audit�.
+- ? Baseline services and validators exist (FieldAssignmentValidatorService, BaselineManagementService, BaselineAssignmentsService).  
+  - Evidence: `tasks/codemapcc.md` Backend Map and Data Model Map.
+- ? Review page exists at `/attachments/[attachmentId]/review`.  
+  - Evidence: `tasks/codemapcc.md` Frontend Map.
+- ? Review `tasks/lessons.md` for v8.7 patterns before starting.
 
 **Out of Scope:**
-- [ ] v8.7 Table review (user-driven table extraction - separate version).
-- [ ] v8.8 ML suggestions (field matching, table detection - separate version).
-- [ ] v8.9 ML training pipeline, v8.10 multi-language OCR, v8.11 batch processing, v9+ workflow runtime.
-- [ ] Implicit assignment, auto-confirm, auto-utilization, background jobs.
-- [ ] New dependencies without explicit approval.
-
-**Note on v8.6.add1 Overlap:**
-During v8.6 implementation, some features were completed early as part of v8.6.add1 (OCR Queue Management Extension). The following tasks from this plan were completed/enhanced in v8.6.add1:
-- **C3** (Correction Reason Requirement) - Enhanced with draft/reviewed differentiation
-- **D1** (Reviewed State UI) - Enhanced with OCR completion lifecycle reset
-- **D3** (Task Detail Status) - Enhanced with queue state badges (Queued/In Progress/Reviewed)
-See `features.md` v8.6.add1 section for full implementation details. These features are marked as ✅ Completed in this plan.
-
-**Milestone Alignment (plan.md ↔ features.md):**
-This plan is aligned with features.md v8.6 structure (19 milestones: 8.6.1-8.6.19). Mapping:
-
-**Completed (8.6.1-8.6.6):**
-- 8.6.1: Field Library Data Model ✅
-- 8.6.2: Field Library CRUD APIs ✅
-- 8.6.3: Field Library UI (Admin Page) ✅
-- 8.6.4: Baseline Data Model ✅
-- 8.6.5: Baseline State Machine ✅
-- 8.6.6: Baseline Confirmation UI ✅
-
-**Backend (Section 1):**
-- A1: Verify Extracted Text Segments → 8.6.7 ✅
-- A2: Field Assignment Data Model → 8.6.9 ✅
-- A3: Field Assignment Validation Service → 8.6.10 ✅
-- A4: Assignment API + Audit → 8.6.11 ✅
-- A5: Baseline Review Payload Aggregation → 8.6.8, 8.6.12 ✅
-
-**Review Page Layout (Section 2):**
-- B1: Three-Panel Layout + Persistent Panel → 8.6.13, 8.6.14 ✅
-- B2: Document Preview Handling → 8.6.15 ✅
-- B3: Extracted Text Pool Display → 8.6.8 ✅
-
-**Field Assignment UI (Section 3):**
-- C1: Field Assignment Panel → 8.6.12 (core UI)
-- C2: Manual Assignment + Validation → 8.6.12 (editing behavior) ✅
-- C3: Correction Reason Requirement → 8.6.12 (correction workflow) ✅
-- C4: Drag-and-Drop Assignment → 8.6.12 (interaction mode) ✅
-
-**Review & Confirm Lifecycle (Section 4):**
-- D1: Reviewed State UI → 8.6.6 + v8.6.add1 ✅
-- D2: Confirm Baseline → 8.6.6
-- D3: Task Detail Status → v8.6.add1 enhancement ✅
-
-**Utilization & Locking (Section 5):**
-- E1: Utilization Tracking → 8.6.16
-- E2: Utilization Lockout → 8.6.17
-- E3: Utilization Indicator → 8.6.18
-
-**File Type Validation (Section 6):**
-- F1: Upload Validation → 8.6.19
+- ? Automatic table detection without user selection or explicit action.
+- ? AI-guessed field mappings or auto-filled column assignments.
+- ? Formula/calculated columns or mass transformations.
+- ? Background table extraction or auto-confirmation.
+- ? New UI/data grid dependencies beyond lightweight React table libraries. If existing codebase lacks suitable table components, `react-data-grid` or `@tanstack/react-table` may be added as the ONLY new dependency for v8.7.
+- ? v8.8 ML suggestions, v8.9 training pipeline, v8.10+ features.
 
 **STOP Events (Halt Execution & Request Clarification):**
-- **STOP - Missing Infrastructure:** If `extracted_text_segments` table is not in `apps/api/src/db/schema.ts` and no migration exists to create it.
-- **STOP - Missing File/Codemap Entry:** If required files or tables are not listed in `tasks/codemapcc.md` and cannot be verified.
-- **STOP - New Dependency Request:** If new Python/Node packages are needed beyond current `apps/ocr-worker/requirements.txt` or `apps/api/package.json`.
-- **STOP - Ambiguous Requirement:** If validation rules for `currency` or `date` are unclear for specific formats (e.g., ISO vs locale).
-- **STOP - Scope Creep:** If work requires v8.7+ (table review), v8.8+ (ML suggestions), v8.9+ (ML training), or v8.10+ features.
+- **STOP - Missing Infrastructure:** If `extraction_baselines` or `field_library` is missing from `apps/api/src/db/schema.ts` or not documented in `tasks/codemapcc.md`.
+- **STOP - Missing File/Codemap Entry:** If required modules/paths are not listed in `tasks/codemapcc.md` and cannot be verified.
+- **STOP - New Dependency Request:** If table UI requires a third-party grid library (e.g., `react-data-grid`, `@tanstack/react-table`).
+- **STOP - Ambiguous Requirement:** If table size limits, validation rules, or confirmation constraints conflict between `features.md` and existing baseline rules.
+- **STOP - Scope Creep:** If work requires automatic table detection beyond user-selected segments or v8.8+ ML suggestions.
 
 ---
 
-## 1) Backend Data & Validation - Core (P0)
+## 1) Data Model & Backend Core (P0)
 
-> **Context:** Establish authoritative storage and validation for baseline field assignments before UI work.
+> **Context:** Establish authoritative storage and enforcement for table baselines before UI work.
 
-### A1 - Verify Extracted Text Segments Storage ✅ ([Complexity: Simple])
-Status: Completed
-**Problem statement**  
-The extracted text pool is required for assignment UI but must exist and be documented before wiring endpoints.
-
-**Files / Locations**
-- Backend: `apps/api/src/db/schema.ts` - verify `extracted_text_segments` table definition.
-- Docs: `tasks/codemapcc.md` - add `extracted_text_segments` to Data Model Map if missing.
-
-**Implementation plan**
-1. Confirm `extracted_text_segments` exists in schema and includes attachment linkage.
-2. If missing from codemap, add to `tasks/codemapcc.md` with columns and indexes.
-3. If missing in schema, STOP and request direction before creating a new table.
-
-**Checkpoint A1 - Verification**
-- Manual: Confirm table exists in schema or STOP with missing table details.
-- DB:
-```sql
-SELECT column_name, data_type
-FROM information_schema.columns
-WHERE table_name = 'extracted_text_segments'
-ORDER BY ordinal_position;
-```
-Expected result: rows returned with attachment linkage columns.
-- Logs: None (read-only verification).
-- Regression: No schema changes performed unless explicitly approved.
-
-**Estimated effort:** 1 hour  
-**Complexity flag:** Simple = GPT-4o-mini OK
-
-### A2 - Baseline Field Assignment Data Model (8.6.9) ✅ ([Complexity: Medium]) 
-Status: Completed
+### A1 � Table Data Model (Milestone 8.7.1) ([Complexity: Medium])
 
 **Problem statement**  
-Store one assigned value per field per baseline, with correction metadata and auditability.
+We need durable storage for tables, cells, and column mappings tied to a baseline, including validation state and auditability.
 
 **Files / Locations**
-- Backend: `apps/api/src/db/schema.ts` - add `baseline_field_assignments` table definition.
-- Backend: `apps/api/src/db/migrations/` - add forward and rollback migrations.
-- Docs: `tasks/codemapcc.md` - update Data Model Map with new table and indexes.
+- Backend:
+  - `apps/api/src/db/schema.ts` � add `baseline_tables`, `baseline_table_cells`, `baseline_table_column_mappings`.
+  - `apps/api/src/db/migrations/` � add forward and rollback migrations.
+- Docs:
+  - `tasks/codemapcc.md` � update Data Model Map with new tables, columns, and indexes.
 
 **Implementation plan**
-1. Add columns: `id`, `baselineId`, `fieldKey`, `assignedValue`, `sourceSegmentId`, `assignedBy`, `assignedAt`, `correctedFrom`, `correctionReason`.
-2. Add unique constraint `(baselineId, fieldKey)` and indexes on `baselineId`, `fieldKey`, `sourceSegmentId`.
-3. Add migration files and update drizzle metadata if required by current workflow.
-4. Update `tasks/codemapcc.md` with the final table definition.
+1. Add `baseline_tables` with status enum (`draft`, `confirmed`), counts, label, and confirmation fields.
+2. Add `baseline_table_cells` with row/column indices, validation status, error text, and correction metadata.
+3. Add `baseline_table_column_mappings` linking `columnIndex` to `fieldKey`.
+4. Add unique constraints and indexes:
+   - `baseline_tables`: unique `(baselineId, tableIndex)`.
+   - `baseline_table_cells`: unique `(tableId, rowIndex, columnIndex)` + index `(tableId, validationStatus)`.
+   - `baseline_table_column_mappings`: unique `(tableId, columnIndex)` + index `(tableId)`.
+5. Update `tasks/codemapcc.md` data model section.
 
-**Checkpoint A2 - Verification**
-- Manual: Migration applies cleanly in dev.
+**Checkpoint A1 � Verification**
+- Manual:
+  - Confirm tables appear in `apps/api/src/db/schema.ts` with columns and indexes as specified.
 - DB:
 ```sql
-SELECT indexname, indexdef
-FROM pg_indexes
-WHERE tablename = 'baseline_field_assignments'
-ORDER BY indexname;
+SELECT table_name
+FROM information_schema.tables
+WHERE table_name IN ('baseline_tables', 'baseline_table_cells', 'baseline_table_column_mappings')
+ORDER BY table_name;
 ```
-Expected result: unique index on `(baseline_id, field_key)` plus baseline and field indexes.
-- Logs: API boots without schema errors after migration.
-- Regression: Existing baseline operations still function.
+  Expected result: all three tables present.
+- Logs:
+  - API boots without schema errors after migration.
+- Regression:
+  - Existing baseline assignments and OCR review still load.
 
-**Estimated effort:** 2 hours  
+**Estimated effort:** 2-3 hours  
 **Complexity flag:** Medium = GPT-4o preferred
 
-### A3 - Field Assignment Validation Service (8.6.10) ✅ ([Complexity: Medium])
-Status: Completed
-**Problem statement**
-Validate assigned values against `field_library.character_type` and `character_limit` without auto-mutation.
-
-**Files / Locations**
-- Backend: `apps/api/src/baseline/field-assignment-validator.service.ts` - new validation service.
-- Backend: `apps/api/src/field-library/field-library.service.ts` - read field type/limits.
-
-**Implementation plan**
-1. Implement `validate(fieldKey, value)` for varchar/int/decimal/date/currency.
-2. Return `{ valid, error, suggestedCorrection }` but do not change values.
-3. Add unit tests if test harness exists for baseline module.
-4. Update `tasks/codemapcc.md` to include the new service.
-
-**Field Type Validation Rules**
-- **varchar**: String length validation against character_limit
-- **int**: Integer format (no commas, no decimals)
-- **decimal**: Numeric with decimals, allows normalization of $, commas
-- **date**: ISO 8601 format (YYYY-MM-DD)
-- **currency**: ISO 4217 currency codes (exactly 3 uppercase letters: USD, EUR, GBP, JPY). Note: Monetary amounts use decimal field type.
-
-**Checkpoint A3 - Verification**
-- Manual: `validate('total_amount', '$1,234.50')` returns valid and suggested correction `1234.50` if normalization is expected.
-- Manual: `validate('currency_code', 'usd')` returns invalid with suggested correction `USD`.
-- DB: No changes.
-- Logs: Validation errors appear in API response with `error` and `suggestedCorrection` fields.
-- Regression: Field Library CRUD remains unaffected.
-
-**Estimated effort:** 2 hours
-**Complexity flag:** Medium = GPT-4o preferred
-
-### A4 - Assignment API + Audit (8.6.11) ✅ ([Complexity: Complex])
-
-Status: ✅ Verified (manual run on 2026-02-06 for `total_amount` assignment/correction)
+### A2 � Table Management Service (Milestone 8.7.2) ([Complexity: Complex])
 
 **Problem statement**  
-Provide assignment CRUD endpoints with correction reasons, baseline ownership checks, and audit trails.
+Provide backend operations for creating tables, updating cells, deleting rows, mapping columns, and confirming tables with full validation and auditability.
 
 **Files / Locations**
-- Backend: `apps/api/src/baseline/baseline.controller.ts` - add assignment routes.
-- Backend: `apps/api/src/baseline/baseline-assignments.service.ts` - new service for CRUD.
-- Backend: `apps/api/src/baseline/dto/assign-baseline-field.dto.ts` - request validation.
-- Backend: `apps/api/src/audit/audit.service.ts` - log assignment actions.
-- Docs: `tasks/codemapcc.md` - update backend map with endpoints and DTOs.
+- Backend:
+  - `apps/api/src/baseline/table-management.service.ts` � new service.
+  - `apps/api/src/baseline/baseline-management.service.ts` � add table-related checks if needed.
+  - `apps/api/src/baseline/field-assignment-validator.service.ts` � reuse validation rules.
+  - `apps/api/src/audit/audit.service.ts` � add table audit events.
+- Docs:
+  - `tasks/codemapcc.md` � add service to Backend Map.
 
 **Implementation plan**
-1. Add routes: `POST /baselines/:baselineId/assign`, `DELETE /baselines/:baselineId/assign/:fieldKey`, `GET /baselines/:baselineId/assignments`.
-2. Enforce ownership, baseline status (not archived), and utilization lockout.
-3. Require `correctionReason` for overwrite or delete; set `correctedFrom` when overwriting.
-4. Emit audit entries with action `baseline.assignment.upsert` and `baseline.assignment.delete`.
+1. Implement `createTable(baselineId, userId, options)` with baseline ownership + draft/reviewed guard.
+2. Insert `baseline_tables` row and batch insert `baseline_table_cells`.
+3. Implement `assignColumnToField(tableId, columnIndex, fieldKey, userId)`:
+   - Validate field exists in `field_library`.
+   - Update/insert column mapping.
+   - Validate all cells in column using `FieldAssignmentValidatorService`.
+4. Implement `updateCell(tableId, rowIndex, columnIndex, value, userId, correctionReason?)`:
+   - Require correctionReason when overwriting existing value.
+   - Apply validation if column mapped.
+5. Implement `deleteRow(tableId, rowIndex, userId, reason)`:
+   - Require reason; delete row; renumber subsequent rows.
+6. Implement `confirmTable(tableId, userId)`:
+   - Block if any cell invalid.
+   - Set table status to `confirmed`, record timestamps/user.
+7. Add audit events for each action (`table.create`, `table.cell.update`, `table.row.delete`, `table.column.assign`, `table.confirm`).
 
-**Checkpoint A4 - Verification**
-- Manual: `POST /baselines/:baselineId/assign` for `field_key=total_amount` then POST overwrite without `correctionReason` to confirm the 400 guard; resubmitting with a ≥10-character reason satisfied the requirement.
-- Manual check (2026-02-06): UI presented the string "Correction reason must be at least 10 characters long" until a valid reason ("other test reason") was provided, at which point the card shows `total_amount = 0.29` and a "Reason: other test reason" badge.
+**Checkpoint A2 � Verification**
+- Manual:
+  - Create table then map a column; invalid cells show `validationStatus='invalid'` with error.
+  - Attempt to confirm with invalid cells ? 400 with explicit message.
 - DB:
 ```sql
-SELECT baseline_id, field_key, assigned_value, corrected_from, correction_reason
-FROM baseline_field_assignments
-WHERE baseline_id = '<BASELINE_ID>' AND field_key = 'total_amount';
+SELECT status, row_count, column_count
+FROM baseline_tables
+WHERE id = '<TABLE_ID>';
 ```
-Expected result: row created; overwrite sets `corrected_from` and `correction_reason` (`corrected_from = $8.99`, `correction_reason = other test reason` in the verified SQL output).
-- Logs: Audit entry action `baseline.assignment.upsert` includes `baselineId`, `fieldKey`, `assignedBy`, `correctedFrom`, `correctionReason` in `details`.
-- Regression: Baseline review/confirm endpoints still function.
+  Expected result: status transitions `draft` ? `confirmed` only after all cells valid.
+- Logs:
+  - Audit log includes `action='table.column.assign'` with `tableId`, `columnIndex`, `fieldKey`.
+- Regression:
+  - Baseline field assignments still validate as before.
 
 **Estimated effort:** 3 hours  
 **Complexity flag:** Complex = GPT-4o required
 
-### A5 - Baseline Review Payload Aggregation (8.6.8, 8.6.12) ([Complexity: Medium]) ✅
-Status: Completed
-**Problem statement**  
-Expose baseline status, utilization, assignments, and extracted segments in a single read payload for the review UI.
-
-**Files / Locations**
-- Backend: `apps/api/src/baseline/baseline.controller.ts` - extend `GET /attachments/:attachmentId/baseline` response.
-- Backend: `apps/api/src/baseline/baseline-management.service.ts` - add aggregation method.
-- Backend: `apps/api/src/ocr/ocr.service.ts` - add `listExtractedTextSegments(attachmentId, userId)` if needed.
-
-**Implementation plan**
-1. Add `assignments` and `segments` to the baseline response model.
-2. Include baseline fields: `status`, `confirmedAt`, `confirmedBy`, `utilizedAt`, `utilizationType`.
-3. Ensure read operations do not mutate any state.
-4. Update `tasks/codemapcc.md` with the augmented response shape.
-
-**Checkpoint A5 - Verification**
-- Manual: GET `/attachments/<ATTACHMENT_ID>/baseline` returns baseline, assignments array, and segments array.
-- DB: No new rows written on read.
-- Logs: No errors for attachments with no baseline (returns `null` baseline and empty arrays).
-- Regression: Existing OCR review page still loads confirmed OCR data.
-**Status:** Verified on 2026-02-06 by running the review page fetch (baseline payload includes `status`, `utilizedAt`, `assignments`, and `segments`).
-
-**Estimated effort:** 2 hours  
-**Complexity flag:** Medium = GPT-4o preferred
-
----
-## 2) Review Page UI - Layout & Display (P0)
-
-> **Context:** Build the three-panel review workspace and wire extracted text + assignment data.
-
-### B1 - Three-Panel Layout + Persistent Panel (8.6.13-8.6.14) ([Complexity: Medium]) ✅
-Status: Completed
-**Problem statement**  
-Provide a persistent three-panel layout with document preview, extracted text pool, and field assignment panel.
-
-**Files / Locations**
-- Frontend: `apps/web/app/attachments/[attachmentId]/review/page.tsx` - layout restructure.
-- Frontend: `apps/web/app/components/PdfDocumentViewer.tsx` - reuse existing preview component.
-
-**Implementation plan**
-1. Implement 40/30/30 columns on desktop and tabs on mobile.
-2. Keep Field Assignment panel always visible (non-modal).
-3. Add a back button that returns to `/task/[id]`.
-
-**Checkpoint B1 - Verification**
-- Manual: Desktop shows three columns; mobile collapses to tabs labeled `Document`, `Text`, `Fields`.
-- DB: No mutations.
-- Logs: No console errors in review page.
-- Regression: Existing OCR field builder components still render.
-**Status:** Verified on 2026-02-06 by reviewing `apps/web/app/attachments/[attachmentId]/review/page.tsx` (40/30/30 layout with document/text/fields tabs and back-to-task button present).
-
-**Estimated effort:** 2 hours  
-**Complexity flag:** Medium = GPT-4o preferred
-
-### B2 - Document Preview Handling (8.6.15) ([Complexity: Simple]) ✅
-Status: Completed
-**Problem statement**  
-Handle preview rules for PDF/images and explicit messaging for XLSX/DOC/DOCX.
-
-**Files / Locations**
-- Frontend: `apps/web/app/attachments/[attachmentId]/review/page.tsx` - conditional preview rendering.
-
-**Implementation plan**
-1. PDF/Image: render preview with existing viewer.
-2. XLSX: show message "Excel files have no preview. Download to view."
-3. DOC/DOCX: show error "Word documents not supported. Please convert to PDF."
-4. Keep `react-pdf` options memoized so the viewer doesn’t trigger Turbopack warnings when options objects change.
-
-**Checkpoint B2 - Verification**
-- Manual: PDF/Image shows preview via existing viewer; XLSX shows “Excel files have no preview. Download to view.”; DOC/DOCX shows “Word documents not supported. Please convert to PDF.” while download link remains accessible.
-- DB: No mutations.
-- Logs: No client errors during render.
-- Regression: Download link still works for attachments.
-
-**Status:** ✅ Completed on 2026-02-06 after confirming preview rules and memoizing react-pdf options to avoid Turbopack warnings.
-
-**Estimated effort:** 1 hour  
-**Complexity flag:** Simple = GPT-4o-mini OK
-
-### B3 - Extracted Text Pool Display (8.6.8) ([Complexity: Medium]) ✅ Completed
+### A3 � Baseline Confirmation Guard for Tables (Milestone 8.7.7 dependency) ([Complexity: Medium])
 
 **Problem statement**  
-Render extracted text segments with confidence indicators and optional bounding-box highlight.
+Baseline confirmation must be blocked when any table tied to that baseline is still in draft.
 
 **Files / Locations**
-- Frontend: `apps/web/app/components/ExtractedTextPool.tsx` - new component.
-- Frontend: `apps/web/app/attachments/[attachmentId]/review/page.tsx` - data wiring.
+- Backend:
+  - `apps/api/src/baseline/baseline-management.service.ts` � add guard in `confirmBaseline`.
+  - `apps/api/src/baseline/baseline.controller.ts` � return clear error message.
+- Docs:
+  - `tasks/codemapcc.md` � update BaselineManagementService notes.
 
 **Implementation plan**
-1. Render list with truncation and expand-on-click.
-2. Show confidence badge colors: green >= 0.80, yellow 0.60-0.79, red < 0.60.
-3. Hover highlights bounding boxes when preview exists; missing bounding box is allowed.
-4. Update `tasks/codemapcc.md` with new component path.
+1. Query for any `baseline_tables` with `status='draft'` for the baseline.
+2. If found, block confirmation with detailed message listing ALL draft tables:
+   - Single table: `Cannot confirm baseline: Table "<label or Table #N>" is not confirmed`
+   - Multiple tables: `Cannot confirm baseline: 2 tables are not confirmed: "Line Items", "Tax Summary"`
+   - Return 400 with { error: "...", draftTables: [{ id, label, status }] }
+3. Ensure guard runs before baseline confirm transaction.
 
-**Checkpoint B3 - Verification**
-- Manual: Not performed (requires manual UI confirmation that hover highlight + truncation behave as expected).
-- DB: No mutations.
-- Logs: No errors when `boundingBox` is null.
-- Regression: Review page load time remains acceptable.
-
-**Status:** ✅ Completed on 2026-02-06 after tightening the pool highlight guard and documenting the component in the code map.
-
-**Estimated effort:** 2 hours  
-**Complexity flag:** Medium = GPT-4o preferred
-
----
-
-## 3) Field Assignment UI - Inputs & Editing (P0)
-
-> **Context:** Enable explicit, validated field assignments with correction reasons.
-
-### C1 - Field Assignment Panel (Read + Inputs) (8.6.12) ([Complexity: Medium]) [UNVERIFIED]
-
-**Problem statement**  
-Show active fields with type-specific inputs and current assignment values.
-
-**Files / Locations**
-- Frontend: `apps/web/app/components/FieldAssignmentPanel.tsx` - new component.
-- Frontend: `apps/web/app/lib/api/baselines.ts` - new API client for assignments.
-- Frontend: `apps/web/app/attachments/[attachmentId]/review/page.tsx` - panel wiring.
-
-**Implementation plan**
-1. Render active fields from Field Library with inputs by character type.
-2. Display assigned values and validation status indicators.
-3. Add basic inline validation messaging from API responses.
-4. Update `tasks/codemapcc.md` with new component and client path.
-
-**Checkpoint C1 - Verification**
-- Manual: Field list renders with inputs for `varchar`, `int`, `decimal`, `date`, `currency`.
-- DB: No mutations from initial render.
-- Logs: API errors render inline, not as silent failures.
-- Regression: Existing review page modals still work.
-
-**Estimated effort:** 3 hours  
-**Complexity flag:** Medium = GPT-4o preferred
-
-### C2 - Manual Assignment + Validation (8.6.12 - part of Field Assignment UI) ([Complexity: Medium])
-Status: ✅ Completed
-**Problem statement**
-Allow manual entry with validation feedback and explicit confirmation on save.
-
-**Files / Locations**
-- Frontend: `apps/web/app/components/FieldAssignmentPanel.tsx` - input handlers.
-- Frontend: `apps/web/app/components/ValidationConfirmationModal.tsx` - new validation confirmation modal.
-- Frontend: `apps/web/app/attachments/[attachmentId]/review/page.tsx` - validation confirmation flow.
-- Frontend: `apps/web/app/lib/api/baselines.ts` - added confirmInvalid flag to AssignPayload.
-- Backend: `apps/api/src/baseline/baseline-assignments.service.ts` - validation integration with confirmInvalid support.
-- Backend: `apps/api/src/baseline/dto/assign-baseline-field.dto.ts` - added confirmInvalid boolean flag.
-
-**Implementation plan**
-1. On blur or save, call assignment API and show validation errors. ✅
-2. Require explicit user confirmation for save when validation warnings exist. ✅
-3. Preserve user-entered value even if invalid, but force acknowledgement. ✅
-
-**Implementation details**
-- Backend now throws validation error with requiresConfirmation flag when value is invalid and confirmInvalid is not set
-- ValidationConfirmationModal displays validation error, user's entered value, and optional suggested correction
-- Modal provides three actions: "Save As-Is" (confirms with confirmInvalid=true), "Use Suggestion" (saves suggested value), or "Cancel"
-- Frontend catches validation errors and shows modal before saving invalid values
-- Valid values save immediately without prompts
-- **Currency field clarification**: Currency field stores ISO 4217 currency codes (exactly 3 uppercase letters: USD, EUR, GBP), not monetary amounts. Monetary amounts use decimal field type.
-
-**Checkpoint C2 - Verification**
-- Manual: Enter `total_amount=abc` shows validation error modal with "Invalid integer format" and requires explicit confirmation.
-- Manual: Entering valid values (e.g., `123` for int fields, `123.45` for decimal) saves without prompts.
-- Manual: Validation modal shows "Use Suggestion" button when suggestedCorrection is available (e.g., decimal with thousands separators).
-- DB: Value is saved only after user confirms via "Save As-Is" button or uses suggested correction.
-- Logs: API response includes `error` and `suggestedCorrection` fields for invalid values in the validation object.
-- Regression: Valid values save without extra prompts. ✅
-- Build: Both API and Web builds pass without errors. ✅
-
-**Estimated effort:** 2 hours
-**Complexity flag:** Medium = GPT-4o preferred
-
-### C3 - Correction Reason Requirement (8.6.12 - part of Field Assignment UI) ([Complexity: Medium])
-Status: ✅ Completed (enhanced in v8.6.add1 with draft/reviewed differentiation)
-**Problem statement**
-Require correction reason for edits to existing assignments or suggestions.
-
-**Files / Locations**
-- Frontend: `apps/web/app/components/CorrectionReasonModal.tsx` - new modal.
-- Frontend: `apps/web/app/components/FieldAssignmentPanel.tsx` - modal wiring.
-- Backend: `apps/api/src/baseline/baseline-assignments.service.ts` - enforce reason.
-
-**Implementation plan**
-1. Prompt for correction reason (min 10 chars) on overwrite or delete.
-2. Block save if reason is missing; surface inline error.
-3. Store `correctedFrom` and `correctionReason` in assignment row.
-4. Update `tasks/codemapcc.md` with new modal component.
-
-**Checkpoint C3 - Verification**
-✅ **Completed in v8.6.add1** with enhanced behavior:
-- Draft baseline: edits/deletes do NOT require correction reason (freeform exploration)
-- Reviewed baseline: edits/deletes REQUIRE correction reason (backend enforced, UI prompts)
-- Backend validates and rejects mutations without reason when baseline status='reviewed'
-- UI shows correction reason modal only for reviewed baseline changes
-- See features.md v8.6.add1 "Review Page Behavior" section for implementation details
-
-**Estimated effort:** 2 hours  
-**Complexity flag:** Medium = GPT-4o preferred
-
-### C4 - Drag-and-Drop Assignment (8.6.12 - part of Field Assignment UI) ([Complexity: Complex])
-Status: ✅ Completed
-**Problem statement**  
-Allow drag-drop from extracted text segments into fields with explicit confirmation.
-
-**Files / Locations**
-- Frontend: `apps/web/app/components/ExtractedTextPool.tsx` - drag source.
-- Frontend: `apps/web/app/components/FieldAssignmentPanel.tsx` - drop targets.
-
-**Implementation plan**
-1. Implement drag sources for segments and drop zones for fields.
-2. On drop, validate and show confirmation modal before saving.
-3. Persist `sourceSegmentId` when confirmed.
-
-**Checkpoint C4 - Verification**
-- Manual: Drag segment "INV-123" to `invoice_number` field and confirm.
+**Checkpoint A3 � Verification**
+- Manual:
+  - Create draft table and attempt baseline confirm ? blocked with explicit message.
+  - Confirm all tables ? baseline confirm succeeds.
 - DB:
 ```sql
-SELECT source_segment_id, assigned_value
-FROM baseline_field_assignments
-WHERE baseline_id = '<BASELINE_ID>' AND field_key = 'invoice_number';
+SELECT status FROM baseline_tables WHERE baseline_id = '<BASELINE_ID>';
 ```
-Expected result: `source_segment_id` set and value matches segment.
-- Logs: Audit entry includes `sourceSegmentId`.
-- Regression: Canceling confirmation leaves assignments unchanged.
+  Expected result: all `confirmed` before baseline confirm.
+- Logs:
+  - Audit shows `baseline.confirm` only after table confirmations complete.
+- Regression:
+  - Baseline confirm still archives previous confirmed baseline.
 
-**Estimated effort:** 3 hours  
+**Estimated effort:** 1-2 hours  
+**Complexity flag:** Medium = GPT-4o preferred
+
+---
+
+## 2) Table API Surface (P0)
+
+> **Context:** Expose table CRUD endpoints to the review UI with strict validation.
+
+### B1 � Table Controller + DTOs (Milestone 8.7.3) ([Complexity: Medium])
+
+**Problem statement**  
+The UI needs a stable API to create tables, edit cells, delete rows, map columns, and confirm tables.
+
+**Files / Locations**
+- Backend:
+  - `apps/api/src/baseline/table.controller.ts` � new controller.
+  - `apps/api/src/baseline/dto/` � new DTOs for create/update/assign/delete.
+- Docs:
+  - `tasks/codemapcc.md` � update Backend Map with routes and DTOs.
+
+**Implementation plan**
+1. Add endpoints:
+   - `POST /baselines/:baselineId/tables`
+   - `GET /baselines/:baselineId/tables`
+   - `GET /tables/:tableId`
+   - `DELETE /tables/:tableId`
+   - `PUT /tables/:tableId/cells/:rowIndex/:columnIndex`
+   - `DELETE /tables/:tableId/rows/:rowIndex`
+   - `POST /tables/:tableId/columns/:columnIndex/assign`
+   - `POST /tables/:tableId/confirm`
+2. Enforce size and security limits:
+   - Max table size: 1000 rows × 50 columns (50,000 cells hard limit)
+   - Cell value max length: 5000 characters (reject with 400 if exceeded)
+   - Table label max length: 255 characters
+   - SQL injection prevention: Use parameterized queries exclusively (NEVER string interpolation)
+   - XSS prevention: HTML-escape cell values before rendering (use React's default escaping)
+   - Validate row/column indices: Integers only, reject non-numeric input
+3. Enforce ownership and baseline utilization lockout.
+4. Standardize error shape consistent with v8.6.
+5. Update `tasks/codemapcc.md` with endpoint list.
+
+**Checkpoint B1 � Verification**
+- Manual:
+  - Create table with invalid size (e.g., 0 rows) ? 400 with explicit error.
+  - Map column to nonexistent fieldKey ? 400 `Field not found`.
+- DB:
+```sql
+SELECT count(*)
+FROM baseline_table_cells
+WHERE table_id = '<TABLE_ID>';
+```
+  Expected result: rowCount * columnCount inserted.
+- Logs:
+  - No 500s for invalid input; errors use 4xx.
+- Regression:
+  - Existing baseline endpoints still return as before.
+
+**Estimated effort:** 2-3 hours  
+**Complexity flag:** Medium = GPT-4o preferred
+
+### B2 � Table Read Models (Milestone 8.7.3) ([Complexity: Simple])
+
+**Problem statement**  
+The UI needs table data grouped by row plus current column mappings and validation status.
+
+**Files / Locations**
+- Backend:
+  - `apps/api/src/baseline/table-management.service.ts` � read helpers.
+  - `apps/api/src/baseline/table.controller.ts` � response shaping.
+- Docs:
+  - `tasks/codemapcc.md` � document response shapes.
+
+**Implementation plan**
+1. Ensure `GET /tables/:tableId` returns `{ table, cells: Cell[][], columnMappings }`.
+2. Ensure `GET /baselines/:baselineId/tables` returns list + mapping summary.
+3. Include validation status and error per cell.
+
+**Checkpoint B2 � Verification**
+- Manual:
+  - Create table, fetch `GET /tables/:id` ? rows grouped by index with correct values.
+- DB:
+```sql
+SELECT row_index, column_index, validation_status
+FROM baseline_table_cells
+WHERE table_id = '<TABLE_ID>'
+ORDER BY row_index, column_index;
+```
+  Expected result: row/column ordering matches API response.
+- Logs:
+  - No N+1 query warnings in logs.
+- Regression:
+  - Review page still loads baseline and segments.
+
+**Estimated effort:** 1-2 hours  
+**Complexity flag:** Simple = GPT-4o-mini OK
+
+---
+
+## 3) Review Page UI � Table Creation & Editor (P0)
+
+> **Context:** Allow users to create tables from selected segments and edit/validate them in place.
+
+### C1 � Table Creation Modal (Milestone 8.7.4) ([Complexity: Medium])
+
+**Problem statement**  
+Users need an explicit flow to create a table from selected text segments, with manual row/column control.
+
+**Files / Locations**
+- Frontend:
+  - `apps/web/app/components/tables/TableCreationModal.tsx` � new modal.
+  - `apps/web/app/components/ocr/ExtractedTextPool.tsx` � enable multi-select and send selection.
+  - `apps/web/app/attachments/[attachmentId]/review/page.tsx` � add �Create Table� entry point.
+- Frontend API:
+  - `apps/web/app/lib/api/tables.ts` � new API client.
+- Docs:
+  - `tasks/codemapcc.md` � add component and API client.
+
+**Implementation plan**
+1. Add selection UI to `ExtractedTextPool` (checkboxes per segment + select all).
+2. Add �Create Table from Selection� button (visible only when baseline status is `draft` or `reviewed`).
+3. Modal supports **Option A (Auto-detect)** and **Option B (Manual)**:
+   - **Option A (Auto-detect, Enhanced Preview):**
+     - Use spacing heuristics only:
+       - Row breaks: vertical gap > 1.5� median line height of selected segments.
+       - Column breaks: horizontal gap > 3� median character width.
+     - Build a preview grid (read-only) from the detected rows/columns.
+     - Display preview grid with color-coded cell confidence:
+       - Green borders: High confidence detected cells
+       - Red borders: Ambiguous cells (low confidence < 0.7)
+     - User adjustment tools (within v8.7 scope):
+       - View only - accept as-is or cancel
+       - Note: Merge/split tools deferred to future enhancement
+     - Modal shows detection summary: "Detected X rows � Y columns"
+   - **Option B (Manual):**
+     - Input row count (1-1000), column count (1-50), optional label.
+     - Optional grid assignment by drag/drop of selected segments.
+4. On submit, call `POST /baselines/:baselineId/tables` with `cellValues`.
+5. On success, open Table Editor panel and show toast.
+**Checkpoint C1 � Verification**
+- Manual:
+- Manual:
+  - Select segments ? open modal ? choose **Auto-detect** ? preview grid shows inferred rows/columns.
+  - Select segments ? open modal ? choose **Manual** ? create 3x3 table ? success toast.
+  - Attempt create when baseline is confirmed ? button hidden.
+- DB:
+```sql
+SELECT table_label, row_count, column_count
+FROM baseline_tables
+WHERE baseline_id = '<BASELINE_ID>'
+ORDER BY created_at DESC
+LIMIT 1;
+```
+  Expected result: row/column counts and label match modal input.
+- Logs:
+  - No client errors during modal open/submit.
+- Regression:
+  - Extracted text pool still supports hover highlight.
+
+**Estimated effort:** 2-3 hours  
+**Complexity flag:** Medium = GPT-4o preferred
+
+### C2 � Table Editor Panel (Milestone 8.7.5) ([Complexity: Complex])
+
+**Problem statement**  
+Users must edit cells, map columns to fields, and resolve validation errors within a focused table editor.
+
+**Files / Locations**
+- Frontend:
+  - `apps/web/app/components/tables/TableEditorPanel.tsx` � new editor panel.
+  - `apps/web/app/components/tables/TableConfirmationModal.tsx` � confirm modal.
+  - `apps/web/app/attachments/[attachmentId]/review/page.tsx` � toggle between FieldAssignmentPanel and TableEditorPanel.
+  - `apps/web/app/components/ValidationConfirmationModal.tsx` � reuse for invalid cell corrections.
+- Frontend API:
+  - `apps/web/app/lib/api/tables.ts` � updateCell, deleteRow, assignColumn, confirmTable.
+- Docs:
+  - `tasks/codemapcc.md` � add components/clients.
+
+**Implementation plan**
+1. Choose table component approach:
+   - **Option A (Preferred):** Check if existing codebase has suitable editable grid component
+   - **Option B:** Add `react-data-grid` (lightweight, 50KB gzipped) OR `@tanstack/react-table` v8
+   - Justify choice in executionnotes.md before implementation
+2. Grid features required:
+   - Inline cell editing (click � edit � blur to save)
+   - Keyboard navigation (Arrow keys, Tab, Enter)
+   - Row selection via checkboxes
+   - Validation indicators (red border + error icon)
+3. Render table grid with editable cells.
+4. Column header dropdown for field mapping (typeahead from Field Library list).
+5. Cell editing with field-type-specific inputs:
+   - If column mapped to field:
+     - `varchar`: Standard text input
+     - `int`: Number input (no decimals, step=1)
+     - `decimal`: Number input with decimal support
+     - `date`: Date picker (native HTML5 or existing date component)
+     - `currency`: Text input with uppercase transform + ISO 4217 validation hint
+   - If column unmapped: Text input (validation pending)
+6. On cell edit:
+   - PUT to update cell; if overwriting, prompt for correction reason.
+   - Render validation status (green for valid, red with tooltip for invalid).
+7. Row delete:
+   - Checkbox select + reason modal; delete rows sequentially.
+8. Validation status bar with error count and �Show Errors� filter.
+9. �Confirm Table� button enabled only when errors = 0.
+
+**Checkpoint C2 � Verification**
+- Manual:
+  - Map column to `int` field; invalid cell shows error tooltip.
+  - Edit invalid cell ? becomes valid; error count decreases.
+  - Delete row with reason ? row removed and indices renumbered.
+- DB:
+```sql
+SELECT row_index, column_index, cell_value, validation_status
+FROM baseline_table_cells
+WHERE table_id = '<TABLE_ID>'
+ORDER BY row_index, column_index;
+```
+  Expected result: updated values and validation statuses match UI.
+- Logs:
+  - Client shows explicit error message on 409 correction reason required.
+- Regression:
+  - FieldAssignmentPanel still works when table editor closed.
+
+**Estimated effort:** 3-4 hours
 **Complexity flag:** Complex = GPT-4o required
 
----
+### C3 � Table Confirmation UI (Milestone 8.7.6) ([Complexity: Medium])
 
-## 4) Review and Confirm Lifecycle (P0)
-
-> **Context:** Ensure baseline review/confirm UX matches v8.6 lifecycle requirements.
-
-### D1 - Reviewed State UI (8.6.6 - Baseline Confirmation UI, enhanced in v8.6.add1) ([Complexity: Simple])
-Status: ✅ Completed (enhanced in v8.6.add1 with OCR completion lifecycle)
-**Problem statement**
-Allow user to mark baseline as reviewed while keeping it editable.
-
-**Files / Locations**
-- Frontend: `apps/web/app/attachments/[attachmentId]/review/page.tsx` - reviewed button state.
-- Backend: `apps/api/src/baseline/baseline.controller.ts` - `POST /baselines/:baselineId/review` call.
-
-**Implementation plan**
-1. Show "Mark as Reviewed" only when status is `draft`.
-2. Keep assignment inputs editable after review.
-3. Refresh baseline payload after transition.
-
-**Checkpoint D1 - Verification**
-✅ **Completed in v8.6.add1** with enhanced behavior:
-- "Mark as Reviewed" button changes baseline status from draft → reviewed ✅
-- Inputs remain editable after review (but now require correction reasons per C3) ✅
-- Action reloads baseline data to prevent empty UI state ✅
-- BONUS: OCR completion lifecycle - when OCR completes, reviewed baseline resets to draft (user must re-review)
-- See features.md v8.6.add1 "Review Page Behavior" section for implementation details
-
-**Estimated effort:** 1 hour  
-**Complexity flag:** Simple = GPT-4o-mini OK
-
-### D2 - Confirm Baseline with Summary (8.6.6 - Baseline Confirmation UI) ([Complexity: Medium])
-Status: New
 **Problem statement**  
-Confirm baseline only after review and show counts of assigned vs empty fields.
+Confirmed tables must become read-only with a clear confirmation modal and audit trail.
 
 **Files / Locations**
-- Frontend: `apps/web/app/attachments/[attachmentId]/review/page.tsx` - confirm modal and counts.
-- Backend: `apps/api/src/baseline/baseline.controller.ts` - confirm endpoint.
+- Frontend:
+  - `apps/web/app/components/tables/TableConfirmationModal.tsx` � confirm dialog.
+  - `apps/web/app/components/tables/TableEditorPanel.tsx` � lock inputs on confirmed.
+- Backend:
+  - `apps/api/src/baseline/table-management.service.ts` � confirm logic (from A2).
 
 **Implementation plan**
-1. Compute `assignedCount` and `emptyCount` from field list.
-2. Show confirmation modal with counts and lock warning.
-3. On confirm, redirect to `/task/[id]` with success toast.
+1. Confirm modal with row/column count summary and �I understand� checkbox.
+2. POST `/tables/:id/confirm` and update UI state.
+3. After confirm, lock all cell edits, mappings, and row deletions.
+4. Show read-only banner with confirmed metadata.
+5. Add export functionality for confirmed tables:
+   - Show "Export to CSV" button in table editor toolbar (confirmed tables only)
+   - Generate CSV with:
+     - Header row: Column field labels (from columnMappings)
+     - Data rows: Cell values from baseline_table_cells ordered by rowIndex, columnIndex
+   - Download triggers with filename: `{baselineId}_{tableLabel}_{timestamp}.csv`
+   - Sanitize CSV content (escape quotes, commas)
 
-**Checkpoint D2 - Verification**
-- Manual: Confirm modal shows "X fields assigned, Y fields empty".
+**Checkpoint C3 � Verification**
+- Manual:
+  - Confirm table ? UI locks and displays �Table confirmed on <date> by <user>�.
+  - Attempt edit after confirm ? blocked with tooltip.
 - DB:
 ```sql
-SELECT status, confirmed_at, confirmed_by FROM extraction_baselines WHERE id = '<BASELINE_ID>';
+SELECT status, confirmed_at, confirmed_by
+FROM baseline_tables
+WHERE id = '<TABLE_ID>';
 ```
-Expected result: `confirmed` with timestamps set.
-- Logs: Audit entry action `baseline.confirm` includes `baselineId`, `confirmedBy`, `assignedCount`, `emptyCount`.
-- Regression: Previous confirmed baseline is archived by service.
+  Expected result: status `confirmed` with timestamps.
+- Logs:
+  - Audit entry action `table.confirm` present.
+- Regression:
+  - Baseline confirmation still blocked until all tables confirmed (A3).
 
-**Estimated effort:** 2 hours  
+**Estimated effort:** 2-3 hours
 **Complexity flag:** Medium = GPT-4o preferred
 
-### D3 - Confirm Only on Review Page + Task Detail Status (v8.6.add1 enhancement) ([Complexity: Simple])
-Status: ✅ Completed (enhanced in v8.6.add1 with queue state badges)
-**Problem statement**
-Ensure confirm action exists only on review page; task detail shows read-only status.
+### C4 � Table List Panel + Multi-Table Switching (Milestone 8.7.7) ([Complexity: Medium])
+
+**Problem statement**  
+Users need to view and switch between multiple tables, and see status/validation at a glance.
 
 **Files / Locations**
-- Frontend: `apps/web/app/task/[id]/page.tsx` - add status display only.
-- Frontend: `apps/web/app/attachments/[attachmentId]/review/page.tsx` - confirm remains here.
+- Frontend:
+  - `apps/web/app/components/tables/TableListPanel.tsx` � new list panel.
+  - `apps/web/app/attachments/[attachmentId]/review/page.tsx` � render list and editor.
+- Frontend API:
+  - `apps/web/app/lib/api/tables.ts` � list tables for baseline.
 
 **Implementation plan**
-1. Remove any confirm action from task detail if present.
-2. Display status string "Confirmed on <date> by <user>" when applicable.
-3. Keep task detail read-only for baseline actions.
+1. Add sidebar list �Tables (N)� with table label, size, status, and error count.
+2. Open table on click; keep editor state per table.
+3. Allow delete for draft tables only (confirm modal).
+4. Provide �Create Table� shortcut in list panel.
 
-**Checkpoint D3 - Verification**
-✅ **Completed in v8.6.add1** with enhanced behavior:
-- Task detail shows read-only baseline status (no confirm action) ✅
-- Confirm action only available on review page ✅
-- BONUS: Task detail shows enhanced status badges:
-  - "Queued" badge for attachments with queued OCR jobs
-  - "In Progress" badge for attachments with processing OCR jobs
-  - "Reviewed" badge for attachments with reviewed baseline
-- BONUS: OCR text panel collapsed by default to reduce visual clutter
-- See features.md v8.6.add1 "Task Page Integration" section for implementation details
+**Checkpoint C4 � Verification**
+- Manual:
+  - Create two tables ? list shows both with correct labels and counts.
+  - Confirm one table ? status badge green, other remains draft.
+- DB:
+```sql
+SELECT id, table_label, status, row_count, column_count
+FROM baseline_tables
+WHERE baseline_id = '<BASELINE_ID>'
+ORDER BY table_index;
+```
+  Expected result: list matches UI.
+- Logs:
+  - No console errors when switching tables.
+- Regression:
+  - Review page mobile tabs still function.
 
-**Estimated effort:** 1 hour  
-**Complexity flag:** Simple = GPT-4o-mini OK
+**Estimated effort:** 2-3 hours  
+**Complexity flag:** Medium = GPT-4o preferred
 
 ---
 
-## 5) Utilization & Locking (P1)
+## 4) Utilization & Locking (P1)
 
-> **Context:** Baseline editing must lock after utilization, both UI and backend.
+> **Context:** Table edits must lock after utilization, consistent with baseline rules.
 
-### E1 - Utilization Tracking for Baselines (8.6.16) ([Complexity: Medium])
-Status: New
+### D1 � Table Utilization Tracking (Milestone 8.7.8) ([Complexity: Medium])
+
 **Problem statement**  
-Persist utilization timestamps and types when baseline data is used.
+When table data is used for authoritative purposes, the baseline must be locked and the utilization recorded with table context.
 
 **Files / Locations**
-- Backend: `apps/api/src/baseline/baseline-management.service.ts` - add `markBaselineUtilized`.
-- Backend: `apps/api/src/audit/audit.service.ts` - log utilization events.
+- Backend:
+  - `apps/api/src/baseline/baseline-management.service.ts` � extend utilization to accept `tableId` metadata.
+  - `apps/api/src/audit/audit.service.ts` � add `table.utilized.*` or extend baseline utilization logs.
+  - `apps/api/src/baseline/table-management.service.ts` � check utilization before any mutations.
+- Frontend:
+  - `apps/web/app/components/tables/TableEditorPanel.tsx` � show utilized banner and lock UI.
+  - `apps/web/app/components/tables/TableListPanel.tsx` � show lock icon.
+- Docs:
+  - `tasks/codemapcc.md` � update utilization notes.
 
 **Implementation plan**
-1. Implement `markBaselineUtilized(baselineId, type, metadata)` with first-write-wins.
-2. Add audit events `baseline.utilized.record_created`, `baseline.utilized.workflow_committed`, `baseline.utilized.data_exported`.
-3. Wire call sites where baseline data is used (record creation/export) within v8.6 scope only.
+1. Extend baseline utilization metadata to include table-specific context:
+   - `tableId`: UUID of the utilized table
+   - `tableLabel`: User-assigned label (if any)
+   - `rowCount`: Number of rows at time of utilization
+   - `columnCount`: Number of columns at time of utilization
+   - `recordId`: ID of created record (for Category A utilization)
+   - `exportFormat`: CSV/Excel/etc. (for Category C utilization)
+2. Reject table mutations when baseline is utilized (403 with explicit message).
+3. In UI, render read-only banner: �Baseline locked due to utilization�.
+4. Update utilization indicator to include table context:
+   - "� Table 'Line Items' used to create 12 invoice records"
+   - Click � Modal with details: Which table, which records, when, by whom
 
-**Checkpoint F1 - Verification**
-- Manual: Trigger utilization flow and confirm baseline updated.
+**Checkpoint D1 � Verification**
+- Manual:
+  - Simulate utilization and verify table editor becomes read-only.
+  - Attempt update after utilization ? 403 and UI toast.
 - DB:
 ```sql
-SELECT utilized_at, utilization_type
+SELECT utilized_at, utilization_type, utilization_metadata
 FROM extraction_baselines
 WHERE id = '<BASELINE_ID>';
 ```
-Expected result: fields set once.
-- Logs: Audit entry includes `baselineId`, `utilizationType`, `utilizedAt`.
-- Regression: OCR utilization tracking unchanged.
+  Expected result: utilization metadata includes tableId.
+- Logs:
+  - Audit entry includes `tableId` and `utilizationType`.
+- Regression:
+  - Baseline assignments still lock on utilization.
 
 **Estimated effort:** 2 hours  
 **Complexity flag:** Medium = GPT-4o preferred
 
-### E2 - Utilization Lockout (8.6.17) ([Complexity: Medium])
-Status: New
-**Problem statement**  
-Prevent edits when baseline is utilized, in both UI and backend.
+---
 
-**Files / Locations**
-- Frontend: `apps/web/app/components/FieldAssignmentPanel.tsx` - disable inputs and show badge.
-- Frontend: `apps/web/app/attachments/[attachmentId]/review/page.tsx` - top-level read-only state.
-- Backend: `apps/api/src/baseline/baseline-assignments.service.ts` - reject mutations.
+## 4.5) Performance Requirements & Optimization (Non-Functional)
 
-**Implementation plan**
-1. If `utilizationType` exists, disable all edit actions and show a reason tooltip.
-2. Backend returns 403 on assign/delete when utilized.
-3. Keep read-only views accessible.
+> **Context:** Ensure table operations meet user expectations for responsiveness.
 
-**Checkpoint F2 - Verification**
-- Manual: Utilized baseline shows read-only badge and blocks edits.
-- DB: No changes on blocked mutation.
-- Logs: Audit entry `baseline.assignment.denied` includes `reason=utilized`.
-- Regression: Non-utilized baselines remain editable.
+**Backend Performance Targets:**
+- Create table: < 500ms for 100 rows × 10 columns (1000 cell inserts)
+- Load table: < 300ms for 100 rows × 10 columns (use JOINs, avoid N+1)
+- Update cell: < 100ms (single UPDATE + validation)
+- Bulk column validation: < 1s for 1000 cells
 
-**Estimated effort:** 2 hours  
-**Complexity flag:** Medium = GPT-4o preferred
+**Frontend Performance Targets:**
+- Initial grid render: < 500ms for 100 visible rows
+- Virtual scrolling: Render only visible rows + 50-row buffer
+- Scroll performance: 60 FPS (16ms per frame)
+- Cell edit optimistic update: < 50ms (background save)
 
-### E3 - Utilization Indicator on Task Detail (8.6.18) ([Complexity: Simple])
-Status: New
-**Problem statement**  
-Surface baseline utilization status on task detail page.
+**Implementation Notes:**
+- Use database indexes on `(tableId, rowIndex, columnIndex)` and `(tableId, validationStatus)`
+- Batch cell inserts during table creation (single transaction)
+- Use virtual scrolling for tables > 100 rows
+- Implement optimistic UI updates for cell edits
 
-**Files / Locations**
-- Frontend: `apps/web/app/task/[id]/page.tsx` - add utilization indicator.
-- Backend: `apps/api/src/baseline/baseline.controller.ts` - include utilization summary for task detail.
-
-**Implementation plan**
-1. Add utilization status fields to task detail baseline payload.
-2. Display indicator text with tooltip showing type and timestamp.
-3. Keep display read-only.
-
-**Checkpoint F3 - Verification**
-- Manual: Task detail shows "Not yet used" or correct utilization message.
-- DB: No mutations.
-- Logs: No extra mutation calls.
-- Regression: Task detail still loads attachments and OCR panels.
-
-**Estimated effort:** 1 hour  
-**Complexity flag:** Simple = GPT-4o-mini OK
+**Verification:**
+- Use browser DevTools Performance profiler for grid rendering
+- Measure API response times via logs or APM tool
+- Test with table size: 100 rows × 20 columns (2000 cells)
 
 ---
 
-## 6) File Type Validation (P1)
-
-> **Context:** Restrict uploads to supported file types with clear errors.
-
-### F1 - Upload Validation (8.6.19) ([Complexity: Simple])
-Status: New
-**Problem statement**  
-Reject unsupported file types with explicit user-facing errors.
-
-**Files / Locations**
-- Backend: `apps/api/src/attachments/attachments.service.ts` - MIME type validation.
-- Backend: `apps/api/src/attachments/attachments.controller.ts` - error handling.
-- Frontend: `apps/web/app/task/[id]/page.tsx` - surface error message.
-
-**Implementation plan**
-1. Allow PDF, PNG, JPG, JPEG, XLSX only.
-2. Reject DOC/DOCX with error "Word documents not supported. Please convert to PDF."
-3. Preserve existing 20MB size limit and duplicate-name checks.
-
-**Checkpoint F1 - Verification**
-- Manual: Upload DOCX -> error shown; upload PDF/XLSX -> succeeds.
-- DB: No attachment row created for rejected files.
-- Logs: Error includes MIME type and filename.
-- Regression: Existing attachment uploads still work.
-
-**Estimated effort:** 1 hour  
-**Complexity flag:** Simple = GPT-4o-mini OK
-
----
-
-## 7) Execution Order (Do Not Skip)
+## 5) Execution Order (Do Not Skip)
 
 **Critical path dependencies:**
-1. **A1** Verify extracted text segments storage - no dependencies.
-2. **A2** Baseline field assignment table - depends on A1 (schema confirmed).
-3. **A3** Field assignment validator - depends on A2 (table/fields defined).
-4. **A4** Assignment API + audit - depends on A2 and A3.
-5. **A5** Baseline review payload - depends on A4 (assignments available).
-6. **B1** Three-panel layout - depends on A5 (payload shape known).
-7. **B2** Document preview handling - depends on B1.
-8. **B3** Extracted text pool - depends on A5 and B1.
-9. **C1** Field assignment panel - depends on A4 and B1.
-10. **C2** Manual assignment + validation - depends on C1 and A3.
-11. **C3** Correction reason requirement - depends on C2.
-12. **C4** Drag-and-drop assignment - depends on B3 and C1.
-13. **D1** Reviewed state UI - depends on A5.
-14. **D2** Confirm baseline with summary - depends on D1 and C1.
-15. **D3** Confirm only on review page + task detail status - depends on D2.
-16. **E1** Utilization tracking - depends on A2.
-17. **E2** Utilization lockout - depends on E1 and C1.
-18. **E3** Utilization indicator - depends on E1.
-19. **F1** File type validation - no dependencies.
+1. **A1** Table data model � No dependencies.
+2. **A2** Table management service � Depends on A1.
+3. **A3** Baseline confirm guard � Depends on A1 (tables exist).
+4. **B1** Table controller + DTOs � Depends on A2.
+5. **B2** Table read models � Depends on B1.
+6. **C1** Table creation modal � Depends on B1 and review page baseline data.
+7. **C2** Table editor panel � Depends on B2 and C1.
+8. **C3** Table confirmation UI � Depends on C2 and A2.
+9. **C4** Table list panel � Depends on C1 and B2.
+10. **D1** Table utilization tracking � Depends on A2 and baseline utilization infra (v8.6).
 
 **Parallel execution opportunities:**
-- B2 can run in parallel with B3 after B1 completes.
-- D1 can run in parallel with B3 after A5 completes.
-- E1 can run in parallel with UI tasks after A2 completes.
-- F1 can run anytime (no dependencies).
+- A3 can run in parallel with B1 after A1 is complete.
+- C4 can run in parallel with C2 after C1 and B2 are complete.
+- D1 can run after A2 while UI work proceeds.
 
 **Blocking relationships:**
-- UI assignments (C-series) are blocked until assignment API (A4) is complete.
-- Utilization lockout (E2) is blocked until utilization tracking (E1) is complete.
+- UI table editor (C2/C3) is BLOCKED until table APIs (B1/B2) are complete.
+- Baseline confirm remains BLOCKED by A3 until all tables confirmed.
+- Utilization UI lockout (D1) BLOCKED until backend utilization checks exist.
 
 ---
 
-## 8) Definition of Done
+## 6) Definition of Done
 
 **Feature Completeness:**
-- [ ] Extracted Text Pool: Segments render with confidence badges and optional bounding-box highlight.
-- [ ] Extracted Text Pool: Segments remain visible after assignment.
-- [ ] Field Assignments: One field per baseline enforced with correction metadata and audit logs.
-- [ ] Field Assignments: Validation errors surface and require explicit confirmation when overridden.
-- [ ] Review Page: Three-panel layout with persistent field panel and mobile tabs.
-- [ ] Review Page: Review and confirm actions follow draft -> reviewed -> confirmed state machine.
-- [ ] Utilization: Tracking persists and locks edits in UI and backend.
-- [ ] File Types: Unsupported types rejected with explicit error message.
+- Table data model exists with correct constraints and indexes.
+- Users can create, edit, validate, and confirm tables from the review page.
+- Column mappings enforce field validation for all cells.
+- Multiple tables can be created and switched without losing state.
+- Baseline confirmation is blocked unless all tables are confirmed.
+- Utilization locks all table edits and is visible in UI.
 
 **Data Integrity:**
-- [ ] Unique constraint on `(baseline_id, field_key)` prevents duplicates.
-- [ ] All assignment mutations emit audit log entries with before/after and reason.
+- ? Unique constraints on `(baselineId, tableIndex)` and `(tableId, rowIndex, columnIndex)` prevent duplicates.
+- ? All edits require explicit correction reason when overwriting values.
+- ? Audit logs capture table creation, edits, deletions, mappings, and confirmation.
 
 **No Regressions:**
-- [x] API boots without errors (`npm run build` in `apps/api`).
-- [x] Web builds without errors (`npm run build` in `apps/web`).
-- [ ] OCR confirmation and review page still work for existing attachments.
+- ? API boots without errors (`npm run build` in `apps/api`).
+- ? Web builds without errors (`npm run build` in `apps/web`).
+- ? Existing review page field assignment flow still works.
 
 **Documentation:**
-- [ ] `tasks/codemapcc.md` updated with new files/endpoints/tables.
-- [ ] `tasks/executionnotes.md` updated with completion evidence.
+- ? `tasks/codemapcc.md` updated with new tables, endpoints, and components.
+- ? `tasks/executionnotes.md` updated with completion evidence for v8.7 tasks.
 
 ---
 
-## 9) Manual Test Checklist (Run After Each Checkpoint)
+## 6.5) Automated Testing Requirements
+
+**Unit Tests (Jest/Vitest):**
+- `TableManagementService`:
+  - � createTable: Valid input creates table + cells
+  - � updateCell: Correction reason required when overwriting
+  - � deleteRow: Subsequent rows renumbered correctly
+  - � assignColumnToField: Triggers bulk validation
+  - � confirmTable: Blocked when validation errors exist
+- `FieldAssignmentValidator`:
+  - � Bulk validation: All character_types (varchar, int, decimal, date, currency)
+  - � Edge cases: Empty string, null, max length (5000 chars), special characters
+
+**Integration Tests (API-level):**
+- Table lifecycle: Create � Map columns � Edit cells � Confirm � Utilize � Verify lock
+- Multiple tables: Create 3 tables � Confirm 2 � Attempt baseline confirm (expect 400)
+- Concurrent edits: Two users editing different cells (optimistic locking, no race conditions)
+
+**E2E Tests (Playwright/Cypress):**
+1. Create table from selection � Map columns � Fix validation errors � Confirm
+2. Create 2 tables � Confirm table 1 � Edit table 2 � Confirm table 2 � Confirm baseline
+3. Confirm table � Simulate utilization � Attempt edit (expect 403 toast message)
+4. Delete row � Verify renumbering in UI � Confirm table � Export CSV (verify row count matches)
+
+**Coverage Target:** 80% for new services (TableManagementService, table.controller.ts)
+
+---
+
+## 7) Manual Test Checklist (Run After Each Checkpoint)
 
 **Smoke Tests (Run After Every Task):**
-- [x] API boots: `cd apps/api && npm run build` -> no errors.
-- [x] Web builds: `cd apps/web && npm run build` -> exit code 0.
-- [ ] Login flow works: Navigate to `/login` -> enter credentials -> redirects to `/`.
+- [ ] API boots: `cd apps/api && npm run build` ? no errors.
+- [ ] Web builds: `cd apps/web && npm run build` ? exit code 0.
+- [ ] Login flow works: Navigate to `/login` ? enter credentials ? redirects to `/`.
 
-**Feature-Specific Tests:**
-- [ ] Extracted text pool renders: Open `/attachments/<ATTACHMENT_ID>/review` -> see segments list and confidence badges.
-- [ ] Assignment creation: Enter `invoice_number=INV-123` -> Save -> field shows value -> refresh retains value.
-- [ ] Correction reason enforced: Edit `invoice_number` -> prompt for reason -> missing reason blocks save with message.
-- [ ] Drag/drop: Drag segment "INV-123" to `invoice_number` -> confirm -> value set with source segment id.
-- [ ] Reviewed state: Click "Mark as Reviewed" -> status badge shows `Reviewed` -> inputs remain editable.
-- [ ] Confirm state: Click "Confirm Baseline" -> modal shows counts -> confirm locks inputs.
-- [ ] Utilization lock: Simulate utilization -> inputs disabled and backend returns 403 on assign.
-- [ ] File type validation: Upload DOCX -> see "Word documents not supported"; upload PDF/XLSX -> succeeds.
+**Task Group A � Backend:**
+- [ ] Create table via API ? verify `baseline_tables` and `baseline_table_cells` rows created.
+  - Steps: POST `/baselines/:baselineId/tables` with 2x2 grid ? GET `/tables/:id` ? see 2 rows x 2 columns.
+- [ ] Column mapping validation
+  - Steps: Map column to `int` field ? enter `abc` ? validation error returned.
+
+**Task Group C � UI:**
+- [ ] Create table from selection
+  - Steps: Select segments ? click �Create Table� ? set 3x3 ? create ? editor opens with 3x3 grid.
+- [ ] Cell edit + correction reason
+  - Steps: Edit cell value twice ? second edit prompts for correction reason ? save succeeds.
+- [ ] Confirm table
+  - Steps: Resolve all validation errors ? click �Confirm Table� ? modal confirm ? table locks.
 
 **Integration Tests (Run After All Tasks Complete):**
-- [ ] End-to-end: Upload PDF -> run OCR -> open review -> assign fields -> review -> confirm -> task detail shows confirmed status.
-- [ ] Cross-feature validation: Baseline confirmed -> OCR review still displays confirmed OCR (no regressions).
+- [ ] Create two tables ? confirm one ? baseline confirm blocked with explicit table name.
+- [ ] Confirm all tables ? baseline confirm succeeds ? task detail shows confirmed status.
+- [ ] Utilize baseline ? table editor locked with utilization banner.
 
 **Regression Tests:**
-- [ ] Task detail page still loads attachments and OCR actions.
-- [ ] Admin Field Library page still loads and edits fields.
+- [ ] Field assignment panel still works when no table is open.
+- [ ] OCR review page loads segments and hover highlight still works.
 
 ---
 
-## 10) Post-Completion Checklist
+## 8) Post-Completion Checklist
 
-- [ ] Update `tasks/executionnotes.md`: completion date.
-- [ ] Update `tasks/executionnotes.md`: what was built (reference task IDs).
-- [ ] Update `tasks/executionnotes.md`: any deviations from plan (with reasons).
-- [ ] Update `tasks/executionnotes.md`: lessons learned (add to `tasks/lessons.md` if applicable).
-- [ ] Update `tasks/codemapcc.md` with new file paths and endpoints.
-- [ ] Run full regression suite.
-- [ ] Tag commit: `git tag v8.6 -m "Field-Based Extraction Assignment & Baseline complete"`.
+- [ ] Update `tasks/executionnotes.md` with:
+  - [ ] Completion date
+  - [ ] What was built (reference task IDs)
+  - [ ] Any deviations from plan (with reasons)
+  - [ ] Lessons learned (add to `tasks/lessons.md` if applicable)
+- [ ] Update `tasks/codemapcc.md` with new file paths, endpoints, and tables
+- [ ] Run full regression suite
+- [ ] Tag commit: `git tag v8.7 -m "Table Review for Structured Document Data complete"`
 
 ---
+

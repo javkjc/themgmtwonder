@@ -29,9 +29,9 @@
   }
 }
 
-# for simple tesk *******************8
+# for simple tesk *******************
 
-## [Task Name] - [Task ID]
+[Task Name] - [Task ID]
 
 **Governance:** Follow `prompt_guidelines.md` and `ai-rules.md`
 
@@ -264,37 +264,100 @@ The plan MUST:
 
 
 # for generating task from plan.md 1 each time ********************************
+Generate execution prompt for next task from tasks/plan.md.
 
-Generate an execution prompt for next actionable task from tasks/plan.md.
+**CRITICAL: Target executors are claude-haiku / gpt-4o-mini / gemini-2.0-flash**
+Output must be anti-hallucination: explicit sources, no assumptions, verification-heavy.
 
-**Instructions:**
-1. Read plan.md (find next actionable task)
-2. Read session-state.md (for current project state)
-3. Read lessons.md (patterns to avoid from past corrections)
-4. Read ai-rules.md (section: "Execution Prompt Generation Guidelines")
-5. Read codemapcc.md (for file paths)
+**Read (order matters):**
+1. tasks/plan.md → Next task (Status: New/[UNVERIFIED]/first without ✅)
+   Extract verbatim: Task ID, Problem statement, Files/Locations list, Implementation plan (numbered steps), Checkpoint section
+2. tasks/session-state.md → Last completed task, current blockers
+3. tasks/lessons.md → Find 2-3 patterns matching this task's files/scope
+4. tasks/ai-rules.md → "Execution Prompt Generation Guidelines" section
+5. tasks/codemapcc.md → Exact file paths (copy paths, don't invent)
 
-Follow the execution prompt structure from ai-rules.md. Target length: ~150-200 words.
+**Prerequisites check**: Read task's Prerequisites section. If any missing → STOP, list which.
 
-**Required sections (in order):**
-1. Context (project + session context if relevant)
-2. Authority ("tasks/plan.md is single source of truth")
-3. Scope Lock (explicit constraint)
-4. Reading Rules (numbered list: session-state.md, lessons.md, ai-rules.md, plan.md, codemapcc.md)
-5. Task (with bullet points)
-6. Files (from codemapcc.md with paths)
-7. Execution Rules (minimal changes, no new deps, patterns from lessons.md, etc.)
-8. Verification (manual tests from checkpoint)
-9. Write Rules:
-   - Append to tasks/executionnotes.md (bottom only, structured format)
-   - Update tasks/plan.md: Check task checkbox AND update section status to "✅ Completed" if all checkpoints verified
-   - Update tasks/lessons.md if user makes corrections during session
-   - Rewrite tasks/session-state.md at session end
-10. Stop Conditions (ambiguity → STOP, task complete → STOP)
+**Output structure (ai-rules.md format):**
 
-Use clear section headers and bullet points, not wall-of-text paragraphs.
+1. **Context**
+   - "You are working on [project name from tasks/session-state.md]."
+   - IF task depends on previous: "Task [ID] is complete: [specific artifact from executionnotes.md]"
+   - IF independent: Skip session context
 
-Target executor: gpt5.1-codex-mini medium
+2. **Authority**
+   - Exact quote: "tasks/plan.md is the single source of truth. Follow it exactly."
+
+3. **Scope Lock**
+   - From tasks/plan.md context/version: "CONSTRAINT: [exact scope - e.g., 'v8.6 only', 'Frontend only']"
+   - "Work ONLY on files listed in section 6. Do NOT touch other files."
+
+4. **Reading Rules**
+   - "Before coding, read in order:"
+   - List: tasks/session-state.md, tasks/lessons.md, tasks/ai-rules.md, tasks/plan.md [Task ID] section, tasks/codemapcc.md
+
+5. **Task**
+   - "**Milestone**: [copy from tasks/plan.md]"
+   - "**Problem**: [copy Problem statement verbatim from tasks/plan.md]"
+   - "**Steps** (from tasks/plan.md Implementation plan):"
+   - Copy numbered steps EXACTLY - don't paraphrase
+
+6. **Files**
+   - "Modify ONLY these files (paths from tasks/codemapcc.md):"
+   - List exact paths - verify each exists in tasks/codemapcc.md
+   - If path missing from codemap → STOP, report missing path
+
+7. **Execution Rules**
+   - "1. Minimal changes: Edit only files in section 6"
+   - "2. No new dependencies: Use only packages in package.json/requirements.txt"
+   - "3. No assumptions: If tasks/plan.md unclear → STOP and ask"
+   - "4. Patterns from lessons.md:"
+   - List 2-3 extracted patterns as bullets with "DON'T:" prefix
+
+8. **Verification**
+   - "**Manual Tests** (from tasks/plan.md Checkpoint [Task ID]):"
+   - Copy each test exactly - don't summarize
+   - "**Database Check** (if in Checkpoint):"
+   - Copy SQL query verbatim with expected result
+   - "**Regression** (from Checkpoint):"
+   - Copy regression tests exactly
+
+9. **Write Rules**
+   - "**REQUIRED - Update these files:**"
+   - "tasks/executionnotes.md:"
+   - "  - Append at bottom (don't modify existing)"
+   - "  - Format: ## Task [ID] - [Name] - [DATE]"
+   - "  - Include: Changes made, Files modified, Verification results"
+   - "tasks/plan.md:"
+   - "  - Find: ### [Task ID] -"
+   - "  - Change: 'Status: New' → 'Status: ✅ Completed on [DATE]'"
+   - "  - Don't touch checkboxes or other sections"
+   - "tasks/codemapcc.md (if new files):"
+   - "  - Add to appropriate section: file path + one-line purpose"
+   - "tasks/session-state.md (at session end):"
+   - "  - Rewrite: current progress, next task, blockers"
+
+10. **Stop Conditions**
+    - "STOP immediately and report if:"
+    - "- Prerequisite missing (say which from plan.md Prerequisites)"
+    - "- File not in codemapcc.md (say which from Files/Locations)"
+    - "- Plan.md step unclear (quote unclear text, ask specific question)"
+    - "- Backend endpoint missing (say which endpoint from tasks/plan.md)"
+    - "- All verification passed (report: 'Task [ID] complete, verified')"
+
+**Anti-hallucination rules:**
+- Quote sources: "From tasks/plan.md: [quote]" not "The task requires [invented]"
+- Copy don't paraphrase: Implementation steps, verification tests, file paths
+- Verify existence: Check codemapcc.md before listing files
+- No assumptions: If tasks/plan.md doesn't specify → STOP and ask
+- No code until prerequisites verified
+
+**Format**: Clear ## headers, - bullets, no paragraphs. Full verification (don't truncate).
+
+**Length target**: Core 200-300 words + full verification section (don't compress verification).
+
+
 
 # for reviewing of  completed plan.md files ******************************
 

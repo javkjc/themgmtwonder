@@ -9,7 +9,7 @@ import {
   isUnauthorized,
 } from '../../lib/api';
 import { confirmOcrOutput, fetchCurrentConfirmedOcr, fetchOcrRedoEligibility } from '../../lib/api/ocr';
-import { fetchBaselineForAttachment } from '../../lib/api/baselines';
+import { fetchBaselineForAttachment, type Baseline } from '../../lib/api/baselines';
 import { fetchOcrJobs, type OcrJob } from '../../lib/api/ocr-queue';
 import { formatDate, formatDateTime } from '../../lib/dateTime';
 import { useCategories } from '../../hooks/useCategories';
@@ -219,7 +219,7 @@ export default function TaskDetailsPage() {
   const [ocrEligibility, setOcrEligibility] = useState<
     Record<string, { loading: boolean; allowed: boolean; reason?: string; hasConfirmed: boolean; utilizationType?: string | null }>
   >({});
-  const [baselineStatusByAttachment, setBaselineStatusByAttachment] = useState<Record<string, string | null>>({});
+  const [baselinesByAttachment, setBaselinesByAttachment] = useState<Record<string, Baseline | null>>({});
 
   // History
   const [history, setHistory] = useState<AuditEntry[]>([]);
@@ -343,22 +343,12 @@ export default function TaskDetailsPage() {
       const data = await apiFetchJson(`/attachments/todo/${taskId}`);
       const nextAttachments = Array.isArray(data) ? data : [];
       setAttachments(nextAttachments);
-      const statusPairs = await Promise.all(
-        nextAttachments.map(async (attachment: Attachment) => {
-          try {
-            const baseline = await fetchBaselineForAttachment(attachment.id);
-            return [attachment.id, baseline?.status ?? null] as const;
-          } catch {
-            return [attachment.id, null] as const;
-          }
-        }),
-      );
-      setBaselineStatusByAttachment(
-        statusPairs.reduce<Record<string, string | null>>((acc, [id, status]) => {
-          acc[id] = status;
-          return acc;
-        }, {}),
-      );
+      try {
+        const baselinesMap = await apiFetchJson(`/todos/${taskId}/baselines`);
+        setBaselinesByAttachment(baselinesMap || {});
+      } catch {
+        // fallback
+      }
     } catch {
       // ignore
     }
@@ -714,6 +704,31 @@ export default function TaskDetailsPage() {
         }
         return;
       }
+
+      // Check file type
+      const filename = file.name.toLowerCase();
+      const isWordDoc = filename.endsWith('.doc') || filename.endsWith('.docx') ||
+        file.type === 'application/msword' ||
+        file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+      if (isWordDoc) {
+        addNotification('error', 'Unsupported file type', 'Word documents not supported. Please convert to PDF.', task?.title, task?.id);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
+
+      const isAllowed =
+        filename.endsWith('.pdf') || filename.endsWith('.png') ||
+        filename.endsWith('.jpg') || filename.endsWith('.jpeg') ||
+        filename.endsWith('.xlsx') ||
+        ['application/pdf', 'image/png', 'image/jpeg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'].includes(file.type);
+
+      if (!isAllowed) {
+        addNotification('error', 'Unsupported file type', 'Only PDF, PNG, JPG/JPEG, and XLSX are supported.', task?.title, task?.id);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
+
       setSelectedFile(file);
     }
   };
@@ -744,6 +759,29 @@ export default function TaskDetailsPage() {
         addNotification('error', 'File too large', `The file exceeds the maximum size of 20MB. Selected file is ${(file.size / (1024 * 1024)).toFixed(1)}MB.`, task?.title, task?.id);
         return;
       }
+
+      // Check file type
+      const filename = file.name.toLowerCase();
+      const isWordDoc = filename.endsWith('.doc') || filename.endsWith('.docx') ||
+        file.type === 'application/msword' ||
+        file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+      if (isWordDoc) {
+        addNotification('error', 'Unsupported file type', 'Word documents not supported. Please convert to PDF.', task?.title, task?.id);
+        return;
+      }
+
+      const isAllowed =
+        filename.endsWith('.pdf') || filename.endsWith('.png') ||
+        filename.endsWith('.jpg') || filename.endsWith('.jpeg') ||
+        filename.endsWith('.xlsx') ||
+        ['application/pdf', 'image/png', 'image/jpeg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'].includes(file.type);
+
+      if (!isAllowed) {
+        addNotification('error', 'Unsupported file type', 'Only PDF, PNG, JPG/JPEG, and XLSX are supported.', task?.title, task?.id);
+        return;
+      }
+
       setSelectedFile(file);
     }
   };
@@ -863,12 +901,10 @@ export default function TaskDetailsPage() {
       // Refresh attachments and baseline status when jobs complete
       fetchAttachments();
 
-      // Refresh viewer state for affected attachments if they're currently open
+      // Refresh viewer state for ALL affected attachments to update badge status
+      // This ensures the badge changes from "In Progress" -> "Draft" correctly
       completedJobs.forEach((job) => {
-        const viewerState = attachmentOcrViewerState[job.attachmentId];
-        if (viewerState?.open) {
-          fetchAttachmentOcr(job.attachmentId);
-        }
+        fetchAttachmentOcr(job.attachmentId);
       });
     }
 
@@ -1816,28 +1852,44 @@ export default function TaskDetailsPage() {
                             job.attachmentId === attachment.id &&
                             (job.status === 'queued' || job.status === 'processing'),
                         );
-                        const baselineStatus = baselineStatusByAttachment[attachment.id];
+                        const baseline = baselinesByAttachment[attachment.id];
+                        const baselineStatus = baseline?.status ?? null;
 
                         const latestOutput = viewerState?.outputs?.[0];
                         const latestProcessingStatus = latestOutput?.processingStatus ?? 'pending';
                         const latestHasText = (latestOutput?.extractedText ?? '').trim().length > 0;
+                        const latestLifecycleStatus = latestOutput?.lifecycleStatus ?? 'draft';
+
+                        // Determine badge status - prioritize baseline status if exists
                         let badge = { label: 'Ready', color: '#64748b' };
                         if (activeJob?.status === 'queued') {
                           badge = { label: 'Queued', color: '#0f172a' };
                         } else if (activeJob?.status === 'processing' || ocrTriggering) {
                           badge = { label: 'In Progress', color: '#f59e0b' };
+                        } else if (baselineStatus === 'confirmed') {
+                          badge = { label: 'Confirmed', color: '#16a34a' };
                         } else if (baselineStatus === 'reviewed') {
                           badge = { label: 'Reviewed', color: '#0ea5e9' };
+                        } else if (baselineStatus === 'draft') {
+                          badge = { label: 'Draft', color: '#2563eb' };
                         } else if (latestOutput) {
-                          badge = latestHasText
-                            ? getLifecycleBadge(latestOutput.lifecycleStatus)
-                            : getProcessingBadge(latestProcessingStatus);
+                          // Show failed status if processing failed, regardless of text presence
+                          if (latestProcessingStatus === 'failed') {
+                            badge = getProcessingBadge(latestProcessingStatus);
+                          } else {
+                            badge = latestHasText
+                              ? getLifecycleBadge(latestLifecycleStatus)
+                              : getProcessingBadge(latestProcessingStatus);
+                          }
                         }
                         const showOcrWarning =
                           latestOutput && latestHasText && latestProcessingStatus === 'failed';
                         const hasOcrOutput = Boolean(
                           viewerState?.outputs && viewerState.outputs.length > 0
                         );
+
+                        // Determine if OCR is in progress (queued or processing)
+                        const isOcrInProgress = activeJob?.status === 'queued' || activeJob?.status === 'processing' || ocrTriggering;
                         return (
                           <div
                             key={attachment.id}
@@ -1873,6 +1925,24 @@ export default function TaskDetailsPage() {
                                     <span style={renderBadgeStyle(badge.color)}>
                                       {badge.label}
                                     </span>
+                                    {baseline && (
+                                      <span
+                                        style={{
+                                          fontSize: 12,
+                                          color: baseline.utilizedAt ? '#166534' : '#64748b',
+                                          marginLeft: 8,
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: 4,
+                                          cursor: 'help'
+                                        }}
+                                        title={baseline.utilizedAt
+                                          ? `Utilized via ${baseline.utilizationType?.replace('_', ' ')} on ${formatDateTime(baseline.utilizedAt)}`
+                                          : 'This baseline has not been used in any workflow yet'}
+                                      >
+                                        {baseline.utilizedAt ? '✅ Utilized' : '⚪ Not yet used'}
+                                      </span>
+                                    )}
                                     {showOcrWarning && (
                                       <span style={{
                                         fontSize: 11,
@@ -1893,12 +1963,14 @@ export default function TaskDetailsPage() {
                               <div style={{ display: 'flex', gap: 8 }}>
                                 <button
                                   onClick={() => handleDownload(attachment)}
+                                  disabled={isOcrInProgress}
                                   style={{
                                     padding: '6px 10px',
                                     borderRadius: 4,
                                     border: '1px solid #e2e8f0',
-                                    background: 'white',
-                                    cursor: 'pointer',
+                                    background: isOcrInProgress ? '#e2e8f0' : 'white',
+                                    color: isOcrInProgress ? '#94a3b8' : '#0f172a',
+                                    cursor: isOcrInProgress ? 'not-allowed' : 'pointer',
                                     fontSize: 12,
                                   }}
                                 >
@@ -1906,13 +1978,14 @@ export default function TaskDetailsPage() {
                                 </button>
                                 <button
                                   onClick={() => handleDeleteAttachment(attachment.id)}
+                                  disabled={isOcrInProgress}
                                   style={{
                                     padding: '6px 10px',
                                     borderRadius: 4,
                                     border: 'none',
-                                    background: '#fee2e2',
-                                    color: '#dc2626',
-                                    cursor: 'pointer',
+                                    background: isOcrInProgress ? '#e2e8f0' : '#fee2e2',
+                                    color: isOcrInProgress ? '#94a3b8' : '#dc2626',
+                                    cursor: isOcrInProgress ? 'not-allowed' : 'pointer',
                                     fontSize: 12,
                                   }}
                                 >
@@ -1978,44 +2051,18 @@ export default function TaskDetailsPage() {
                                     </>
                                   );
                                 })()}
-                                {latestOutput && latestOutput.lifecycleStatus === 'draft' && latestOutput.processingStatus === 'completed' && (
-                                  <>
-                                    {ocrEligibility[attachment.id]?.hasConfirmed ? (
-                                      <span style={{ fontSize: 12, color: '#64748b', fontStyle: 'italic' }}>
-                                        A confirmed extraction already exists for this attachment.
-                                      </span>
-                                    ) : (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleConfirmOcr(attachment.id, latestOutput.id, latestOutput.extractedText)}
-                                        disabled={ocrConfirming[latestOutput.id]}
-                                        style={{
-                                          padding: '6px 10px',
-                                          borderRadius: 4,
-                                          border: '1px solid #16a34a',
-                                          background: '#f0fdf4',
-                                          color: '#166534',
-                                          cursor: ocrConfirming[latestOutput.id] ? 'not-allowed' : 'pointer',
-                                          fontSize: 12,
-                                          fontWeight: 600,
-                                        }}
-                                      >
-                                        {ocrConfirming[latestOutput.id] ? 'Confirming...' : 'Confirm Extraction'}
-                                      </button>
-                                    )}
-                                  </>
-                                )}
-                                {hasOcrOutput && (
+                                {hasOcrOutput && baselineStatus !== 'confirmed' && (
                                   <button
                                     type="button"
                                     onClick={() => router.push(`/attachments/${attachment.id}/review?taskId=${taskId}`)}
+                                    disabled={isOcrInProgress}
                                     style={{
                                       padding: '6px 10px',
                                       borderRadius: 4,
                                       border: '1px solid #2563eb',
-                                      background: '#eff6ff',
-                                      color: '#1d4ed8',
-                                      cursor: 'pointer',
+                                      background: isOcrInProgress ? '#e2e8f0' : '#eff6ff',
+                                      color: isOcrInProgress ? '#94a3b8' : '#1d4ed8',
+                                      cursor: isOcrInProgress ? 'not-allowed' : 'pointer',
                                       fontSize: 12,
                                       fontWeight: 600,
                                     }}

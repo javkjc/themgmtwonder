@@ -78,7 +78,7 @@
 - ROUTE: /attachments/[attachmentId]/review
   - Path: apps/web/app/attachments/[attachmentId]/review/page.tsx
   - Purpose: Visual OCR evidence review (attachment viewer + parsed field list + correction/history modals).
-  - Uses: PdfDocumentViewer, ExtractedTextPool (apps/web/app/components/ocr/ExtractedTextPool.tsx for truncated confidence badges and hover highlight), FieldAssignmentPanel (apps/web/app/components/FieldAssignmentPanel.tsx renders baseline assignment inputs with validation status), ValidationConfirmationModal (apps/web/app/components/ValidationConfirmationModal.tsx prompts user to confirm invalid values with optional suggested corrections), OcrFieldList, OcrFieldEditModal, OcrCorrectionHistoryModal, CorrectionReasonModal, NotificationToast, lib/api/ocr.ts helpers (fetchAttachmentOcrResults, createOcrCorrection, fetchOcrCorrectionHistory), lib/api/baselines.ts (upsertAssignment, deleteAssignment, fetchBaselineForAttachment, markBaselineReviewed, confirmBaseline), API_BASE_URL for downloads and document playback.
+  - Uses: PdfDocumentViewer, ExtractedTextPool (apps/web/app/components/ocr/ExtractedTextPool.tsx for truncated confidence badges and hover highlight), FieldAssignmentPanel (apps/web/app/components/FieldAssignmentPanel.tsx renders baseline assignment inputs with validation status and read-only reason banners), ValidationConfirmationModal (apps/web/app/components/ValidationConfirmationModal.tsx prompts user to confirm invalid values with optional suggested corrections), OcrFieldList, OcrFieldEditModal, OcrCorrectionHistoryModal, CorrectionReasonModal, NotificationToast, lib/api/ocr.ts helpers (fetchAttachmentOcrResults, createOcrCorrection, fetchOcrCorrectionHistory), lib/api/baselines.ts (upsertAssignment, deleteAssignment, fetchBaselineForAttachment, markBaselineReviewed, confirmBaseline), API_BASE_URL for downloads and document playback.
   - Mutations at: POST /ocr-results/:ocrResultId/corrections via lib/api/ocr.ts; POST /baselines/:baselineId/assign for field assignments with validation (requires confirmInvalid flag for invalid values); Task detail page links to this route when attachment OCR status is confirmed.
 - ROUTE: /admin/fields
   - Path: apps/web/app/admin/fields/page.tsx
@@ -97,7 +97,10 @@
   - Auth/session entry points: apps/web/app/hooks/useAuth.ts (login/register/logout/changePassword/refreshMe hitting /auth endpoints), apps/web/app/components/ForcePasswordChange.tsx
   - Calendar v2 anchors: renderer DraggableEvent inside apps/web/app/calendar/page.tsx; DndContext provider + onDragEnd in apps/web/app/components/DragContext.tsx (DragProvider.handleDragEnd); drop-time calc in apps/web/app/calendar/page.tsx getDropTime(); DnD overlay via DragOverlay in DragContext
   - Calendar availability helpers: useScheduledEvents (apps/web/app/hooks/useScheduledEvents.ts), useDurationSettings (apps/web/app/hooks/useDurationSettings.ts), useCategories color map (apps/web/app/hooks/useCategories.ts)
-  - Extracted text pool: apps/web/app/components/ocr/ExtractedTextPool.tsx renders truncated segments with confidence badges and bounding-box hover highlighting for review.
+  - Extracted text pool: apps/web/app/components/ocr/ExtractedTextPool.tsx renders truncated segments with confidence badges and bounding-box hover highlighting for review; supports drag-and-drop to field assignment panel.
+  - Field assignment panel: apps/web/app/components/FieldAssignmentPanel.tsx renders active field library fields with type-specific inputs (text/number/decimal/date/currency), validation status indicators, user-friendly labels, example tooltips, drag-drop zones, and read-only mode for confirmed/utilized baselines.
+  - Validation modals: apps/web/app/components/ValidationConfirmationModal.tsx (invalid value confirmation with "Save As-Is" / "Use Suggestion" / "Cancel" actions), apps/web/app/components/CorrectionReasonModal.tsx (requires 10+ char reason for overwrite/delete on reviewed baselines).
+  - Baseline API client: apps/web/app/lib/api/baselines.ts (fetchBaselineForAttachment, upsertAssignment with confirmInvalid flag, deleteAssignment, markBaselineReviewed, confirmBaseline).
 
 ## 3) Backend Map (NestJS)
 - Controller: AppController
@@ -188,7 +191,7 @@
     - DELETE /attachments/:id ? delete() ? AttachmentsService.delete()
   - DTOs: ApplyOcrDto for apply route; none for others (uses multer FileInterceptor)
   - Guards/errors: JwtAuthGuard class-wide; NotFoundException for missing todo/attachment/output; ForbiddenException when todo not owned; BadRequestException on mismatched/failed OCR output or oversized remarks; download 404 if file missing
-  - Storage/paths: AttachmentsService writes buffers to `uploads/` under process.cwd() with storedFilename UUID+ext; download streams stored file; upload size capped at 20MB; duplicate filenames (case-insensitive, trimmed) blocked per todo
+  - Storage/paths: AttachmentsService writes buffers to `uploads/` under process.cwd() with storedFilename UUID+ext; download streams stored file; upload size capped at 20MB; duplicate filenames (case-insensitive, trimmed) blocked per todo; file types restricted to PDF, PNG, JPG/JPEG, XLSX (Word docs explicitly rejected)
 - Service: OcrService (imported by AttachmentsController and the new OcrController)
   - Path: apps/api/src/ocr/ocr.service.ts
   - Responsibilities: resolve OCR_WORKER_BASE_URL and POST /ocr to worker with attachment bytes (90s timeout); insert derived records into attachment_ocr_outputs with metadata/status; list outputs per attachment with ownership checks; fetch output+attachment for apply flows; stores extractedText string only (no raw OCR JSON persisted); confirmOcrResult transitions draft outputs to confirmed, prevents re-edits, and emits `OCR_CONFIRMED`
@@ -241,7 +244,8 @@
   - Path: apps/api/src/baseline/baseline.controller.ts
   - Base route: /baselines (+ attachment-scoped routes)
   - Endpoints:
-    - GET /attachments/:attachmentId/baseline ? getCurrentBaseline() ? BaselineManagementService
+    - GET /attachments/:attachmentId/baseline ? getCurrentBaseline() ? BaselineAssignmentsService.getAggregatedBaseline()
+    - GET /todos/:todoId/baselines ? getBaselinesByTodo() ? Baseline batch summary for all attachments
     - POST /attachments/:attachmentId/baseline/draft ? createDraft() ? BaselineManagementService.createDraftBaseline()
     - POST /baselines/:baselineId/review ? markReviewed() ? BaselineManagementService.markReviewed()
     - POST /baselines/:baselineId/confirm ? confirmBaseline() ? BaselineManagementService.confirmBaseline()
@@ -252,14 +256,26 @@
 - Service: BaselineManagementService
   - Path: apps/api/src/baseline/baseline-management.service.ts
   - Lifecycle: draft → reviewed → confirmed → archived (strict state machine)
-  - confirmBaseline is transactional: confirms target + auto-archives previous confirmed (atomic)
-  - Audit: all transitions emit baseline.create/review/confirm/archive events
+  - Methods:
+    - createDraftBaseline(attachmentId, userId): Creates baseline with status='draft', auto-populates segments from OCR, pre-fills assignments from parsed fields
+    - markReviewed(baselineId, userId): Transitions draft → reviewed (still editable)
+    - confirmBaseline(baselineId, userId): Transactional confirm (reviewed → confirmed) + auto-archives previous confirmed baseline atomically
+    - markBaselineUtilized(baselineId, type, metadata): First-write-wins utilization tracking (record_created/workflow_committed/data_exported)
+  - Audit: all transitions emit baseline.create/review/confirm/archive/utilized events
 - Service: FieldAssignmentValidatorService
   - Path: apps/api/src/baseline/field-assignment-validator.service.ts
-  - Purpose: validate assigned values against field types (varchar/int/decimal/date/currency) and suggest corrections.
+  - Purpose: validate assigned values against field types (varchar/int/decimal/date/currency) and suggest corrections
+  - Methods:
+    - validate(fieldKey, value): Returns {valid, error, suggestedCorrection}
+    - Validation rules: varchar (length), int (no decimals/commas), decimal (numeric with normalization), date (ISO 8601), currency (ISO 4217 3-letter codes)
 - Service: BaselineAssignmentsService
   - Path: apps/api/src/baseline/baseline-assignments.service.ts
-  - Responsibilities: enforce ownership + not-archived/not-utilized guards, validate via FieldAssignmentValidatorService, upsert/delete/list baseline_field_assignments, require correctionReason on overwrite/delete, emit baseline.assignment.upsert/delete audits with correctedFrom/correctionReason details.
+  - Responsibilities: enforce ownership + not-archived/not-utilized guards, validate via FieldAssignmentValidatorService, upsert/delete/list baseline_field_assignments, require correctionReason on overwrite/delete (only for reviewed baselines), emit baseline.assignment.upsert/delete audits with correctedFrom/correctionReason details
+  - Methods:
+    - getAggregatedBaseline(attachmentId, userId): Returns baseline with assignments + segments in single payload (excludes archived baselines, returns latest non-archived)
+    - upsertAssignment(baselineId, fieldKey, value, userId, confirmInvalid, correctionReason): Validates value, requires correctionReason for overwrite on reviewed baselines, stores correctedFrom/sourceSegmentId
+    - deleteAssignment(baselineId, fieldKey, userId, correctionReason): Requires correctionReason for reviewed baselines, emits audit log
+    - listAssignments(baselineId, userId): Returns all assignments for a baseline with ownership check
 - Controller: App bootstrap modules
   - Path: apps/api/src/bootstrap/bootstrap.service.ts (OnModuleInit)
   - Purpose: ensure systemSettings row exists, ensure admin user exists/promoted
@@ -299,7 +315,7 @@ Overlap logic:
   - ocr_results.attachmentOcrOutputId ? attachment_ocr_outputs.id
   - ocr_corrections.ocrResultId ? ocr_results.id; ocr_corrections.correctedBy ? users.id
   - extraction_baselines.attachmentId ? attachments.id (cascade); extraction_baselines.confirmedBy/archivedBy ? users.id
-  - baseline_field_assignments.baselineId ? extraction_baselines.id; baseline_field_assignments.fieldId ? field_library.id (pending 8.6.9)
+  - baseline_field_assignments.baselineId ? extraction_baselines.id (cascade); baseline_field_assignments.fieldKey ? field_library.fieldKey; baseline_field_assignments.sourceSegmentId ? extracted_text_segments.id (set null); baseline_field_assignments.assignedBy ? users.id
 - Duration constraints enforcement: apps/api/src/common/constants.ts (MIN/MAX/DEFAULT guards); apps/api/src/bootstrap/bootstrap.service.ts (validates system settings row on startup); apps/api/src/settings/settings.service.ts updateDurationSettings() guard default between min/max; frontend mirrors in apps/web/app/lib/constants.ts and apps/web/app/hooks/useDurationSettings.ts
 - Validation schemas: class-validator DTOs at apps/api/src/auth/dto/*.ts, apps/api/src/todos/dto/*.ts, apps/api/src/categories/dto/*.ts, apps/api/src/settings/dto/*.ts; global ValidationPipe in apps/api/src/main.ts (whitelist, transform, forbidNonWhitelisted)
 

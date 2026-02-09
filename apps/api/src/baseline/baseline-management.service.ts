@@ -302,6 +302,22 @@ export class BaselineManagementService {
                 .where(eq(extractionBaselines.id, baselineId))
                 .returning();
 
+            // 5. Get counts for audit log
+            const activeFields = await tx
+                .select()
+                .from(fieldLibrary)
+                .where(eq(fieldLibrary.status, 'active'));
+
+            const assignments = await tx
+                .select()
+                .from(baselineFieldAssignments)
+                .where(eq(baselineFieldAssignments.baselineId, baselineId));
+
+            const assignedCount = activeFields.filter(f =>
+                assignments.some(a => a.fieldKey === f.fieldKey && a.assignedValue !== null)
+            ).length;
+            const emptyCount = activeFields.length - assignedCount;
+
             // Audit log for confirmation
             await this.auditService.log({
                 userId,
@@ -314,6 +330,8 @@ export class BaselineManagementService {
                     beforeStatus: 'reviewed',
                     afterStatus: 'confirmed',
                     previousConfirmedId: previousConfirmed?.id || null,
+                    assignedCount,
+                    emptyCount,
                 },
             });
 
@@ -390,5 +408,84 @@ export class BaselineManagementService {
         });
 
         return archived;
+    }
+
+    /**
+     * Mark a baseline as utilized (First-write-wins)
+     *
+     * @param baselineId - ID of the baseline to mark as utilized
+     * @param type - Type of utilization (record_created, process_committed, data_exported)
+     * @param userId - ID of the user performing the action
+     * @param metadata - Optional metadata about the utilization
+     * @returns The updated baseline record
+     *
+     * Behavior:
+     * - First-write-wins: If utilizedAt is already set, does nothing and returns existing record.
+     * - Only confirmed baselines can be utilized.
+     */
+    async markBaselineUtilized(
+        baselineId: string,
+        type: 'record_created' | 'process_committed' | 'data_exported',
+        userId: string,
+        metadata?: any,
+    ): Promise<any> {
+        return await this.dbs.db.transaction(async (tx) => {
+            // 1. Fetch current baseline
+            const [existing] = await tx
+                .select()
+                .from(extractionBaselines)
+                .where(eq(extractionBaselines.id, baselineId))
+                .limit(1);
+
+            if (!existing) {
+                throw new NotFoundException('Baseline not found');
+            }
+
+            // 2. First-write-wins: if already utilized, return existing
+            if (existing.utilizedAt) {
+                return existing;
+            }
+
+            // 3. Validation: only confirmed baselines can be utilized
+            if (existing.status !== 'confirmed') {
+                throw new BadRequestException(
+                    `Cannot mark as utilized: baseline status is '${existing.status}', expected 'confirmed'`,
+                );
+            }
+
+            // 4. Update utilization fields
+            const [updated] = await tx
+                .update(extractionBaselines)
+                .set({
+                    utilizedAt: new Date(),
+                    utilizationType: type,
+                })
+                .where(eq(extractionBaselines.id, baselineId))
+                .returning();
+
+            // 5. Audit Log
+            // Map type to audit action (plan specific naming)
+            const actionMap: Record<string, string> = {
+                record_created: 'baseline.utilized.record_created',
+                process_committed: 'baseline.utilized.workflow_committed',
+                data_exported: 'baseline.utilized.data_exported',
+            };
+
+            await this.auditService.log({
+                userId,
+                action: actionMap[type] as any || (`baseline.utilized.${type}` as any),
+                module: 'baseline' as any,
+                resourceType: 'baseline',
+                resourceId: baselineId,
+                details: {
+                    attachmentId: existing.attachmentId,
+                    utilizationType: type,
+                    utilizedAt: updated.utilizedAt,
+                    metadata: metadata || null,
+                },
+            });
+
+            return updated;
+        });
     }
 }

@@ -44,27 +44,18 @@ export class BaselineAssignmentsService {
     async getAggregatedBaseline(attachmentId: string, userId: string) {
         await this.ensureUserOwnsAttachment(userId, attachmentId);
 
-        // 1. Find Current Baseline (Primary Statuses Priority)
-        const priorityStatuses = ['confirmed', 'reviewed', 'draft', 'archived'] as const;
-        let baselineRecord: any = null;
+        // 1. Find Latest Non-Archived Baseline
+        // After re-retrieval, a new draft is created while confirmed baseline may still exist.
+        // We want the LATEST non-archived baseline (most recent createdAt) for the review page.
+        const allBaselines = await this.dbs.db
+            .select()
+            .from(extractionBaselines)
+            .where(eq(extractionBaselines.attachmentId, attachmentId))
+            .orderBy(desc(extractionBaselines.createdAt))
+            .limit(10);
 
-        for (const status of priorityStatuses) {
-            const [found] = await this.dbs.db
-                .select()
-                .from(extractionBaselines)
-                .where(
-                    and(
-                        eq(extractionBaselines.attachmentId, attachmentId),
-                        eq(extractionBaselines.status, status),
-                    ),
-                )
-                .orderBy(desc(extractionBaselines.createdAt))
-                .limit(1);
-            if (found) {
-                baselineRecord = found;
-                break;
-            }
-        }
+        // Find first non-archived baseline (will be the most recent)
+        const baselineRecord = allBaselines.find(b => b.status !== 'archived');
 
         if (!baselineRecord) {
             return null;
@@ -341,6 +332,17 @@ export class BaselineAssignmentsService {
         }
 
         if (context.utilizationType || context.utilizedAt) {
+            await this.auditService.log({
+                userId,
+                action: 'baseline.assignment.denied',
+                module: 'baseline',
+                resourceType: 'baseline',
+                resourceId: baselineId,
+                details: {
+                    reason: 'utilized',
+                    utilizationType: context.utilizationType,
+                },
+            });
             throw new ForbiddenException('Baseline has been utilized and cannot be modified');
         }
 

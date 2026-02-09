@@ -4,6 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Assignment, AssignmentValidation } from '@/app/lib/api/baselines';
 import { Field, FieldCharacterType } from '@/app/lib/api/fields';
 
+interface ResetLocalField {
+  key: string;
+  version: number;
+}
+
 interface FieldAssignmentPanelProps {
   fields: Field[];
   assignments: Assignment[];
@@ -11,6 +16,8 @@ interface FieldAssignmentPanelProps {
   onUpdate?: (fieldKey: string, value: string, sourceSegmentId?: string) => Promise<void>;
   onDelete?: (fieldKey: string) => Promise<void>;
   onLocalValuesChange?: (localValues: Record<string, string>) => void;
+  resetLocalField?: ResetLocalField | null;
+  readOnlyReason?: string;
 }
 
 const typeInputAttributes: Record<FieldCharacterType, { type: React.HTMLInputTypeAttribute; inputMode?: 'text' | 'numeric' | 'decimal' | 'email' | 'tel' | 'url'; step?: string; placeholder?: string }> = {
@@ -80,6 +87,8 @@ export default function FieldAssignmentPanel({
   onUpdate,
   onDelete,
   onLocalValuesChange,
+  resetLocalField,
+  readOnlyReason,
 }: FieldAssignmentPanelProps) {
   const [localValues, setLocalValues] = useState<Record<string, string>>({});
 
@@ -112,6 +121,18 @@ export default function FieldAssignmentPanel({
   useEffect(() => {
     onLocalValuesChange?.(localValues);
   }, [localValues, onLocalValuesChange]);
+
+  const resetKey = resetLocalField?.key;
+  const resetVersion = resetLocalField?.version;
+
+  useEffect(() => {
+    if (!resetKey) return;
+    setLocalValues((prev) => {
+      if (!(resetKey in prev)) return prev;
+      const { [resetKey]: _, ...rest } = prev;
+      return rest;
+    });
+  }, [resetKey, resetVersion]);
 
   const handleBlur = useCallback(
     async (fieldKey: string, value: string) => {
@@ -160,6 +181,25 @@ export default function FieldAssignmentPanel({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {isReadOnly && readOnlyReason && (
+        <div
+          style={{
+            padding: '12px 16px',
+            borderRadius: 12,
+            background: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            color: '#475569',
+            fontSize: 13,
+            fontWeight: 500,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <span style={{ fontSize: 16 }}>🔒</span>
+          {readOnlyReason}
+        </div>
+      )}
       {fields.map((field) => {
         const assignment = assignmentMap[field.fieldKey];
         const hasLocalValue = localValues[field.fieldKey] !== undefined;

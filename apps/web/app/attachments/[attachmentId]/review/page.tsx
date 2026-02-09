@@ -42,6 +42,11 @@ import FieldAssignmentPanel from '@/app/components/FieldAssignmentPanel';
 import CorrectionReasonModal from '@/app/components/ocr/CorrectionReasonModal';
 import ValidationConfirmationModal from '@/app/components/ValidationConfirmationModal';
 
+type ResetLocalField = {
+  key: string;
+  version: number;
+};
+
 
 const DEFAULT_NOTIFICATION_TTL = 5000;
 
@@ -58,9 +63,9 @@ const humanizeToken = (value: string) =>
     .replace(/\b\w/g, (char) => char.toUpperCase());
 
 const UTILIZATION_REASON_LABELS: Record<string, string> = {
-  authoritative_record: 'Authoritative record created',
-  data_export: 'Data exported',
-  human_approval: 'Human approved',
+  record_created: 'Authoritative record created',
+  workflow_committed: 'Workflow committed',
+  data_exported: 'Data exported',
 };
 
 const STATUS_REASON_LABELS: Record<string, string> = {
@@ -110,6 +115,7 @@ export default function AttachmentOcrReviewPage() {
     value?: string;
     sourceSegmentId?: string;
   } | null>(null);
+  const [resetLocalField, setResetLocalField] = useState<ResetLocalField | null>(null);
 
   const [isValidationModalOpen, setIsValidationModalOpen] = useState(false);
   const [validationPendingAction, setValidationPendingAction] = useState<{
@@ -288,6 +294,14 @@ export default function AttachmentOcrReviewPage() {
     }
   }, [baseline, correctionPendingAction, loadBaseline, addNotification]);
 
+  const handleCorrectionCancel = useCallback(() => {
+    if (correctionPendingAction) {
+      setResetLocalField({ key: correctionPendingAction.fieldKey, version: Date.now() });
+    }
+    setIsCorrectionModalOpen(false);
+    setCorrectionPendingAction(null);
+  }, [correctionPendingAction]);
+
   const handleValidationConfirm = useCallback(async () => {
     if (!baseline || !validationPendingAction) return;
     setIsValidationModalOpen(false);
@@ -350,9 +364,12 @@ export default function AttachmentOcrReviewPage() {
   }, [baseline, validationPendingAction, loadBaseline, addNotification]);
 
   const handleValidationCancel = useCallback(() => {
+    if (validationPendingAction) {
+      setResetLocalField({ key: validationPendingAction.fieldKey, version: Date.now() });
+    }
     setIsValidationModalOpen(false);
     setValidationPendingAction(null);
-  }, []);
+  }, [validationPendingAction]);
 
   const builderSectionRef = useRef<HTMLDivElement | null>(null);
 
@@ -431,15 +448,14 @@ export default function AttachmentOcrReviewPage() {
     }
   }, [isFieldBuilderOpen, shouldScrollToBuilder]);
 
-  const rawOcrStatus = ocrData?.rawOcr?.status;
-  const isStatusLocked = rawOcrStatus ? rawOcrStatus !== 'draft' : false;
-  const isUtilizationLocked = Boolean(ocrData?.utilizationType);
-  const isFieldBuilderReadOnly = isStatusLocked || isUtilizationLocked;
-  const statusFallbackLabel = rawOcrStatus ? `Status: ${humanizeToken(rawOcrStatus)}` : 'Status unavailable';
+  const isBaselineLocked = baseline?.status === 'confirmed' || baseline?.status === 'archived';
+  const isUtilizationLocked = Boolean(baseline?.utilizationType);
+  const isFieldBuilderReadOnly = isBaselineLocked || isUtilizationLocked;
+  const statusFallbackLabel = baseline?.status ? `Status: ${humanizeToken(baseline.status)}` : 'Status unavailable';
   const readOnlyReason = isUtilizationLocked
-    ? UTILIZATION_REASON_LABELS[ocrData?.utilizationType ?? ''] ?? 'Data in use'
-    : isStatusLocked
-      ? STATUS_REASON_LABELS[rawOcrStatus ?? ''] ?? statusFallbackLabel
+    ? UTILIZATION_REASON_LABELS[baseline?.utilizationType ?? ''] ?? 'Data in use'
+    : isBaselineLocked
+      ? STATUS_REASON_LABELS[baseline?.status ?? ''] ?? statusFallbackLabel
       : undefined;
   const canMutateFields = !isFieldBuilderReadOnly;
 
@@ -460,7 +476,9 @@ export default function AttachmentOcrReviewPage() {
 
   const assignmentStats = useMemo(() => {
     const totalFields = libraryFields.length;
-    const assigned = baseline?.assignments?.length || 0;
+    const assigned = libraryFields.filter((field) =>
+      baseline?.assignments?.some((a) => a.fieldKey === field.fieldKey && a.assignedValue !== null)
+    ).length;
     return { assigned, empty: Math.max(0, totalFields - assigned) };
   }, [libraryFields, baseline]);
 
@@ -730,9 +748,10 @@ export default function AttachmentOcrReviewPage() {
         message: 'Baseline locked and ready for use.',
       });
       if (targetTaskId) {
+        // Wait longer to ensure DB transaction completes before navigation
         setTimeout(() => {
           window.location.href = `/task/${targetTaskId}`;
-        }, 400);
+        }, 800);
       }
     } catch (err: unknown) {
       const message = (err as Error)?.message || 'Unable to confirm baseline';
@@ -855,10 +874,12 @@ export default function AttachmentOcrReviewPage() {
         <FieldAssignmentPanel
           fields={libraryFields}
           assignments={baseline?.assignments || []}
-          isReadOnly={baseline?.status === 'confirmed' || baseline?.status === 'archived' || !!baseline?.utilizationType}
+          isReadOnly={isFieldBuilderReadOnly}
+          readOnlyReason={readOnlyReason}
           onUpdate={handleAssignmentUpdate}
           onDelete={handleAssignmentDelete}
           onLocalValuesChange={setPendingLocalValues}
+          resetLocalField={resetLocalField}
         />
       </div>
     </div>
@@ -1204,8 +1225,27 @@ export default function AttachmentOcrReviewPage() {
                 Confirm Baseline
               </h3>
               <p style={{ marginTop: 12, marginBottom: 12, color: '#475569', lineHeight: 1.6, fontSize: 14 }}>
-                This will lock the baseline and make it system-usable. Previous confirmed baseline will be archived automatically.
+                You are about to confirm this baseline. Once confirmed, this baseline becomes <strong>read-only</strong>.
+                You cannot edit fields or delete assignments after confirmation.
               </p>
+              <div
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: 12,
+                  background: '#fff7ed',
+                  border: '1px solid #ffedd5',
+                  color: '#9a3412',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  marginBottom: 16,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <span>⚠️</span>
+                <span>Warning: This will lock the baseline and make it system-usable.</span>
+              </div>
               <div
                 style={{
                   padding: 16,
@@ -1222,13 +1262,16 @@ export default function AttachmentOcrReviewPage() {
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Fields Assigned:</span>
-                  <strong style={{ color: '#166534' }}>{assignmentStats.assigned}</strong>
+                  <strong style={{ color: '#166534' }}>{assignmentStats.assigned} fields</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Fields Empty:</span>
-                  <strong style={{ color: assignmentStats.empty > 0 ? '#b91c1c' : '#475569' }}>{assignmentStats.empty}</strong>
+                  <strong style={{ color: assignmentStats.empty > 0 ? '#b91c1c' : '#475569' }}>{assignmentStats.empty} fields</strong>
                 </div>
               </div>
+              <p style={{ margin: '0 0 20px', fontSize: 12, color: '#64748b', fontStyle: 'italic' }}>
+                Previous confirmed baseline (if exists) will be automatically archived.
+              </p>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
                 <button
                   onClick={() => setIsConfirmModalOpen(false)}
@@ -1274,10 +1317,7 @@ export default function AttachmentOcrReviewPage() {
           ? `You are overwriting the assignment for ${correctionPendingAction.fieldKey}. This action requires a justification.`
           : `You are clearing the assignment for ${correctionPendingAction?.fieldKey}. This action requires a justification.`
         }
-        onClose={() => {
-          setIsCorrectionModalOpen(false);
-          setCorrectionPendingAction(null);
-        }}
+        onClose={handleCorrectionCancel}
         onConfirm={handleCorrectionConfirm}
       />
       <ValidationConfirmationModal

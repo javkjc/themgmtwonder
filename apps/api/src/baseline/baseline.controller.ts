@@ -178,6 +178,41 @@ export class BaselineController {
     );
   }
 
+  /**
+   * Get current baselines (and utilization) for all attachments of a todo.
+   * Returns a map of attachmentId -> Baseline.
+   */
+  @Get('todos/:todoId/baselines')
+  async getBaselinesByTodo(
+    @Req() req: RequestWithUser,
+    @Param('todoId') todoId: string,
+  ) {
+    await this.ensureUserOwnsTodo(req.user.userId, todoId);
+
+    const rows = await this.dbs.db
+      .select()
+      .from(extractionBaselines)
+      .innerJoin(attachments, eq(extractionBaselines.attachmentId, attachments.id))
+      .where(eq(attachments.todoId, todoId))
+      .orderBy(desc(extractionBaselines.createdAt));
+
+    const result: Record<string, any> = {};
+    for (const row of rows) {
+      const b = row.extraction_baselines;
+
+      // Skip archived baselines
+      if (b.status === 'archived') continue;
+
+      // For each attachment, take the first non-archived baseline (DESC order by createdAt)
+      // Since confirmed baselines auto-archive previous ones, the latest non-archived
+      // baseline is always the current one (confirmed, reviewed, or draft)
+      if (!result[b.attachmentId]) {
+        result[b.attachmentId] = b;
+      }
+    }
+    return result;
+  }
+
   private async getBaselineOrThrow(baselineId: string) {
     const [baseline] = await this.dbs.db
       .select()
@@ -189,6 +224,19 @@ export class BaselineController {
       throw new NotFoundException('Baseline not found');
     }
     return baseline;
+  }
+
+  private async ensureUserOwnsTodo(userId: string, todoId: string) {
+    const [todo] = await this.dbs.db
+      .select()
+      .from(todos)
+      .where(and(eq(todos.id, todoId), eq(todos.userId, userId)))
+      .limit(1);
+
+    if (!todo) {
+      throw new ForbiddenException('Access denied for todo');
+    }
+    return todo;
   }
 
   private async ensureUserOwnsAttachment(
@@ -205,14 +253,6 @@ export class BaselineController {
       throw new NotFoundException('Attachment not found');
     }
 
-    const [todo] = await this.dbs.db
-      .select()
-      .from(todos)
-      .where(and(eq(todos.id, attachment.todoId), eq(todos.userId, userId)))
-      .limit(1);
-
-    if (!todo) {
-      throw new ForbiddenException('Access denied for attachment');
-    }
+    await this.ensureUserOwnsTodo(userId, attachment.todoId);
   }
 }

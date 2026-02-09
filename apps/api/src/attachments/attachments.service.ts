@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
@@ -25,7 +26,7 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 
 @Injectable()
 export class AttachmentsService {
-  constructor(private readonly dbs: DbService) {}
+  constructor(private readonly dbs: DbService) { }
 
   async listByTodo(userId: string, todoId: string) {
     // Verify todo belongs to user
@@ -64,6 +65,28 @@ export class AttachmentsService {
       throw new NotFoundException('Todo not found');
     }
 
+    // File type validation
+    const ext = path.extname(file.originalname).toLowerCase();
+    const mime = file.mimetype.toLowerCase();
+
+    const isWordDoc =
+      ext === '.doc' ||
+      ext === '.docx' ||
+      mime === 'application/msword' ||
+      mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+    if (isWordDoc) {
+      throw new BadRequestException('Word documents not supported. Please convert to PDF.');
+    }
+
+    const isAllowed =
+      ['.pdf', '.png', '.jpg', '.jpeg', '.xlsx'].includes(ext) ||
+      ['application/pdf', 'image/png', 'image/jpeg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'].includes(mime);
+
+    if (!isAllowed) {
+      throw new BadRequestException('Unsupported file type. Only PDF, PNG, JPG/JPEG, and XLSX are supported.');
+    }
+
     // Normalize the uploaded filename (trim whitespace + lowercase for comparison)
     const uploadedFilename = file.originalname.trim();
     const normalizedUploadedFilename = uploadedFilename.toLowerCase();
@@ -90,7 +113,6 @@ export class AttachmentsService {
     }
 
     // Generate stored filename
-    const ext = path.extname(file.originalname);
     const storedFilename = `${generateUuid()}${ext}`;
     const filePath = path.join(UPLOADS_DIR, storedFilename);
 

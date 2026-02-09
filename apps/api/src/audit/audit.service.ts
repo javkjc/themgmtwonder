@@ -72,7 +72,11 @@ export type AuditAction =
   | 'baseline.confirm'
   | 'baseline.archive'
   | 'baseline.assignment.upsert'
-  | 'baseline.assignment.delete';
+  | 'baseline.assignment.delete'
+  | 'baseline.assignment.denied'
+  | 'baseline.utilized.record_created'
+  | 'baseline.utilized.workflow_committed'
+  | 'baseline.utilized.data_exported';
 
 export type AuditModule =
   | 'auth'
