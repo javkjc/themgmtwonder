@@ -16,12 +16,17 @@ export default defineConfig({
   },
   projects: [
     {
+      name: 'setup',
+      testMatch: /.*\.setup\.ts/,
+    },
+    {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+      dependencies: ['setup'],
     },
   ],
   webServer: process.env.CI ? undefined : {
-    command: 'docker-compose up',
+    command: 'docker compose up',
     url: 'http://localhost:3001',
     reuseExistingServer: true,
     timeout: 120000,
