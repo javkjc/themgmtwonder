@@ -14,13 +14,13 @@ import {
     extractedTextSegments,
     extractionBaselines,
     ocrResults,
-    todos,
 } from '../db/schema';
 import { fieldLibrary } from '../field-library/schema';
 import { AuditService } from '../audit/audit.service';
 import { FieldAssignmentValidatorService } from './field-assignment-validator.service';
 import { FieldLibraryService } from '../field-library/field-library.service';
 import { AssignBaselineFieldDto } from './dto/assign-baseline-field.dto';
+import { AuthorizationService } from '../common/authorization.service';
 
 type BaselineContext = {
     id: string;
@@ -40,10 +40,11 @@ export class BaselineAssignmentsService {
         private readonly auditService: AuditService,
         private readonly validator: FieldAssignmentValidatorService,
         private readonly fieldLibraryService: FieldLibraryService,
+        private readonly authService: AuthorizationService,
     ) { }
 
     async getAggregatedBaseline(attachmentId: string, userId: string) {
-        await this.ensureUserOwnsAttachment(userId, attachmentId);
+        await this.authService.ensureUserOwnsAttachment(userId, attachmentId);
 
         // 1. Find Latest Non-Archived Baseline
         // After re-retrieval, a new draft is created while confirmed baseline may still exist.
@@ -121,17 +122,25 @@ export class BaselineAssignmentsService {
             .where(eq(baselineTables.baselineId, baselineRecord.id))
             .orderBy(baselineTables.tableIndex);
 
+        // Attach baseline utilization fields to each table for UI display
+        const tablesWithUtilization = tables.map(table => ({
+            ...table,
+            baselineUtilizedAt: baselineRecord.utilizedAt,
+            baselineUtilizationType: baselineRecord.utilizationType,
+            baselineUtilizationMetadata: baselineRecord.utilizationMetadata,
+        }));
+
         return {
             ...baselineRecord,
             assignments,
             segments,
-            tables,
+            tables: tablesWithUtilization,
             currentOcrId: currentOcr?.id || null,
         };
     }
 
     async listAssignments(baselineId: string, userId: string) {
-        await this.ensureBaselineOwnership(baselineId, userId);
+        const context = await this.authService.ensureUserOwnsBaseline(userId, baselineId);
 
         const rows = await this.dbs.db
             .select({
@@ -333,7 +342,7 @@ export class BaselineAssignmentsService {
     }
 
     private async ensureBaselineEditable(baselineId: string, userId: string): Promise<BaselineContext> {
-        const context = await this.ensureBaselineOwnership(baselineId, userId);
+        const context = await this.authService.ensureUserOwnsBaseline(userId, baselineId);
 
         if (context.status === 'archived') {
             throw new BadRequestException('Cannot modify an archived baseline');
@@ -357,55 +366,6 @@ export class BaselineAssignmentsService {
         return context;
     }
 
-    private async ensureBaselineOwnership(baselineId: string, userId: string): Promise<BaselineContext> {
-        const [record] = await this.dbs.db
-            .select({
-                id: extractionBaselines.id,
-                attachmentId: extractionBaselines.attachmentId,
-                status: extractionBaselines.status,
-                utilizationType: extractionBaselines.utilizationType,
-                utilizedAt: extractionBaselines.utilizedAt,
-                ownerId: todos.userId,
-            })
-            .from(extractionBaselines)
-            .innerJoin(attachments, eq(attachments.id, extractionBaselines.attachmentId))
-            .innerJoin(todos, eq(todos.id, attachments.todoId))
-            .where(eq(extractionBaselines.id, baselineId))
-            .limit(1);
-
-        if (!record) {
-            throw new NotFoundException('Baseline not found');
-        }
-
-        if (record.ownerId !== userId) {
-            throw new ForbiddenException('Access denied for baseline');
-        }
-
-        return record as BaselineContext;
-    }
-    private async ensureUserOwnsAttachment(userId: string, attachmentId: string) {
-        const [attachment] = await this.dbs.db
-            .select()
-            .from(attachments)
-            .where(eq(attachments.id, attachmentId))
-            .limit(1);
-
-        if (!attachment) {
-            throw new NotFoundException('Attachment not found');
-        }
-
-        const [todo] = await this.dbs.db
-            .select()
-            .from(todos)
-            .where(and(eq(todos.id, attachment.todoId), eq(todos.userId, userId)))
-            .limit(1);
-
-        if (!todo) {
-            throw new ForbiddenException('Access denied for attachment');
-        }
-
-        return attachment;
-    }
 
     private async backfillSegmentsFromText(
         attachmentOcrOutputId: string,

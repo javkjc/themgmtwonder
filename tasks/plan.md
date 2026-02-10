@@ -448,6 +448,8 @@ WHERE id = '<TABLE_ID>';
 
 ### C4 – Table List Panel + Multi-Table Switching (Milestone 8.7.7) ([Complexity: Medium])
 
+**Status:** ✅ Completed on 2026-02-09
+
 **Problem statement**  
 Users need to view and switch between multiple tables, and see status/validation at a glance.
 
@@ -492,6 +494,8 @@ ORDER BY table_index;
 > **Context:** Table edits must lock after utilization, consistent with baseline rules.
 
 ### D1 – Table Utilization Tracking (Milestone 8.7.8) ([Complexity: Medium])
+
+**Status:** ✅ Completed on 2026-02-10
 
 **Problem statement**  
 When table data is used for authoritative purposes, the baseline must be locked and the utilization recorded with table context.
@@ -593,12 +597,14 @@ WHERE id = '<BASELINE_ID>';
 7. **C2 [COMPLETED]**: Table Editor Panel (Grid UI, API wiring, keyboard nav)
 8. **C3** Table confirmation UI – Depends on C2 and A2.
 9. **C4** Table list panel – Depends on C1 and B2.
-10. **D1** Table utilization tracking – Depends on A2 and baseline utilization infra (v8.6).
+10. **D1** Table utilization tracking — Depends on A2 and baseline utilization infra (v8.6).
 
 **Parallel execution opportunities:**
 - A3 can run in parallel with B1 after A1 is complete.
 - C4 can run in parallel with C2 after C1 and B2 are complete.
 - D1 can run after A2 while UI work proceeds.
+
+**Next actionable item:** D1 — Table Utilization Tracking.
 
 **Blocking relationships:**
 - UI table editor (C2/C3) is BLOCKED until table APIs (B1/B2) are complete.

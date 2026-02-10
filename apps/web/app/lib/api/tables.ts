@@ -11,8 +11,12 @@ export interface Table {
     confirmedAt: string | null;
     confirmedBy: string | null;
     confirmedByEmail?: string | null;
+    baselineUtilizedAt?: string | null;
+    baselineUtilizationType?: string | null;
+    baselineUtilizationMetadata?: Record<string, any> | null;
     createdAt: string;
     updatedAt: string;
+    errorCount?: number;
 }
 
 export interface Cell {
@@ -87,7 +91,7 @@ export async function updateCell(
 ): Promise<Cell> {
     return apiFetchJson(`/tables/${tableId}/cells/${rowIndex}/${columnIndex}`, {
         method: 'PUT',
-        body: JSON.stringify({ cellValue: value, correctionReason }),
+        body: JSON.stringify({ value, correctionReason }),
     });
 }
 
@@ -105,11 +109,12 @@ export async function deleteRow(
 export async function assignColumn(
     tableId: string,
     columnIndex: number,
-    fieldKey: string
+    fieldKey: string,
+    correctionReason?: string
 ): Promise<void> {
     await apiFetchJson(`/tables/${tableId}/columns/${columnIndex}/assign`, {
         method: 'POST',
-        body: JSON.stringify({ fieldKey }),
+        body: JSON.stringify({ fieldKey, correctionReason }),
     });
 }
 

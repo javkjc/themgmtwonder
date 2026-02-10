@@ -82,44 +82,27 @@ const mockCorrection = {
 const createMockDbService = (
   attachmentResult: unknown[],
   todoResult: unknown[],
-  confirmedOcrResult: unknown[] = [],
+  currentOcrResult: unknown[] = [],
 ) => {
-  let selectCount = 0;
-
-  const buildAttachmentQuery = () => ({
-    from: jest.fn().mockImplementation(() => ({
-      where: jest.fn().mockResolvedValue(attachmentResult),
-    })),
-  });
-
-  const buildTodoQuery = () => ({
-    from: jest.fn().mockImplementation(() => ({
-      where: jest.fn().mockResolvedValue(todoResult),
-    })),
-  });
-
-  const buildConfirmedOcrQuery = () => ({
-    from: jest.fn().mockImplementation(() => ({
-      where: jest.fn().mockReturnValue({
-        orderBy: jest.fn().mockReturnValue({
-          limit: jest.fn().mockResolvedValue(confirmedOcrResult),
-        }),
-      }),
-    })),
-  });
-
   const mockDbService = {
     db: {
-      select: jest.fn().mockImplementation(() => {
-        selectCount += 1;
-        if (selectCount === 1) {
-          return buildAttachmentQuery();
-        }
-        if (selectCount === 2) {
-          return buildTodoQuery();
-        }
-        return buildConfirmedOcrQuery();
-      }),
+      query: {
+        attachments: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValue(attachmentResult[0] ?? null),
+        },
+        todos: {
+          findFirst: jest.fn().mockResolvedValue(todoResult[0] ?? null),
+        },
+      },
+      select: jest.fn().mockImplementation(() => ({
+        from: jest.fn().mockImplementation(() => ({
+          where: jest.fn().mockImplementation(() => ({
+            limit: jest.fn().mockResolvedValue(currentOcrResult),
+          })),
+        })),
+      })),
     },
   } as unknown as DbService;
 

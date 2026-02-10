@@ -1,4 +1,4 @@
-# Session State - 2026-02-09
+# Session State - 2026-02-10
 
 ## Current Status
 - Milestone 8.6: Field-Based Extraction Assignment & Baseline (COMPLETE)
@@ -10,32 +10,31 @@
     - ✅ Task B2: Table Read Models
     - ✅ Task C1: Table Creation Modal
     - ✅ Task C2: Table Editor Panel
-    - ✅ Task C3: Table Confirmation UI
+    - ✅ Task C3: Table Confirmation UI (verification still pending)
+    - ✅ Task C4: Table List Panel + Multi-Table Switching (needs regression verification)
+    - ✅ Task D1: Table Utilization Tracking (backend + UI; manual verification pending)
 
 ## Recent Achievements
-- (2026-02-09) Implemented Table Confirmation Modal with "I understand" agreement.
-- (2026-02-09) Integrated confirmation flow into Table Editor Panel.
-- (2026-02-09) Implemented UI locking for confirmed tables.
-- (2026-02-09) Added CSV Export functionality for confirmed tables.
-- (2026-02-09) Verified build stability for Web and API.
-- (2026-02-09) Fixed manual table creation payload (rowCount/columnCount support) and baseline table list visibility.
-- (2026-02-09) Tuned auto-detect row grouping (center-Y clustering) while keeping column gap threshold at 3x median char width.
+- (2026-02-10) Surfaced utilization metadata (table label/size/record/export) on task detail page badges.
+- (2026-02-10) Table API responses include baseline utilization metadata for editor/list lock messaging.
+- (2026-02-09) Added CSV export and confirmation banners in Table Editor.
+- (2026-02-09) Fixed manual table creation payload and table list visibility.
 
 ## Context
-- Table Editor now supports full lifecycle: Create -> Edit -> Validate -> Confirm -> Export / Lock.
-- Confirmed tables are correctly locked in the UI, enforcing the "read-only" requirement.
-- Next steps involve managing multiple tables (List Panel) and handling utilization locking (Backend + UI).
+- Table editor and list now show lock icons/banners when a baseline is utilized; task detail page uses the same context-rich message.
+- Backend utilization writes table context into `utilizationMetadata`; mutations are blocked when utilized.
+- Remaining work: verify utilization lock across views and run performance checks (D2).
 
 ## Next Immediate Step
-- Start Task C4 (Table List Panel + Multi-Table Switching).
+- Run D1 manual verification (utilization lock + UI messaging) then begin D2 Performance Checklist.
 
 ## Verification Status
 - ✅ A1-A3 Backend Core verified.
 - ✅ B1-B2 API Surface verified.
-- ✅ C1-C2 Table UI flows verified (Creation, Editing).
-- ? C3 Confirmation UI verification pending (manual/DB/log/regression).
-- ? C4 Multi-table list pending.
-- ? D1 Utilization tracking pending.
+- ✅ C1-C2 Table UI flows verified.
+- ⏳ C3 Confirmation UI verification pending (manual/DB/log/regression).
+- ⏳ C4 Multi-table list pending regression verification.
+- ⏳ D1 Utilization tracking pending manual verification.
 
 ## Known Issues (Non-Blocking)
 - None.

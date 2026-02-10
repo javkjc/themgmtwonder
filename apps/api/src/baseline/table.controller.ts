@@ -17,12 +17,11 @@ import { JwtAuthGuard } from '../auth/auth.guard';
 import { CsrfGuard } from '../common/csrf';
 import { TableManagementService } from './table-management.service';
 import { DbService } from '../db/db.service';
-import { extractionBaselines, baselineTables, baselineTableCells, baselineTableColumnMappings, attachments, todos } from '../db/schema';
-import { eq, and } from 'drizzle-orm';
 import { CreateTableDto } from './dto/create-table.dto';
 import { UpdateCellDto } from './dto/update-cell.dto';
 import { AssignColumnDto } from './dto/assign-column.dto';
 import { DeleteRowDto } from './dto/delete-row.dto';
+import { AuthorizationService } from '../common/authorization.service';
 
 type RequestWithUser = { user: { userId: string } };
 
@@ -32,6 +31,7 @@ export class TableController {
     constructor(
         private readonly tableService: TableManagementService,
         private readonly dbs: DbService,
+        private readonly authService: AuthorizationService,
     ) { }
 
     @Post('baselines/:baselineId/tables')
@@ -40,7 +40,7 @@ export class TableController {
         @Param('baselineId') baselineId: string,
         @Body() dto: CreateTableDto,
     ) {
-        await this.ensureUserOwnsBaseline(req.user.userId, baselineId);
+        await this.authService.ensureUserOwnsBaseline(req.user.userId, baselineId);
 
         let cellValues = dto.cellValues;
         if (!cellValues || !Array.isArray(cellValues)) {
@@ -55,7 +55,7 @@ export class TableController {
         }
 
         return await this.tableService.createTable(baselineId, req.user.userId, {
-            label: dto.label,
+            label: dto.tableLabel,
             cellValues,
         });
     }
@@ -65,7 +65,7 @@ export class TableController {
         @Req() req: RequestWithUser,
         @Param('baselineId') baselineId: string,
     ) {
-        await this.ensureUserOwnsBaseline(req.user.userId, baselineId);
+        await this.authService.ensureUserOwnsBaseline(req.user.userId, baselineId);
 
         // Return summary list
         return await this.tableService.listTablesForBaseline(baselineId); // replaced tables query
@@ -77,7 +77,7 @@ export class TableController {
         @Req() req: RequestWithUser,
         @Param('tableId') tableId: string,
     ) {
-        await this.ensureUserOwnsTable(tableId, req.user.userId);
+        await this.authService.ensureUserOwnsTable(req.user.userId, tableId);
 
         return await this.tableService.getTableDetails(tableId); // replaced getTable logic
 
@@ -88,7 +88,7 @@ export class TableController {
         @Req() req: RequestWithUser,
         @Param('tableId') tableId: string,
     ) {
-        await this.ensureUserOwnsTable(tableId, req.user.userId);
+        await this.authService.ensureUserOwnsTable(req.user.userId, tableId);
 
         return await this.tableService.deleteTable(tableId, req.user.userId);
     }
@@ -109,7 +109,7 @@ export class TableController {
         // `updateCell` takes userId but doesn't check owner.
         // So Controller MUST check ownership.
 
-        await this.ensureUserOwnsTable(tableId, req.user.userId);
+        await this.authService.ensureUserOwnsTable(req.user.userId, tableId);
 
         return await this.tableService.updateCell(
             tableId,
@@ -128,7 +128,7 @@ export class TableController {
         @Param('rowIndex', ParseIntPipe) rowIndex: number,
         @Body() dto: DeleteRowDto,
     ) {
-        await this.ensureUserOwnsTable(tableId, req.user.userId);
+        await this.authService.ensureUserOwnsTable(req.user.userId, tableId);
 
         return await this.tableService.deleteRow(
             tableId,
@@ -145,13 +145,14 @@ export class TableController {
         @Param('columnIndex', ParseIntPipe) columnIndex: number,
         @Body() dto: AssignColumnDto,
     ) {
-        await this.ensureUserOwnsTable(tableId, req.user.userId);
+        await this.authService.ensureUserOwnsTable(req.user.userId, tableId);
 
         return await this.tableService.assignColumnToField(
             tableId,
             columnIndex,
             dto.fieldKey,
             req.user.userId,
+            dto.correctionReason,
         );
     }
 
@@ -160,7 +161,7 @@ export class TableController {
         @Req() req: RequestWithUser,
         @Param('tableId') tableId: string,
     ) {
-        await this.ensureUserOwnsTable(tableId, req.user.userId);
+        await this.authService.ensureUserOwnsTable(req.user.userId, tableId);
 
         return await this.tableService.confirmTable(
             tableId,
@@ -168,57 +169,4 @@ export class TableController {
         );
     }
 
-    // --- Helpers ---
-
-    private async ensureUserOwnsBaseline(userId: string, baselineId: string) {
-        const [baseline] = await this.dbs.db
-            .select()
-            .from(extractionBaselines)
-            .where(eq(extractionBaselines.id, baselineId))
-            .limit(1);
-
-        if (!baseline) {
-            throw new NotFoundException('Baseline not found');
-        }
-
-        await this.ensureUserOwnsAttachment(userId, baseline.attachmentId);
-        return baseline;
-    }
-
-    private async ensureUserOwnsTable(tableId: string, userId: string) {
-        const [table] = await this.dbs.db
-            .select()
-            .from(baselineTables)
-            .where(eq(baselineTables.id, tableId))
-            .limit(1);
-
-        if (!table) {
-            throw new NotFoundException('Table not found');
-        }
-
-        const baseline = await this.ensureUserOwnsBaseline(userId, table.baselineId);
-        return table;
-    }
-
-    private async ensureUserOwnsAttachment(userId: string, attachmentId: string) {
-        const [attachment] = await this.dbs.db
-            .select()
-            .from(attachments)
-            .where(eq(attachments.id, attachmentId))
-            .limit(1);
-
-        if (!attachment) {
-            throw new NotFoundException('Attachment not found');
-        }
-
-        const [todo] = await this.dbs.db
-            .select()
-            .from(todos)
-            .where(and(eq(todos.id, attachment.todoId), eq(todos.userId, userId)))
-            .limit(1);
-
-        if (!todo) {
-            throw new ForbiddenException('Access denied for todo');
-        }
-    }
 }

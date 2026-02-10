@@ -4,6 +4,7 @@ import {
     timestamp,
     pgEnum,
     index,
+    jsonb,
 } from 'drizzle-orm/pg-core';
 
 // Baseline lifecycle status enum
@@ -44,6 +45,7 @@ export const extractionBaselines = pgTable(
         }),
         utilizedAt: timestamp('utilized_at'),
         utilizationType: baselineUtilizationTypeEnum('utilization_type'),
+        utilizationMetadata: jsonb('utilization_metadata'),
         archivedAt: timestamp('archived_at'),
         archivedBy: uuid('archived_by').references((): any => {
             // Lazy reference to avoid circular dependency

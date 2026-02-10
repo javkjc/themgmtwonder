@@ -44,6 +44,7 @@ export interface Baseline {
   confirmedBy: string | null;
   utilizedAt: string | null;
   utilizationType: BaselineUtilizationType;
+  utilizationMetadata?: Record<string, any> | null;
   archivedAt: string | null;
   archivedBy: string | null;
   createdAt: string;

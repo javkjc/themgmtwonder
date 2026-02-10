@@ -11,7 +11,7 @@ import {
 } from '@tanstack/react-table';
 import { Table, Cell, ColumnMapping, updateCell, deleteRow, assignColumn, confirmTable } from '@/app/lib/api/tables';
 import { Field, FieldCharacterType } from '@/app/lib/api/fields';
-import { useToast } from '../ToastProvider';
+import type { Notification } from '../NotificationToast';
 import CorrectionReasonModal from '../ocr/CorrectionReasonModal';
 import TableConfirmationModal from './TableConfirmationModal';
 
@@ -21,8 +21,10 @@ interface TableEditorPanelProps {
     columnMappings: ColumnMapping[];
     fields: Field[];
     isReadOnly: boolean;
+    baselineStatus?: 'draft' | 'reviewed' | 'confirmed' | 'archived';
     onRefresh: () => Promise<void>;
     onClose: () => void;
+    onNotification?: (notification: Notification) => void;
 }
 
 const typeInputAttributes: Record<FieldCharacterType, { type: string; inputMode?: 'text' | 'numeric' | 'decimal' | 'email' | 'tel' | 'url'; step?: string; placeholder?: string }> = {
@@ -109,13 +111,25 @@ export default function TableEditorPanel({
     columnMappings,
     fields,
     isReadOnly,
+    baselineStatus,
     onRefresh,
     onClose,
+    onNotification,
 }: TableEditorPanelProps) {
-    const { showToast } = useToast();
+    const showNotification = useCallback((message: string, type: 'success' | 'error') => {
+        if (onNotification) {
+            onNotification({
+                id: Date.now().toString(),
+                type,
+                title: type === 'success' ? 'Success' : 'Error',
+                message,
+            });
+        }
+    }, [onNotification]);
     const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
     const [editingCell, setEditingCell] = useState<{ rowIndex: number; columnIndex: number; value: string } | null>(null);
     const [correctionModal, setCorrectionModal] = useState<{ rowIndex: number; columnIndex: number; value: string } | null>(null);
+    const [mappingCorrectionModal, setMappingCorrectionModal] = useState<{ columnIndex: number; fieldKey: string } | null>(null);
     const [deleteRowModal, setDeleteRowModal] = useState<{ rowIndex: number } | null>(null);
     const [isConfirming, setIsConfirming] = useState(false);
     const [confirmationModalOpen, setConfirmationModalOpen] = useState(false);
@@ -124,6 +138,9 @@ export default function TableEditorPanel({
     const [focusedColumnIndex, setFocusedColumnIndex] = useState<number | null>(null);
     const scrollRef = useRef<HTMLDivElement | null>(null);
     const [visibleRange, setVisibleRange] = useState<{ start: number; end: number }>({ start: 0, end: 50 });
+    const [recentlySavedCells, setRecentlySavedCells] = useState<Set<string>>(new Set());
+    const [changeLogCollapsed, setChangeLogCollapsed] = useState(false);
+    const [changeLog, setChangeLog] = useState<Array<{ id: string; timestamp: number; label: string; detail?: string }>>([]);
     const ROW_HEIGHT = 40;
 
     const columnHelper = createColumnHelper<Cell[]>();
@@ -135,6 +152,42 @@ export default function TableEditorPanel({
         });
         return map;
     }, [columnMappings]);
+
+    // Cast table to access utilization props injected by backend
+    const extendedTable = table as (Table & {
+        baselineUtilizedAt?: string;
+        baselineUtilizationType?: string;
+        baselineUtilizationMetadata?: any;
+    });
+    const isUtilized = !!extendedTable.baselineUtilizedAt;
+    const utilizationMetadata = extendedTable.baselineUtilizationMetadata || {};
+    const utilizationType = extendedTable.baselineUtilizationType;
+    const requiresCorrectionReason = table.status === 'confirmed' || baselineStatus === 'reviewed';
+
+    // Determine utilization message
+    const utilizationMessage = useMemo(() => {
+        if (!isUtilized) return null;
+
+        const isThisTable = utilizationMetadata.tableId === table.id;
+        const targetLabel = utilizationMetadata.tableLabel || (isThisTable ? (table.tableLabel || `Table #${table.tableIndex + 1}`) : 'Another Table');
+
+        let action = 'utilized';
+        if (utilizationType === 'record_created') {
+            // Use rowCount from metadata for accuracy at time of utilization
+            const count = utilizationMetadata.rowCount || 0;
+            action = `used to create ${count} record${count === 1 ? '' : 's'}`;
+        } else if (utilizationType === 'data_exported') {
+            action = `exported as ${utilizationMetadata.exportFormat || 'file'}`;
+        } else if (utilizationType === 'process_committed') {
+            action = 'committed to process';
+        }
+
+        if (isThisTable) {
+            return `Table '${targetLabel}' ${action}`;
+        } else {
+            return `Baseline locked: Table '${targetLabel}' ${action}`;
+        }
+    }, [isUtilized, utilizationMetadata, utilizationType, table]);
 
     const fieldMap = useMemo(() => {
         const map: Record<string, Field> = {};
@@ -154,12 +207,27 @@ export default function TableEditorPanel({
         return count;
     }, [cells]);
 
+    const addChangeLogEntry = useCallback((entry: { label: string; detail?: string }) => {
+        setChangeLog(prev => [
+            {
+                id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                timestamp: Date.now(),
+                label: entry.label,
+                detail: entry.detail,
+            },
+            ...prev,
+        ]);
+    }, []);
+
     const filteredData = useMemo(() => {
         if (!showErrorsOnly) return cells;
         return cells.filter(row => row.some(cell => cell.validationStatus === 'invalid'));
     }, [cells, showErrorsOnly]);
 
     const totalRows = filteredData.length;
+    const sortedChangeLog = useMemo(() => {
+        return [...changeLog].sort((a, b) => b.timestamp - a.timestamp);
+    }, [changeLog]);
 
     const columns = useMemo(() => {
         const cols = [];
@@ -173,7 +241,8 @@ export default function TableEditorPanel({
                         type="checkbox"
                         checked={table.getIsAllRowsSelected()}
                         onChange={table.getToggleAllRowsSelectedHandler()}
-                        style={{ cursor: 'pointer' }}
+                        disabled={isReadOnly || isUtilized}
+                        style={{ cursor: isReadOnly || isUtilized ? 'not-allowed' : 'pointer' }}
                     />
                 ),
                 cell: ({ row }) => (
@@ -181,7 +250,8 @@ export default function TableEditorPanel({
                         type="checkbox"
                         checked={row.getIsSelected()}
                         onChange={row.getToggleSelectedHandler()}
-                        style={{ cursor: 'pointer' }}
+                        disabled={isReadOnly || isUtilized}
+                        style={{ cursor: isReadOnly || isUtilized ? 'not-allowed' : 'pointer' }}
                     />
                 ),
                 size: 40,
@@ -213,7 +283,7 @@ export default function TableEditorPanel({
                                 columnIndex={i}
                                 currentFieldKey={fieldKey}
                                 fields={fields}
-                                disabled={isReadOnly || table.status === 'confirmed'}
+                                disabled={isReadOnly || isUtilized}
                                 onSelect={value => handleMapColumn(i, value)}
                             />
                             {field && (
@@ -258,6 +328,32 @@ export default function TableEditorPanel({
                         }
 
                         const isFocused = focusedCell?.rowIndex === info.row.index && focusedCell?.columnIndex === i;
+                        const cellKey = `${cell.rowIndex}-${cell.columnIndex}`;
+                        const isRecentlySaved = recentlySavedCells.has(cellKey);
+
+                        // Determine background color priority:
+                        // 1. Invalid (red) - highest priority
+                        // 2. Recently saved (bright green flash) - temporary
+                        // 3. Was edited (subtle green) - persistent until table confirmed/reviewed
+                        // 4. Transparent - default
+                        let backgroundColor = 'transparent';
+                        let borderColor = '1px solid transparent';
+                        let boxShadow = 'none';
+
+                        if (cell.validationStatus === 'invalid') {
+                            backgroundColor = '#fee2e2';
+                            borderColor = '1px solid #ef4444';
+                        } else if (isRecentlySaved) {
+                            // Bright green flash for just-saved cells
+                            backgroundColor = '#dcfce7';
+                            borderColor = '1px solid #86efac';
+                            boxShadow = '0 0 0 2px rgba(134, 239, 172, 0.3)';
+                        }
+
+                        if (isFocused) {
+                            borderColor = '2px solid #3b82f6';
+                            boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.2)';
+                        }
 
                         return (
                             <div
@@ -267,24 +363,25 @@ export default function TableEditorPanel({
                                     setFocusedColumnIndex(i);
                                 }}
                                 onClick={() => {
-                                    if (!isReadOnly && table.status !== 'confirmed') {
+                                    if (!isReadOnly && !isUtilized) {
                                         setEditingCell({ rowIndex: cell.rowIndex, columnIndex: cell.columnIndex, value: cell.cellValue || '' });
                                     }
                                 }}
-                                title={cell.errorText || undefined}
+                                title={cell.validationStatus === 'invalid' ? cell.errorText || 'Validation error' : undefined}
                                 style={{
                                     padding: '4px 8px',
                                     fontSize: 13,
                                     minHeight: 32,
                                     display: 'flex',
                                     alignItems: 'center',
-                                    cursor: (isReadOnly || table.status === 'confirmed') ? 'default' : 'text',
-                                    background: cell.validationStatus === 'invalid' ? '#fee2e2' : 'transparent',
-                                    border: isFocused ? '2px solid #3b82f6' : (cell.validationStatus === 'invalid' ? '1px solid #ef4444' : '1px solid transparent'),
+                                    cursor: (isReadOnly || isUtilized) ? 'default' : 'text',
+                                    background: backgroundColor,
+                                    border: borderColor,
                                     borderRadius: 4,
                                     position: 'relative',
                                     outline: 'none',
-                                    boxShadow: isFocused ? '0 0 0 2px rgba(59, 130, 246, 0.2)' : 'none',
+                                    boxShadow: boxShadow,
+                                    transition: 'all 0.3s ease',
                                 }}
                             >
                                 <span style={{ color: cell.cellValue ? '#1e293b' : '#94a3b8' }}>
@@ -304,7 +401,7 @@ export default function TableEditorPanel({
         }
 
         return cols;
-    }, [table, columnMappings, fields, mappingMap, fieldMap, isReadOnly, editingCell, onRefresh, showToast]);
+    }, [table, columnMappings, fields, mappingMap, fieldMap, isReadOnly, isUtilized, editingCell, onRefresh]);
 
     const reactTable = useReactTable({
         data: filteredData,
@@ -329,12 +426,33 @@ export default function TableEditorPanel({
         try {
             await updateCell(table.id, rowIndex, columnIndex, value, reason);
             setEditingCell(null);
+
+            // Add to recently saved set for bright flash
+            const cellKey = `${rowIndex}-${columnIndex}`;
+            setRecentlySavedCells(prev => new Set(prev).add(cellKey));
+            setTimeout(() => {
+                setRecentlySavedCells(prev => {
+                    const next = new Set(prev);
+                    next.delete(cellKey);
+                    return next;
+                });
+            }, 2000);
+
+            const oldValue = originalCell.cellValue ?? '';
+            const newValue = value ?? '';
+            if (oldValue !== newValue) {
+                addChangeLogEntry({
+                    label: `Cell R${rowIndex + 1}C${columnIndex + 1} updated`,
+                    detail: `"${oldValue}" → "${newValue}"`,
+                });
+            }
+
             onRefresh();
         } catch (err: any) {
             if (err.status === 409) {
                 setCorrectionModal({ rowIndex, columnIndex, value });
             } else {
-                showToast(err.message || 'Failed to update cell', 'error');
+                showNotification(err.message || 'Failed to update cell', 'error');
             }
         }
     };
@@ -352,16 +470,20 @@ export default function TableEditorPanel({
             }
             setRowSelection({});
             setDeleteRowModal(null);
-            showToast(`Deleted ${selectedRows.length} rows`, 'success');
+            addChangeLogEntry({
+                label: `Deleted ${selectedRows.length} row${selectedRows.length === 1 ? '' : 's'}`,
+                detail: `Rows: ${selectedRows.map(r => r + 1).join(', ')}`,
+            });
+            showNotification(`Deleted ${selectedRows.length} rows`, 'success');
             onRefresh();
         } catch (err: any) {
-            showToast(err.message || 'Failed to delete rows', 'error');
+            showNotification(err.message || 'Failed to delete rows', 'error');
         }
     };
 
     const handleTriggerConfirm = () => {
         if (errorCount > 0) {
-            showToast('Cannot confirm table with validation errors', 'error');
+            showNotification('Cannot confirm table with validation errors', 'error');
             return;
         }
         setConfirmationModalOpen(true);
@@ -371,11 +493,11 @@ export default function TableEditorPanel({
         setIsConfirming(true);
         try {
             await confirmTable(table.id);
-            showToast('Table confirmed successfully', 'success');
+            showNotification('Table confirmed successfully', 'success');
             setConfirmationModalOpen(false);
             onRefresh();
         } catch (err: any) {
-            showToast(err.message || 'Failed to confirm table', 'error');
+            showNotification(err.message || 'Failed to confirm table', 'error');
         } finally {
             setIsConfirming(false);
         }
@@ -426,7 +548,7 @@ export default function TableEditorPanel({
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
         } catch (e: any) {
-            showToast('Failed to export CSV', 'error');
+            showNotification('Failed to export CSV', 'error');
         }
     };
 
@@ -459,7 +581,7 @@ export default function TableEditorPanel({
                 break;
             case 'Enter':
                 const cell = filteredData[rowIndex][columnIndex];
-                if (!isReadOnly && table.status !== 'confirmed') {
+                if (!isReadOnly && !isUtilized) {
                     setEditingCell({ rowIndex: cell.rowIndex, columnIndex: cell.columnIndex, value: cell.cellValue || '' });
                 }
                 setFocusedColumnIndex(columnIndex);
@@ -484,13 +606,25 @@ export default function TableEditorPanel({
         }
     }, [focusedCell, totalRows]);
 
-    const handleMapColumn = async (columnIndex: number, value: string) => {
+    const handleMapColumn = async (columnIndex: number, value: string, reason?: string) => {
+        if (requiresCorrectionReason && !reason) {
+            setMappingCorrectionModal({ columnIndex, fieldKey: value });
+            return;
+        }
         try {
-            await assignColumn(table.id, columnIndex, value);
-            showToast('Column mapped successfully', 'success');
+            await assignColumn(table.id, columnIndex, value, reason);
+            addChangeLogEntry({
+                label: `Column ${columnIndex + 1} mapping updated`,
+                detail: value ? `Mapped to ${value}` : 'Unmapped',
+            });
+            showNotification('Column mapped successfully', 'success');
             onRefresh();
         } catch (err: any) {
-            showToast(err.message || 'Failed to map column', 'error');
+            if (err.status === 409) {
+                setMappingCorrectionModal({ columnIndex, fieldKey: value });
+                return;
+            }
+            showNotification(err.message || 'Failed to map column', 'error');
         }
     };
 
@@ -516,21 +650,32 @@ export default function TableEditorPanel({
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                     <button
                         onClick={onClose}
+                        title="Back to table list"
                         style={{
-                            padding: '8px',
-                            borderRadius: '50%',
-                            border: 'none',
-                            background: 'transparent',
+                            padding: '8px 12px',
+                            borderRadius: 8,
+                            border: '1px solid #cbd5e1',
+                            background: 'white',
                             cursor: 'pointer',
-                            color: '#64748b',
+                            color: '#475569',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
+                            fontSize: 16,
+                            fontWeight: 600,
+                            gap: 6,
+                            boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
                         }}
-                        onMouseOver={e => e.currentTarget.style.background = '#e2e8f0'}
-                        onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                        onMouseOver={e => {
+                            e.currentTarget.style.background = '#f1f5f9';
+                            e.currentTarget.style.borderColor = '#94a3b8';
+                        }}
+                        onMouseOut={e => {
+                            e.currentTarget.style.background = 'white';
+                            e.currentTarget.style.borderColor = '#cbd5e1';
+                        }}
                     >
-                        ←
+                        ← <span style={{ fontSize: 13 }}>Back</span>
                     </button>
                     <div>
                         <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: '#0f172a' }}>
@@ -539,7 +684,20 @@ export default function TableEditorPanel({
                         <div style={{ fontSize: 12, color: '#64748b' }}>
                             {table.rowCount} rows × {table.columnCount} columns
                         </div>
-                        {table.status === 'confirmed' && (
+                        {isUtilized ? (
+                            <div style={{
+                                marginTop: 4,
+                                fontSize: 11,
+                                color: '#7f1d1d',
+                                background: '#fecaca',
+                                padding: '2px 8px',
+                                borderRadius: 4,
+                                display: 'inline-block',
+                                border: '1px solid #f87171'
+                            }}>
+                                🔒 {utilizationMessage}
+                            </div>
+                        ) : table.status === 'confirmed' && (
                             <div style={{
                                 marginTop: 4,
                                 fontSize: 11,
@@ -557,7 +715,7 @@ export default function TableEditorPanel({
                 </div>
 
                 <div style={{ display: 'flex', gap: 12 }}>
-                    {Object.keys(rowSelection).length > 0 && !isReadOnly && table.status !== 'confirmed' && (
+                    {Object.keys(rowSelection).length > 0 && !isReadOnly && !isUtilized && (
                         <button
                             onClick={() => setDeleteRowModal({ rowIndex: -1 })} // Multi-delete
                             style={{
@@ -593,7 +751,7 @@ export default function TableEditorPanel({
                         </button>
                     )}
 
-                    {!isReadOnly && table.status !== 'confirmed' && (
+                    {!isReadOnly && table.status !== 'confirmed' && !isUtilized && (
                         <button
                             onClick={handleTriggerConfirm}
                             disabled={isConfirming || errorCount > 0}
@@ -615,163 +773,193 @@ export default function TableEditorPanel({
                 </div>
             </div>
 
-            {/* Validation Banner */}
-            <div style={{
-                padding: '8px 24px',
-                background: errorCount > 0 ? '#fff1f2' : '#f0fdf4',
-                borderBottom: '1px solid #e2e8f0',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                fontSize: 13,
-            }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{
-                        padding: '2px 8px',
-                        borderRadius: 12,
-                        background: errorCount > 0 ? '#ef4444' : '#22c55e',
-                        color: 'white',
-                        fontWeight: 700,
-                        fontSize: 11,
-                    }}>
-                        {errorCount} ERRORS
-                    </span>
-                    <span style={{ color: errorCount > 0 ? '#991b1b' : '#166534', fontWeight: 500 }}>
-                        {errorCount > 0 ? 'Table has validation errors that must be resolved before confirmation.' : 'All cells valid. Table ready for confirmation.'}
-                    </span>
-                </div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', color: '#475569', fontWeight: 500 }}>
-                    <input
-                        type="checkbox"
-                        checked={showErrorsOnly}
-                        onChange={(e) => setShowErrorsOnly(e.target.checked)}
-                    />
-                    Show errors only
-                </label>
-            </div>
-
-            {/* Grid Container */}
-            <div
-                style={{ flex: 1, overflow: 'auto', padding: 24, background: '#f1f5f9' }}
-                onKeyDown={handleKeyDown}
-                onScroll={handleScroll}
-                ref={scrollRef}
-            >
+            {/* Validation Banner or Utilization Banner */}
+            {isUtilized ? (
                 <div style={{
-                    background: 'white',
-                    borderRadius: 12,
-                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                    overflow: 'hidden',
-                    minWidth: 'fit-content',
+                    padding: '8px 24px',
+                    background: '#fff7ed', // Orange/Amber background
+                    borderBottom: '1px solid #fed7aa',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    fontSize: 13,
+                    color: '#9a3412',
                 }}>
-                    <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-                        <thead>
-                            {reactTable.getHeaderGroups().map(headerGroup => (
-                                <tr key={headerGroup.id}>
-                                    {headerGroup.headers.map(header => (
-                                        <th
-                                            key={header.id}
-                                            style={{
-                                                padding: '12px 16px',
-                                                background: '#f8fafc',
-                                                borderBottom: '2px solid #e2e8f0',
-                                                borderRight: '1px solid #e2e8f0',
-                                                textAlign: 'left',
-                                                verticalAlign: 'top',
-                                            }}
-                                        >
-                                            {header.isPlaceholder
-                                                ? null
-                                                : flexRender(
-                                                    header.column.columnDef.header,
-                                                    header.getContext()
-                                                )}
-                                        </th>
-                                    ))}
-                                </tr>
-                            ))}
-                        </thead>
-                        <tbody>
-                            {visibleRange.start > 0 && (
-                                <tr style={{ height: visibleRange.start * ROW_HEIGHT }}>
-                                    <td colSpan={colCount} />
-                                </tr>
+                    <span style={{ fontSize: 16 }}>🔒</span>
+                    <strong>Baseline Locked</strong>
+                    <span>{utilizationMessage}</span>
+                </div>
+            ) : (
+                <div style={{
+                    padding: '8px 24px',
+                    background: errorCount > 0 ? '#fff1f2' : '#f0fdf4',
+                    borderBottom: '1px solid #e2e8f0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: 13,
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{
+                            padding: '2px 8px',
+                            borderRadius: 12,
+                            background: errorCount > 0 ? '#ef4444' : '#22c55e',
+                            color: 'white',
+                            fontWeight: 700,
+                            fontSize: 11,
+                        }}>
+                            {errorCount} ERRORS
+                        </span>
+                        <span style={{ color: errorCount > 0 ? '#991b1b' : '#166534', fontWeight: 500 }}>
+                            {errorCount > 0 ? 'Table has validation errors that must be resolved before confirmation.' : 'All cells valid. Table ready for confirmation.'}
+                        </span>
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', color: '#475569', fontWeight: 500 }}>
+                        <input
+                            type="checkbox"
+                            checked={showErrorsOnly}
+                            onChange={(e) => setShowErrorsOnly(e.target.checked)}
+                        />
+                        Show errors only
+                    </label>
+                </div>
+            )}
+
+            {/* Grid + Change Log */}
+            <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+                <div
+                    style={{ flex: 1, overflow: 'auto', padding: 24, background: '#f1f5f9' }}
+                    onKeyDown={handleKeyDown}
+                    onScroll={handleScroll}
+                    ref={scrollRef}
+                >
+                    <div style={{
+                        background: 'white',
+                        borderRadius: 12,
+                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                        overflow: 'hidden',
+                        minWidth: 'fit-content',
+                    }}>
+                        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                            <thead>
+                                {reactTable.getHeaderGroups().map(headerGroup => (
+                                    <tr key={headerGroup.id}>
+                                        {headerGroup.headers.map(header => (
+                                            <th
+                                                key={header.id}
+                                                style={{
+                                                    padding: '12px 16px',
+                                                    background: '#f8fafc',
+                                                    borderBottom: '2px solid #e2e8f0',
+                                                    borderRight: '1px solid #e2e8f0',
+                                                    textAlign: 'left',
+                                                    verticalAlign: 'top',
+                                                }}
+                                            >
+                                                {header.isPlaceholder
+                                                    ? null
+                                                    : flexRender(
+                                                        header.column.columnDef.header,
+                                                        header.getContext()
+                                                    )}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                ))}
+                            </thead>
+                            <tbody>
+                                {visibleRange.start > 0 && (
+                                    <tr style={{ height: visibleRange.start * ROW_HEIGHT }}>
+                                        <td colSpan={colCount} />
+                                    </tr>
+                                )}
+                                {reactTable.getRowModel().rows.slice(visibleRange.start, visibleRange.end).map(row => (
+                                    <tr
+                                        key={row.id}
+                                        data-row-index={row.index}
+                                        style={{
+                                            height: ROW_HEIGHT,
+                                            borderBottom: '1px solid #f1f5f9',
+                                            background: row.getIsSelected() ? '#eff6ff' : 'transparent',
+                                        }}
+                                    >
+                                        {row.getVisibleCells().map(cell => (
+                                            <td
+                                                key={cell.id}
+                                                style={{
+                                                    padding: '4px 8px',
+                                                    borderRight: '1px solid #f1f5f9',
+                                                }}
+                                            >
+                                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                            </td>
+                                        ))}
+                                    </tr>
+                                ))}
+                                {visibleRange.end < totalRows && (
+                                    <tr style={{ height: (totalRows - visibleRange.end) * ROW_HEIGHT }}>
+                                        <td colSpan={colCount} />
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div
+                    style={{
+                        width: changeLogCollapsed ? 44 : 300,
+                        borderLeft: '1px solid #e2e8f0',
+                        background: '#f8fafc',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        transition: 'width 0.2s ease',
+                    }}
+                >
+                    <div style={{
+                        padding: '12px 12px',
+                        borderBottom: '1px solid #e2e8f0',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                    }}>
+                        {!changeLogCollapsed && (
+                            <strong style={{ fontSize: 12, color: '#334155' }}>Change Log</strong>
+                        )}
+                        <button
+                            onClick={() => setChangeLogCollapsed(prev => !prev)}
+                            style={{
+                                padding: '4px 8px',
+                                fontSize: 11,
+                                borderRadius: 6,
+                                border: '1px solid #e2e8f0',
+                                background: 'white',
+                                cursor: 'pointer',
+                                color: '#475569',
+                            }}
+                        >
+                            {changeLogCollapsed ? 'Expand' : 'Collapse'}
+                        </button>
+                    </div>
+                    {!changeLogCollapsed && (
+                        <div style={{ padding: 12, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minHeight: 0 }}>
+                            {sortedChangeLog.length === 0 ? (
+                                <div style={{ fontSize: 12, color: '#94a3b8' }}>No changes yet.</div>
+                            ) : (
+                                sortedChangeLog.map(entry => (
+                                    <div key={entry.id} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}>
+                                        <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>{entry.label}</div>
+                                        {entry.detail && (
+                                            <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>{entry.detail}</div>
+                                        )}
+                                        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
+                                            {new Date(entry.timestamp).toLocaleString()}
+                                        </div>
+                                    </div>
+                                ))
                             )}
-                            {reactTable.getRowModel().rows.slice(visibleRange.start, visibleRange.end).map(row => (
-                                <tr
-                                    key={row.id}
-                                    data-row-index={row.index}
-                                    style={{
-                                        height: ROW_HEIGHT,
-                                        borderBottom: '1px solid #f1f5f9',
-                                        background: row.getIsSelected() ? '#eff6ff' : 'transparent',
-                                    }}
-                                >
-                                    {row.getVisibleCells().map(cell => (
-                                        <td
-                                            key={cell.id}
-                                            style={{
-                                                padding: '4px 8px',
-                                                borderRight: '1px solid #f1f5f9',
-                                            }}
-                                        >
-                                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                                        </td>
-                                    ))}
-                                </tr>
-                            ))}
-                            {visibleRange.end < totalRows && (
-                                <tr style={{ height: (totalRows - visibleRange.end) * ROW_HEIGHT }}>
-                                    <td colSpan={colCount} />
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                    {filteredData.length === 0 && (
-                        <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>
-                            {showErrorsOnly ? 'No validation errors found.' : 'Table is empty.'}
                         </div>
                     )}
-                </div>
-            </div>
-
-            {/* Column Mapping Toolbar */}
-            <div style={{
-                padding: '10px 16px',
-                borderTop: '1px solid #e2e8f0',
-                background: '#f8fafc',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                fontSize: 13,
-            }}>
-                <div style={{ fontWeight: 700, color: '#0f172a' }}>Column Mapping</div>
-                <div style={{ color: '#475569' }}>
-                    {focusedColumnIndex !== null ? `Column ${focusedColumnIndex + 1}` : 'Select a cell to choose a column'}
-                </div>
-                <div style={{ minWidth: 220, flex: '0 0 260px' }}>
-                    <FieldMappingDropdown
-                        columnIndex={focusedColumnIndex ?? -1}
-                        currentFieldKey={focusedColumnIndex !== null ? mappingMap[focusedColumnIndex] : undefined}
-                        fields={fields}
-                        disabled={isReadOnly || table.status === 'confirmed' || focusedColumnIndex === null}
-                        onSelect={(value) => focusedColumnIndex !== null && handleMapColumn(focusedColumnIndex, value)}
-                        compact
-                    />
-                </div>
-                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{
-                        padding: '2px 8px',
-                        borderRadius: 12,
-                        background: errorCount > 0 ? '#fee2e2' : '#dcfce7',
-                        color: errorCount > 0 ? '#b91c1c' : '#166534',
-                        fontWeight: 700,
-                        fontSize: 11,
-                    }}>
-                        {errorCount} errors
-                    </span>
-                    <span style={{ color: '#64748b' }}>|</span>
-                    <span style={{ color: '#475569' }}>Arrow keys to move • Enter to edit • Esc to cancel</span>
                 </div>
             </div>
 
@@ -779,20 +967,37 @@ export default function TableEditorPanel({
             {correctionModal && (
                 <CorrectionReasonModal
                     isOpen={true}
-                    title="Correction Reason Required"
-                    message="Overwriting values requires a justification."
-                    onConfirm={(reason: string) => handleCellSave(correctionModal.rowIndex, correctionModal.columnIndex, correctionModal.value, reason)}
+                    title="Correction Required"
+                    message="Please provide a reason for this correction:"
+                    onConfirm={(reason) => handleCellSave(correctionModal.rowIndex, correctionModal.columnIndex, correctionModal.value, reason)}
                     onClose={() => setCorrectionModal(null)}
+                    confirmLabel="Save"
+                />
+            )}
+
+            {mappingCorrectionModal && (
+                <CorrectionReasonModal
+                    isOpen={true}
+                    title="Correction Required"
+                    message="Please provide a reason for updating the column mapping:"
+                    onConfirm={(reason) => {
+                        const { columnIndex, fieldKey } = mappingCorrectionModal;
+                        setMappingCorrectionModal(null);
+                        handleMapColumn(columnIndex, fieldKey, reason);
+                    }}
+                    onClose={() => setMappingCorrectionModal(null)}
+                    confirmLabel="Save"
                 />
             )}
 
             {deleteRowModal && (
                 <CorrectionReasonModal
                     isOpen={true}
-                    title={`Delete ${Object.keys(rowSelection).length || 1} Row(s)`}
-                    message="Deleting rows requires a justification."
-                    onConfirm={(reason: string) => handleDeleteSelected(reason)}
+                    title="Delete Row(s)"
+                    message="Please provide a reason for deleting the selected row(s):"
+                    onConfirm={handleDeleteSelected}
                     onClose={() => setDeleteRowModal(null)}
+                    confirmLabel="Delete"
                 />
             )}
 
@@ -800,9 +1005,9 @@ export default function TableEditorPanel({
                 <TableConfirmationModal
                     table={table}
                     errorCount={errorCount}
+                    isConfirming={isConfirming}
                     onConfirm={handleFinalConfirm}
                     onCancel={() => setConfirmationModalOpen(false)}
-                    isConfirming={isConfirming}
                 />
             )}
         </div>

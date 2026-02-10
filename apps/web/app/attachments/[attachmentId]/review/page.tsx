@@ -41,9 +41,13 @@ import ExtractedTextPool from '@/app/components/ocr/ExtractedTextPool';
 import FieldAssignmentPanel from '@/app/components/FieldAssignmentPanel';
 import CorrectionReasonModal from '@/app/components/ocr/CorrectionReasonModal';
 import ValidationConfirmationModal from '@/app/components/ValidationConfirmationModal';
+import ConfirmationModal from '@/app/components/ConfirmationModal';
 import TableCreationModal from '@/app/components/tables/TableCreationModal';
 import TableEditorPanel from '@/app/components/tables/TableEditorPanel';
-import { createTable, fetchTable, type CreateTablePayload, type FullTableResponse, type Table } from '@/app/lib/api/tables';
+
+import { createTable, fetchTable, deleteTable, type CreateTablePayload, type FullTableResponse, type Table } from '@/app/lib/api/tables';
+import TableListPanel from '@/app/components/tables/TableListPanel';
+
 
 type ResetLocalField = {
   key: string;
@@ -138,12 +142,14 @@ export default function AttachmentOcrReviewPage() {
   const [selectedSegmentIds, setSelectedSegmentIds] = useState<Set<string>>(new Set());
   const [isTableCreationOpen, setIsTableCreationOpen] = useState(false);
   const [isCreatingTable, setIsCreatingTable] = useState(false);
+  const [deleteTableModal, setDeleteTableModal] = useState<Table | null>(null);
   const [libraryFields, setLibraryFields] = useState<any[]>([]);
   const [highlightedSegment, setHighlightedSegment] = useState<Segment | null>(null);
   const [activeTab, setActiveTab] = useState<'document' | 'text' | 'fields'>('document');
 
   const [activeTable, setActiveTable] = useState<FullTableResponse | null>(null);
   const [tableLoading, setTableLoading] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState<'fields' | 'tables'>('fields');
 
 
   const addNotification = useCallback((notification: Notification) => {
@@ -822,6 +828,7 @@ export default function AttachmentOcrReviewPage() {
     try {
       const data = await fetchTable(tableId);
       setActiveTable(data);
+      setSidebarTab('tables'); // Ensure tables are visible in sidebar
     } catch (err: any) {
       addNotification({
         id: Date.now().toString(),
@@ -833,6 +840,38 @@ export default function AttachmentOcrReviewPage() {
       setTableLoading(false);
     }
   }, [addNotification]);
+
+  const handleDeleteTable = useCallback((table: Table) => {
+    setDeleteTableModal(table);
+  }, []);
+
+  const confirmDeleteTable = useCallback(async () => {
+    if (!deleteTableModal) return;
+
+    try {
+      await deleteTable(deleteTableModal.id);
+      addNotification({
+        id: Date.now().toString(),
+        type: 'success',
+        title: 'Table deleted',
+        message: 'Table removed successfully',
+      });
+      if (activeTable?.table.id === deleteTableModal.id) {
+        setActiveTable(null);
+      }
+      await loadBaseline();
+    } catch (err: any) {
+      addNotification({
+        id: Date.now().toString(),
+        type: 'error',
+        title: 'Delete failed',
+        message: err.message,
+      });
+    } finally {
+      setDeleteTableModal(null);
+    }
+  }, [deleteTableModal, addNotification, activeTable, loadBaseline]);
+
 
   // Auth loading state
   if (authLoading) {
@@ -937,20 +976,62 @@ export default function AttachmentOcrReviewPage() {
   const renderPanel3 = () => (
     <div style={{ flex: '1 1 30%', minWidth: isMobile ? '100%' : 300, display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <div style={{ color: '#475569', fontSize: 13, fontWeight: 700 }}>3. Field Assignments</div>
-        <span style={{ fontSize: 11, color: '#94a3b8' }}>{assignmentStats.assigned} / {libraryFields.length} set</span>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button
+            onClick={() => setSidebarTab('fields')}
+            style={{
+              background: 'none',
+              border: 'none',
+              borderBottom: sidebarTab === 'fields' ? '2px solid #2563eb' : '2px solid transparent',
+              color: sidebarTab === 'fields' ? '#2563eb' : '#64748b',
+              fontWeight: sidebarTab === 'fields' ? 700 : 500,
+              cursor: 'pointer',
+              fontSize: 13,
+              padding: '0 4px 6px',
+            }}
+          >
+            Fields ({assignmentStats.assigned}/{libraryFields.length})
+          </button>
+          <button
+            onClick={() => setSidebarTab('tables')}
+            style={{
+              background: 'none',
+              border: 'none',
+              borderBottom: sidebarTab === 'tables' ? '2px solid #2563eb' : '2px solid transparent',
+              color: sidebarTab === 'tables' ? '#2563eb' : '#64748b',
+              fontWeight: sidebarTab === 'tables' ? 700 : 500,
+              cursor: 'pointer',
+              fontSize: 13,
+              padding: '0 4px 6px',
+            }}
+          >
+            Tables ({baseline?.tables?.length || 0})
+          </button>
+        </div>
       </div>
+
       <div style={{ flex: 1, overflowY: 'auto', maxHeight: isMobile ? 'auto' : 'calc(100vh - 350px)', paddingRight: 4 }}>
-        <FieldAssignmentPanel
-          fields={libraryFields}
-          assignments={baseline?.assignments || []}
-          isReadOnly={isFieldBuilderReadOnly}
-          readOnlyReason={readOnlyReason}
-          onUpdate={handleAssignmentUpdate}
-          onDelete={handleAssignmentDelete}
-          onLocalValuesChange={setPendingLocalValues}
-          resetLocalField={resetLocalField}
-        />
+        {sidebarTab === 'fields' ? (
+          <FieldAssignmentPanel
+            fields={libraryFields}
+            assignments={baseline?.assignments || []}
+            isReadOnly={isFieldBuilderReadOnly}
+            readOnlyReason={readOnlyReason}
+            onUpdate={handleAssignmentUpdate}
+            onDelete={handleAssignmentDelete}
+            onLocalValuesChange={setPendingLocalValues}
+            resetLocalField={resetLocalField}
+          />
+        ) : (
+          <TableListPanel
+            tables={baseline?.tables || []}
+            activeTableId={activeTable?.table.id || null}
+            onSelectTable={loadTableDetail}
+            onDeleteTable={handleDeleteTable}
+            onCreateTable={() => setIsTableCreationOpen(true)}
+            isReadOnly={isFieldBuilderReadOnly}
+          />
+        )}
       </div>
     </div>
   );
@@ -987,49 +1068,7 @@ export default function AttachmentOcrReviewPage() {
               </button>
             )}
 
-            {baseline?.tables && baseline.tables.length > 0 && (
-              <div style={{ display: 'flex', gap: 8 }}>
-                {baseline.tables.map((t: Table) => (
-                  <button
-                    key={t.id}
-                    onClick={() => loadTableDetail(t.id)}
-                    style={{
-                      padding: '8px 14px',
-                      borderRadius: 10,
-                      border: '1px solid #e2e8f0',
-                      background: activeTable?.table.id === t.id ? '#eff6ff' : '#ffffff',
-                      color: activeTable?.table.id === t.id ? '#2563eb' : '#475569',
-                      fontSize: 14,
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {t.tableLabel || `Table #${t.tableIndex + 1}`}
-                  </button>
-                ))}
-              </div>
-            )}
 
-            {(baseline?.status === 'draft' || baseline?.status === 'reviewed') && (
-              <button
-                onClick={() => setIsTableCreationOpen(true)}
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: 10,
-                  border: '1px solid #e2e8f0',
-                  background: '#ffffff',
-                  color: '#475569',
-                  fontSize: 14,
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                <span>➕</span> Create Table
-              </button>
-            )}
             {baseline?.status === 'reviewed' && (
               <button
                 onClick={() => setIsConfirmModalOpen(true)}
@@ -1240,17 +1279,18 @@ export default function AttachmentOcrReviewPage() {
       {/* Layout Panels */}
       {isMobile ? (
         <div>
-          <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', marginBottom: 20, gap: 4 }}>
+          <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', marginBottom: 20, gap: 4, overflowX: 'auto' }}>
             {[
               { id: 'document', label: 'Document' },
               { id: 'text', label: 'Text' },
-              { id: 'fields', label: 'Fields' },
+              { id: 'fields', label: 'Fields & Tables' },
             ].map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
                 style={{
                   flex: 1,
+                  whiteSpace: 'nowrap',
                   padding: '12px 8px',
                   background: 'none',
                   border: 'none',
@@ -1267,22 +1307,50 @@ export default function AttachmentOcrReviewPage() {
           </div>
           {activeTab === 'document' && renderPanel1()}
           {activeTab === 'text' && renderPanel2()}
-          {activeTab === 'fields' && renderPanel3()}
+          {activeTab === 'fields' && activeTable ? (
+            <div style={{ height: 'calc(100vh - 200px)', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <button onClick={() => setActiveTable(null)} style={{ padding: 12, background: '#f8fafc', border: 'none', borderBottom: '1px solid #e2e8f0', fontWeight: 600, color: '#475569', textAlign: 'left' }}>← Back to List</button>
+              <TableEditorPanel
+                table={activeTable.table}
+                cells={activeTable.cells}
+                columnMappings={activeTable.columnMappings}
+                fields={libraryFields}
+                isReadOnly={isFieldBuilderReadOnly}
+                baselineStatus={baseline?.status}
+                onRefresh={async () => {
+                  await loadTableDetail(activeTable.table.id);
+                  await loadBaseline();
+                }}
+                onClose={() => setActiveTable(null)}
+                onNotification={addNotification}
+              />
+            </div>
+          ) : activeTab === 'fields' ? renderPanel3() : null}
         </div>
       ) : activeTable ? (
-        <div style={{ height: 'calc(100vh - 250px)', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
-          <TableEditorPanel
-            table={activeTable.table}
-            cells={activeTable.cells}
-            columnMappings={activeTable.columnMappings}
-            fields={libraryFields}
-            isReadOnly={isFieldBuilderReadOnly}
-            onRefresh={async () => {
-              await loadTableDetail(activeTable.table.id);
-              await loadBaseline();
-            }}
-            onClose={() => setActiveTable(null)}
-          />
+        <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', height: 'calc(100vh - 250px)' }}>
+          {/* Collapse Panel 1/2 into sidebar or hide them? 
+              Decision: Show Panel 3 (List) on left, Editor on right. 
+          */}
+          <div style={{ flex: '0 0 320px', display: 'flex', flexDirection: 'column', height: '100%' }}>
+            {renderPanel3()}
+          </div>
+          <div style={{ flex: 1, border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', height: '100%' }}>
+            <TableEditorPanel
+              table={activeTable.table}
+              cells={activeTable.cells}
+              columnMappings={activeTable.columnMappings}
+              fields={libraryFields}
+              isReadOnly={isFieldBuilderReadOnly}
+              baselineStatus={baseline?.status}
+              onRefresh={async () => {
+                await loadTableDetail(activeTable.table.id);
+                await loadBaseline();
+              }}
+              onClose={() => setActiveTable(null)}
+              onNotification={addNotification}
+            />
+          </div>
         </div>
       ) : (
         <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
@@ -1462,6 +1530,15 @@ export default function AttachmentOcrReviewPage() {
         selectedSegments={
           baseline?.segments?.filter(s => selectedSegmentIds.has(s.id as string)) || []
         }
+      />
+      <ConfirmationModal
+        isOpen={!!deleteTableModal}
+        onClose={() => setDeleteTableModal(null)}
+        onConfirm={confirmDeleteTable}
+        title="Delete Table"
+        message={`Are you sure you want to delete "${deleteTableModal?.tableLabel || `Table #${(deleteTableModal?.tableIndex ?? 0) + 1}`}"? This action cannot be undone.`}
+        confirmLabel="Delete Table"
+        confirmStyle="danger"
       />
       <NotificationToast
         notifications={notifications}

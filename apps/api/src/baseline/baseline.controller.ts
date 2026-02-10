@@ -14,11 +14,11 @@ import { JwtAuthGuard } from '../auth/auth.guard';
 import { CsrfGuard } from '../common/csrf';
 import { BaselineManagementService } from './baseline-management.service';
 import { DbService } from '../db/db.service';
-import { extractionBaselines, attachments, todos } from '../db/schema';
+import { extractionBaselines, attachments } from '../db/schema';
 import { and, desc, eq, inArray } from 'drizzle-orm';
-import type { ExtractionBaseline } from '../db/schema';
 import { BaselineAssignmentsService } from './baseline-assignments.service';
 import { AssignBaselineFieldDto } from './dto/assign-baseline-field.dto';
+import { AuthorizationService } from '../common/authorization.service';
 
 type RequestWithUser = { user: { userId: string } };
 
@@ -29,6 +29,7 @@ export class BaselineController {
     private readonly baselineService: BaselineManagementService,
     private readonly dbs: DbService,
     private readonly assignmentsService: BaselineAssignmentsService,
+    private readonly authService: AuthorizationService,
   ) { }
 
   /**
@@ -53,7 +54,7 @@ export class BaselineController {
     @Req() req: RequestWithUser,
     @Param('attachmentId') attachmentId: string,
   ) {
-    await this.ensureUserOwnsAttachment(req.user.userId, attachmentId);
+    await this.authService.ensureUserOwnsAttachment(req.user.userId, attachmentId);
 
     const [existing] = await this.dbs.db
       .select()
@@ -86,7 +87,7 @@ export class BaselineController {
     @Param('baselineId') baselineId: string,
   ) {
     const baseline = await this.getBaselineOrThrow(baselineId);
-    await this.ensureUserOwnsAttachment(req.user.userId, baseline.attachmentId);
+    await this.authService.ensureUserOwnsAttachment(req.user.userId, baseline.attachmentId);
 
     return await this.baselineService.markReviewed(
       baselineId,
@@ -103,7 +104,7 @@ export class BaselineController {
     @Param('baselineId') baselineId: string,
   ) {
     const baseline = await this.getBaselineOrThrow(baselineId);
-    await this.ensureUserOwnsAttachment(req.user.userId, baseline.attachmentId);
+    await this.authService.ensureUserOwnsAttachment(req.user.userId, baseline.attachmentId);
 
     // Guard: Service will check for and block unconfirmed tables (A3)
     return await this.baselineService.confirmBaseline(
@@ -122,7 +123,7 @@ export class BaselineController {
     @Body() body: { reason: string },
   ) {
     const baseline = await this.getBaselineOrThrow(baselineId);
-    await this.ensureUserOwnsAttachment(req.user.userId, baseline.attachmentId);
+    await this.authService.ensureUserOwnsAttachment(req.user.userId, baseline.attachmentId);
 
     return await this.baselineService.archiveBaseline(
       baselineId,
@@ -188,7 +189,7 @@ export class BaselineController {
     @Req() req: RequestWithUser,
     @Param('todoId') todoId: string,
   ) {
-    await this.ensureUserOwnsTodo(req.user.userId, todoId);
+    await this.authService.ensureUserOwnsTodo(req.user.userId, todoId);
 
     const rows = await this.dbs.db
       .select()
@@ -227,33 +228,4 @@ export class BaselineController {
     return baseline;
   }
 
-  private async ensureUserOwnsTodo(userId: string, todoId: string) {
-    const [todo] = await this.dbs.db
-      .select()
-      .from(todos)
-      .where(and(eq(todos.id, todoId), eq(todos.userId, userId)))
-      .limit(1);
-
-    if (!todo) {
-      throw new ForbiddenException('Access denied for todo');
-    }
-    return todo;
-  }
-
-  private async ensureUserOwnsAttachment(
-    userId: string,
-    attachmentId: string,
-  ) {
-    const [attachment] = await this.dbs.db
-      .select()
-      .from(attachments)
-      .where(eq(attachments.id, attachmentId))
-      .limit(1);
-
-    if (!attachment) {
-      throw new NotFoundException('Attachment not found');
-    }
-
-    await this.ensureUserOwnsTodo(userId, attachment.todoId);
-  }
 }

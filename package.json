@@ -1,5 +1,6 @@
 {
   "scripts": {
+    "test:api": "npm --prefix apps/api test",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug"

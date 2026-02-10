@@ -3994,3 +3994,75 @@ Fix table creation payload validation and ensure baseline responses include tabl
 ### Notes
 - **Impact**: Manual table creation now works; baseline review shows tables for selection.
 - **Assumptions**: None.
+
+---
+
+## 2026-02-09: Table List Panel & Switching (Task C4)
+- **Goal**: Implement sidebar list for tables, allowing switching and deletion.
+- **Changes**:
+  - Created `apps/web/app/components/tables/TableListPanel.tsx`.
+  - Updated `apps/web/app/attachments/[attachmentId]/review/page.tsx`:
+    - Added "Tables" tab in Panel 3.
+    - Implemented layout switching when a table is active (Editor Mode).
+    - Integrated `TableListPanel` with selection and deletion logic.
+  - Updated `apps/api/src/baseline/table-management.service.ts`:
+    - Modified `listTablesForBaseline` to count invalid cells per table and return `errorCount`.
+  - Updated `apps/web/app/lib/api/tables.ts`:
+    - Added `errorCount` to `Table` interface.
+- **Verification**:
+  - Validated that `listTablesForBaseline` groups by tableId and `errorCount` is returned.
+  - Frontend build passed; `TableListPanel` integrates cleanly.
+  - `codemapcc.md` verified as up-to-date with new components and routes.
+- **Pending / Next Steps**:
+  - **D1 Utilization & Locking**: Utilization tracking and UI locking (Next Task).
+  - **D2 Performance**: Manual performance profiling on table creation/switching.
+  - **Testing**:
+    - Unit checks for `errorCount` aggregation logic.
+    - Manual E2E: Create table -> Add invalid cell -> Check list badge -> Delete table.
+  - **Post-Completion**: Tag v8.7 after D1/D2 completion.
+
+---
+
+## 2026-02-10 - Task D1: Table Utilization Tracking
+
+### Objective
+Surface utilization metadata in the task detail page and ensure frontend typings carry utilization context for lock messaging.
+
+### What Was Built
+- Added utilization summary helper in `apps/web/app/task/[id]/page.tsx` so utilized baselines show table label/size/record/export context instead of a generic “Utilized” badge.
+- Updated attachment baseline badge tooltip/text to use the enriched summary, keeping lock messaging consistent with the table editor and list.
+- Extended frontend API typings for baselines and tables to include `utilizationMetadata` and baseline utilization fields.
+
+### Files Changed
+- `apps/web/app/task/[id]/page.tsx` - renders context-aware utilization summary on task detail attachment badges.
+- `apps/web/app/lib/api/baselines.ts` - adds `utilizationMetadata` typing to Baseline.
+- `apps/web/app/lib/api/tables.ts` - adds baseline utilization fields to Table interface.
+
+### Verification
+- Manual: Not performed (requires utilization scenario to observe banner text and lockout end-to-end).
+- Planned: Simulate utilized baseline, confirm task detail shows table label/size context; table editor/list already lock with the same metadata.
+
+### Status
+[UNVERIFIED]
+
+### Notes
+- Impact: v8.7 D1 utilization messaging parity across detail page, table list, and editor.
+- Open Questions: None.
+
+## 2026-02-10 - Task C4 Follow-up: Fix Table List Aggregation Corruption
+
+### Objective
+Repair accidental code corruption in `listTablesForBaseline` and restore the shared table/baseline lookup helper.
+
+### What Was Built
+- Cleaned `listTablesForBaseline` return mapping to emit `errorCount` without embedded helper code.
+- Restored `getTableWithBaseline` helper used by mutation flows.
+
+### Files Changed
+- `apps/api/src/baseline/table-management.service.ts`
+
+### Verification
+- Not run in this session.
+
+### Status
+[UNVERIFIED]

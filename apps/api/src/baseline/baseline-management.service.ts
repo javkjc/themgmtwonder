@@ -15,6 +15,7 @@ import {
 import { fieldLibrary } from '../field-library/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
+import type { Baseline } from '../common/types';
 
 /**
  * BaselineManagementService
@@ -49,7 +50,7 @@ export class BaselineManagementService {
     async createDraftBaseline(
         attachmentId: string,
         userId: string,
-    ): Promise<any> {
+    ): Promise<Baseline> {
         // 1. Create baseline record
         const [baseline] = await this.dbs.db
             .insert(extractionBaselines)
@@ -164,7 +165,7 @@ export class BaselineManagementService {
      * - 400 if status ≠ 'draft'
      * - 404 if baseline not found
      */
-    async markReviewed(baselineId: string, userId: string): Promise<any> {
+    async markReviewed(baselineId: string, userId: string): Promise<Baseline> {
         // Fetch current baseline
         const [existing] = await this.dbs.db
             .select()
@@ -233,7 +234,7 @@ export class BaselineManagementService {
      * - 400 if status ≠ 'reviewed'
      * - 404 if baseline not found
      */
-    async confirmBaseline(baselineId: string, userId: string): Promise<any> {
+    async confirmBaseline(baselineId: string, userId: string): Promise<Baseline> {
         // Run inside a transaction
         return await this.dbs.db.transaction(async (tx) => {
             // 1. Fetch current baseline
@@ -398,7 +399,7 @@ export class BaselineManagementService {
         baselineId: string,
         userId: string,
         reason?: string,
-    ): Promise<any> {
+    ): Promise<Baseline> {
         // Fetch current baseline
         const [existing] = await this.dbs.db
             .select()
@@ -454,16 +455,16 @@ export class BaselineManagementService {
      * @param metadata - Optional metadata about the utilization
      * @returns The updated baseline record
      *
-     * Behavior:
      * - First-write-wins: If utilizedAt is already set, does nothing and returns existing record.
      * - Only confirmed baselines can be utilized.
+     * - If metadata.tableId is provided, enriches metadata with table context (label, rowCount, columnCount).
      */
     async markBaselineUtilized(
         baselineId: string,
         type: 'record_created' | 'process_committed' | 'data_exported',
         userId: string,
-        metadata?: any,
-    ): Promise<any> {
+        metadata?: Record<string, unknown>,
+    ): Promise<Baseline> {
         return await this.dbs.db.transaction(async (tx) => {
             // 1. Fetch current baseline
             const [existing] = await tx
@@ -488,17 +489,38 @@ export class BaselineManagementService {
                 );
             }
 
-            // 4. Update utilization fields
+            // 4. Enrich metadata with table context if tableId provided
+            const finalMetadata = { ...(metadata || {}) };
+            const tableId = finalMetadata.tableId as string;
+
+            if (tableId) {
+                const [table] = await tx
+                    .select()
+                    .from(baselineTables)
+                    .where(eq(baselineTables.id, tableId))
+                    .limit(1);
+
+                if (table) {
+                    Object.assign(finalMetadata, {
+                        tableLabel: table.tableLabel,
+                        rowCount: table.rowCount,
+                        columnCount: table.columnCount,
+                    });
+                }
+            }
+
+            // 5. Update utilization fields
             const [updated] = await tx
                 .update(extractionBaselines)
                 .set({
                     utilizedAt: new Date(),
                     utilizationType: type,
+                    utilizationMetadata: finalMetadata,
                 })
                 .where(eq(extractionBaselines.id, baselineId))
                 .returning();
 
-            // 5. Audit Log
+            // 6. Audit Log
             // Map type to audit action (plan specific naming)
             const actionMap: Record<string, string> = {
                 record_created: 'baseline.utilized.record_created',
@@ -516,7 +538,7 @@ export class BaselineManagementService {
                     attachmentId: existing.attachmentId,
                     utilizationType: type,
                     utilizedAt: updated.utilizedAt,
-                    metadata: metadata || null,
+                    metadata: finalMetadata,
                 },
             });
 

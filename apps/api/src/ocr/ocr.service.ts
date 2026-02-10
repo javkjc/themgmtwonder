@@ -16,6 +16,7 @@ import {
   extractionBaselines,
   ocrResults,
   todos,
+  baselineTables,
 } from '../db/schema';
 import { OcrParsingService } from './ocr-parsing.service';
 import { OcrCorrectionsService } from './ocr-corrections.service';
@@ -142,20 +143,30 @@ export class OcrService {
       .set({ isCurrent: false })
       .where(eq(attachmentOcrOutputs.attachmentId, attachmentId));
 
-    // Reset any reviewed/confirmed baselines back to draft when new OCR is created
-    // First fetch the baselines that will be reset
-    const baselinesToReset = await this.dbs.db
+    // Delete tables and reset all non-archived baselines when new OCR is created
+    // Tables are tied to specific OCR extractions and must be recreated for new data
+    const existingBaselines = await this.dbs.db
       .select()
       .from(extractionBaselines)
       .where(
         and(
           eq(extractionBaselines.attachmentId, attachmentId),
           ne(extractionBaselines.status, 'archived'),
-          ne(extractionBaselines.status, 'draft'),
         )
       );
 
-    if (baselinesToReset.length > 0) {
+    if (existingBaselines.length > 0) {
+      const baselineIds = existingBaselines.map(b => b.id);
+
+      // Delete all tables from all baselines for this attachment
+      // CASCADE delete will automatically remove cells and column mappings
+      for (const baselineId of baselineIds) {
+        await this.dbs.db
+          .delete(baselineTables)
+          .where(eq(baselineTables.baselineId, baselineId));
+      }
+
+      // Reset all baselines to draft status
       await this.dbs.db
         .update(extractionBaselines)
         .set({ status: 'draft' })
@@ -167,7 +178,7 @@ export class OcrService {
         );
 
       // Log baseline resets
-      for (const baseline of baselinesToReset) {
+      for (const baseline of existingBaselines) {
         await this.auditService.log({
           action: 'baseline.reset_to_draft' as AuditAction,
           actorType: 'system',
@@ -178,6 +189,7 @@ export class OcrService {
             attachmentId,
             reason: 'New OCR extraction created',
             previousStatus: baseline.status,
+            tablesDeleted: true,
           },
         });
       }

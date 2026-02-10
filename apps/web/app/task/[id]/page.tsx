@@ -111,6 +111,45 @@ const renderStageBadge = (stageKey?: TaskStageKey | null) => {
   );
 };
 
+const UTILIZATION_TYPE_LABELS: Record<string, string> = {
+  record_created: 'record creation',
+  process_committed: 'workflow commit',
+  data_exported: 'data export',
+};
+
+const formatUtilizationSummary = (baseline?: Baseline | null) => {
+  if (!baseline?.utilizedAt) return null;
+
+  const typeLabel =
+    (baseline.utilizationType && UTILIZATION_TYPE_LABELS[baseline.utilizationType]) ||
+    baseline.utilizationType?.replace('_', ' ') ||
+    'utilization';
+
+  const meta: Record<string, any> = baseline.utilizationMetadata || {};
+  const parts: string[] = [];
+
+  if (meta.tableLabel) {
+    parts.push(`Table: ${meta.tableLabel}`);
+  } else if (meta.tableId) {
+    parts.push(`Table: ${meta.tableId}`);
+  }
+
+  if (meta.rowCount != null && meta.columnCount != null) {
+    parts.push(`size ${meta.rowCount}x${meta.columnCount}`);
+  }
+
+  if (meta.recordId) {
+    parts.push(`record ${meta.recordId}`);
+  }
+
+  if (meta.exportFormat) {
+    parts.push(`export ${meta.exportFormat}`);
+  }
+
+  const detail = parts.length ? ` (${parts.join(', ')})` : '';
+  return `Utilized via ${typeLabel}${detail}`;
+};
+
 const formatAuditChangeValue = (field: string, value: unknown): string => {
   if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) {
     return 'None';
@@ -1854,6 +1893,7 @@ export default function TaskDetailsPage() {
                         );
                         const baseline = baselinesByAttachment[attachment.id];
                         const baselineStatus = baseline?.status ?? null;
+                        const utilizationSummary = formatUtilizationSummary(baseline);
 
                         const latestOutput = viewerState?.outputs?.[0];
                         const latestProcessingStatus = latestOutput?.processingStatus ?? 'pending';
@@ -1937,10 +1977,10 @@ export default function TaskDetailsPage() {
                                           cursor: 'help'
                                         }}
                                         title={baseline.utilizedAt
-                                          ? `Utilized via ${baseline.utilizationType?.replace('_', ' ')} on ${formatDateTime(baseline.utilizedAt)}`
+                                          ? `${utilizationSummary || 'Utilized'} on ${formatDateTime(baseline.utilizedAt)}`
                                           : 'This baseline has not been used in any workflow yet'}
                                       >
-                                        {baseline.utilizedAt ? '✅ Utilized' : '⚪ Not yet used'}
+                                        {baseline.utilizedAt ? `✅ ${utilizationSummary || 'Utilized'}` : '⚪ Not yet used'}
                                       </span>
                                     )}
                                     {showOcrWarning && (

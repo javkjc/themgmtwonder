@@ -3,6 +3,7 @@ import {
     NotFoundException,
     BadRequestException,
     ForbiddenException,
+    ConflictException,
 } from '@nestjs/common';
 import { DbService } from '../db/db.service';
 import {
@@ -16,6 +17,9 @@ import {
 import { eq, and, gt, desc, sql, inArray } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import { FieldAssignmentValidatorService } from './field-assignment-validator.service';
+import { reconstructCellGrid } from './cell-grid.utils';
+import type { Table, Baseline, Cell, CellInsert, CreateTableOptions, TableWithDetails } from '../common/types';
+import type { PgTransaction } from 'drizzle-orm/pg-core';
 
 @Injectable()
 export class TableManagementService {
@@ -35,11 +39,8 @@ export class TableManagementService {
     async createTable(
         baselineId: string,
         userId: string,
-        options: {
-            label?: string;
-            cellValues: string[][]; // row-major: [row0_col0, row0_col1], [row1_col0, ...]
-        },
-    ): Promise<any> {
+        options: CreateTableOptions,
+    ): Promise<Table> {
         return await this.dbs.db.transaction(async (tx) => {
             // 1. Verify baseline valid and editable
             const [baseline] = await tx
@@ -104,7 +105,7 @@ export class TableManagementService {
                 .returning();
 
             // 5. Insert Cells (Batching if necessary)
-            const cellsToInsert: any[] = [];
+            const cellsToInsert: CellInsert[] = [];
             for (let r = 0; r < rowCount; r++) {
                 const row = options.cellValues[r];
                 // Validate consistency (optional, but good)
@@ -163,13 +164,22 @@ export class TableManagementService {
         columnIndex: number,
         fieldKey: string,
         userId: string,
-    ): Promise<any> {
+        correctionReason?: string,
+    ): Promise<{ success: boolean }> {
         return await this.dbs.db.transaction(async (tx) => {
             // 1. Verify table and baseline status
             const tableWithBaseline = await this.getTableWithBaseline(tx, tableId);
             const { table, baseline } = tableWithBaseline;
 
             this.ensureEditable(table, baseline);
+
+            const requiresReason = table.status === 'confirmed' || baseline.status === 'reviewed';
+            if (requiresReason && !correctionReason) {
+                const reason = table.status === 'confirmed'
+                    ? 'editing a confirmed table'
+                    : 'editing a table in a reviewed baseline';
+                throw new ConflictException(`Correction reason is required when ${reason}`);
+            }
 
             if (columnIndex < 0 || columnIndex >= table.columnCount) {
                 throw new BadRequestException(`Invalid column index: ${columnIndex}`);
@@ -261,7 +271,7 @@ export class TableManagementService {
         value: string,
         userId: string,
         correctionReason?: string,
-    ): Promise<any> {
+    ): Promise<void> {
         return await this.dbs.db.transaction(async (tx) => {
             const { table, baseline } = await this.getTableWithBaseline(tx, tableId);
             this.ensureEditable(table, baseline);
@@ -279,10 +289,19 @@ export class TableManagementService {
                 )
                 .limit(1);
 
-            // Check if overwrite requires reason
+            // Check if correction reason is required
+            // Reason required when:
+            // 1. Table is confirmed (locked table being edited), OR
+            // 2. Baseline is reviewed (reviewed baseline being edited)
             const isOverwrite = currentCell && currentCell.cellValue !== null && currentCell.cellValue !== '';
-            if (isOverwrite && !correctionReason) {
-                throw new BadRequestException('Correction reason is required when overwriting an existing value');
+            const requiresReason = table.status === 'confirmed' || baseline.status === 'reviewed';
+
+            if (requiresReason && !correctionReason) {
+                const reason = table.status === 'confirmed'
+                    ? 'editing a confirmed table'
+                    : 'editing a table in a reviewed baseline';
+                // Throw 409 Conflict so frontend shows correction modal
+                throw new ConflictException(`Correction reason is required when ${reason}`);
             }
 
             // Check if column is mapped
@@ -328,7 +347,7 @@ export class TableManagementService {
                     validationStatus: validationStatus as any,
                     errorText,
                     // validationSuggestion,
-                    correctionReason: isOverwrite ? correctionReason : null,
+                    correctionReason: correctionReason || null,
                     correctionFrom: isOverwrite ? currentCell.cellValue : null,
                     updatedAt: new Date(),
                 })
@@ -339,7 +358,7 @@ export class TableManagementService {
                         validationStatus: validationStatus as any,
                         errorText,
                         // validationSuggestion,
-                        correctionReason: isOverwrite ? correctionReason : null,
+                        correctionReason: correctionReason || null,
                         correctionFrom: isOverwrite ? currentCell.cellValue : null,
                         updatedAt: new Date(),
                     },
@@ -370,7 +389,7 @@ export class TableManagementService {
         rowIndex: number,
         userId: string,
         reason: string,
-    ): Promise<any> {
+    ): Promise<void> {
         if (!reason) {
             throw new BadRequestException('Reason required to delete row');
         }
@@ -392,36 +411,6 @@ export class TableManagementService {
                         eq(baselineTableCells.rowIndex, rowIndex)
                     )
                 );
-
-            // 2. Shift subsequent rows up (rowIndex - 1)
-            // We need to do this carefully. 
-            // SQL: UPDATE baseline_table_cells SET row_index = row_index - 1 WHERE table_id = ? AND row_index > ?
-            // Drizzle doesn't support raw SQL updates easily in typesafe way without `sql`; 
-            // but we can use generic update with where clause.
-            // Note: Update order matters if we had unique constraints that might collide transiently, 
-            // but since we deleted the target row, moving items INTO it should be fine.
-            // Actually, we are moving > rowIndex to rowIndex-1. 
-            // (k) -> (k-1).
-            // We should process from lowest to highest index to avoid collision? 
-            // Indices are unique (tableId, rowIndex, columnIndex).
-            // If we have row 5 and row 6. Delete 5. Update 6->5. 
-            // If we update 6->5, it's fine because 5 is gone.
-            // If we update 7->6, it's fine because 6 moved to 5.
-            // So we can do a single update statement usually.
-
-            // HOWEVER, unique constraint is (tableId, rowIndex, columnIndex).
-            // Efficient shift:
-            // Fetch all cells with row > rowIndex
-            // This could be many cells.
-            // Better to use SQL update if possible or loop.
-            // Since Drizzle abstracts SQL, let's try direct update.
-
-            // To be safe against unique constraint violations during update (if DB checks per row),
-            // usually it's safe if deferred or unrelated. PostreSQL checks per row.
-            // If we update set row_index = row_index - 1 where row_index > X.
-            // Row 6 becomes 5. 5 is empty. OK.
-            // Row 7 becomes 6. 6 was just moved? No, update happens based on snapshot usually?
-            // Actually, `UPDATE table SET row_index = row_index - 1 WHERE row_index > ?` works in Postgres safely.
 
             // In Drizzle:
             await tx
@@ -458,7 +447,7 @@ export class TableManagementService {
     /**
      * Confirm a table
      */
-    async confirmTable(tableId: string, userId: string): Promise<any> {
+    async confirmTable(tableId: string, userId: string): Promise<Table> {
         return await this.dbs.db.transaction(async (tx) => {
             const { table, baseline } = await this.getTableWithBaseline(tx, tableId);
 
@@ -519,7 +508,7 @@ export class TableManagementService {
     /**
      * Delete a table
      */
-    async deleteTable(tableId: string, userId: string): Promise<any> {
+    async deleteTable(tableId: string, userId: string): Promise<{ success: boolean }> {
         return await this.dbs.db.transaction(async (tx) => {
             const { table, baseline } = await this.getTableWithBaseline(tx, tableId);
             this.ensureEditable(table, baseline);
@@ -552,6 +541,23 @@ export class TableManagementService {
             confirmedByEmail: row.confirmedByEmail ?? null,
         };
 
+        const [baseline] = await this.dbs.db
+            .select()
+            .from(extractionBaselines)
+            .where(eq(extractionBaselines.id, table.baselineId))
+            .limit(1);
+
+        if (!baseline) {
+            throw new NotFoundException('Baseline for table not found');
+        }
+
+        const enhancedTable = {
+            ...table,
+            baselineUtilizedAt: baseline?.utilizedAt || null,
+            baselineUtilizationType: baseline?.utilizationType || null,
+            baselineUtilizationMetadata: baseline?.utilizationMetadata || null,
+        };
+
         const cellsFlat = await this.dbs.db
             .select()
             .from(baselineTableCells)
@@ -564,55 +570,16 @@ export class TableManagementService {
             .where(eq(baselineTableColumnMappings.tableId, tableId))
             .orderBy(baselineTableColumnMappings.columnIndex);
 
-        // Reconstruct 2D array
-        const cells: (typeof cellsFlat[0])[][] = [];
-
-        // Optimize reconstruction since we know data is ordered by row, col
-        let flatIndex = 0;
-        for (let r = 0; r < table.rowCount; r++) {
-            const row: typeof cellsFlat[0][] = [];
-            for (let c = 0; c < table.columnCount; c++) {
-                if (flatIndex < cellsFlat.length) {
-                    const cell = cellsFlat[flatIndex];
-                    // Verify alignment (sanity check)
-                    if (cell.rowIndex === r && cell.columnIndex === c) {
-                        row.push(cell);
-                        flatIndex++;
-                    } else {
-                        // Should not happen if DB is consistent
-                        row.push({
-                            id: 'missing',
-                            tableId: table.id,
-                            rowIndex: r,
-                            columnIndex: c,
-                            cellValue: '',
-                            validationStatus: 'valid',
-                            errorText: null,
-                            correctionFrom: null,
-                            correctionReason: null,
-                            updatedAt: new Date()
-                        });
-                    }
-                } else {
-                    row.push({
-                        id: 'missing',
-                        tableId: table.id,
-                        rowIndex: r,
-                        columnIndex: c,
-                        cellValue: '',
-                        validationStatus: 'valid',
-                        errorText: null,
-                        correctionFrom: null,
-                        correctionReason: null,
-                        updatedAt: new Date()
-                    });
-                }
-            }
-            cells.push(row);
-        }
+        // Reconstruct 2D grid from flat ordered array
+        const cells = reconstructCellGrid(
+            cellsFlat,
+            table.rowCount,
+            table.columnCount,
+            table.id,
+        );
 
         return {
-            table,
+            table: enhancedTable,
             cells,
             columnMappings: mappings,
         };
@@ -622,53 +589,87 @@ export class TableManagementService {
      * List tables for a baseline with mapping summaries
      */
     async listTablesForBaseline(baselineId: string) {
-        const tableRows = await this.dbs.db
-            .select({
-                table: baselineTables,
-                confirmedByEmail: users.email,
-            })
-            .from(baselineTables)
-            .leftJoin(users, eq(baselineTables.confirmedBy, users.id))
-            .where(eq(baselineTables.baselineId, baselineId))
-            .orderBy(baselineTables.tableIndex);
+    const tableRows = await this.dbs.db
+        .select({
+            table: baselineTables,
+            confirmedByEmail: users.email,
+        })
+        .from(baselineTables)
+        .leftJoin(users, eq(baselineTables.confirmedBy, users.id))
+        .where(eq(baselineTables.baselineId, baselineId))
+        .orderBy(baselineTables.tableIndex);
 
-        if (tableRows.length === 0) {
-            return [];
-        }
-
-        const tables = tableRows.map(row => ({
-            ...row.table,
-            confirmedByEmail: row.confirmedByEmail ?? null,
-        }));
-
-        const tableIds = tables.map(t => t.id);
-
-        const mappings = await this.dbs.db
-            .select()
-            .from(baselineTableColumnMappings)
-            .where(inArray(baselineTableColumnMappings.tableId, tableIds));
-
-        // Group mappings by tableId
-        const mappingsByTable = mappings.reduce((acc, m) => {
-            if (!acc[m.tableId]) {
-                acc[m.tableId] = [];
-            }
-            acc[m.tableId].push(m);
-            return acc;
-        }, {} as Record<string, typeof mappings>);
-
-        return tables.map(t => ({
-            ...t,
-            columnMappings: mappingsByTable[t.id] || [],
-        }));
+    if (tableRows.length === 0) {
+        return [];
     }
 
-    // --- Helpers ---
+    const tables = tableRows.map(row => ({
+        ...row.table,
+        confirmedByEmail: row.confirmedByEmail ?? null,
+    }));
 
-    private async getTableWithBaseline(tx: any, tableId: string) {
-        // Since we can't easily join in one query and map to objects with Drizzle without verbose relations setup in query builder,
-        // we'll simpler fetch table then baseline.
+    const tableIds = tables.map(t => t.id);
 
+    // Fetch baseline to get utilization info for all tables
+    const [baseline] = await this.dbs.db
+        .select()
+        .from(extractionBaselines)
+        .where(eq(extractionBaselines.id, baselineId))
+        .limit(1);
+
+    const baselineUtilizedAt = baseline?.utilizedAt || null;
+    const baselineUtilizationType = baseline?.utilizationType || null;
+    const baselineUtilizationMetadata = baseline?.utilizationMetadata || null;
+
+
+    const mappings = await this.dbs.db
+        .select()
+        .from(baselineTableColumnMappings)
+        .where(inArray(baselineTableColumnMappings.tableId, tableIds));
+
+    // Group mappings by tableId
+    const mappingsByTable = mappings.reduce((acc: Record<string, typeof mappings>, m) => {
+        if (!acc[m.tableId]) {
+            acc[m.tableId] = [];
+        }
+        acc[m.tableId].push(m);
+        return acc;
+    }, {} as Record<string, typeof mappings>);
+
+    // Count invalid cells per table
+    const errorCounts = await this.dbs.db
+        .select({
+            tableId: baselineTableCells.tableId,
+            count: sql<number>`count(*)`.mapWith(Number),
+        })
+        .from(baselineTableCells)
+        .where(
+            and(
+                inArray(baselineTableCells.tableId, tableIds),
+                eq(baselineTableCells.validationStatus, 'invalid')
+            )
+        )
+        .groupBy(baselineTableCells.tableId);
+
+    const errorMap = errorCounts.reduce((acc, curr) => {
+        acc[curr.tableId] = curr.count;
+        return acc;
+    }, {} as Record<string, number>);
+
+    return tables.map((t) => ({
+        ...t,
+        baselineUtilizedAt,
+        baselineUtilizationType,
+        baselineUtilizationMetadata,
+        columnMappings: mappingsByTable[t.id] || [],
+        errorCount: errorMap[t.id] ?? 0,
+    }));
+}
+
+    private async getTableWithBaseline(
+        tx: PgTransaction<any, any, any>,
+        tableId: string,
+    ): Promise<{ table: Table; baseline: Baseline }> {
         const [table] = await tx
             .select()
             .from(baselineTables)
@@ -692,7 +693,7 @@ export class TableManagementService {
         return { table, baseline };
     }
 
-    private ensureEditable(table: any, baseline: any) {
+    private ensureEditable(table: Table, baseline: Baseline): void {
         if (baseline.utilizedAt) {
             throw new ForbiddenException('Baseline is locked due to utilization');
         }
@@ -701,9 +702,6 @@ export class TableManagementService {
         }
         if (baseline.status === 'confirmed') {
             throw new BadRequestException('Baseline is confirmed and cannot be modified');
-        }
-        if (table.status === 'confirmed') {
-            throw new BadRequestException('Table is already confirmed and cannot be modified');
         }
     }
 }
