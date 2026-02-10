@@ -26,7 +26,7 @@ jobs:
         echo "JWT_SECRET=test-jwt-secret-for-ci-only" >> .env
         echo "API_PORT=3000" >> .env
     - name: Start Docker services
-      run: docker-compose up -d --build
+      run: docker compose up -d --build
     - name: Wait for services to be healthy
       run: |
         echo "Waiting for API to be ready..."
@@ -49,15 +49,15 @@ jobs:
         done
     - name: Show Docker logs (if services failed to start)
       if: failure()
-      run: docker-compose logs
+      run: docker compose logs
     - name: Run Playwright tests
       run: npx playwright test
     - name: Show Docker logs (if tests failed)
       if: failure()
-      run: docker-compose logs
+      run: docker compose logs
     - name: Stop Docker services
       if: always()
-      run: docker-compose down -v
+      run: docker compose down -v
     - uses: actions/upload-artifact@v4
       if: ${{ !cancelled() }}
       with:
