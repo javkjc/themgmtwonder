@@ -578,10 +578,10 @@ WHERE id = '<BASELINE_ID>';
 - Test with table size: 100 rows × 20 columns (2000 cells)
 
 **D2 Performance Checklist (Run After D1)**
-- [ ] Create table: < 500ms for 100 rows × 10 columns (1000 cell inserts)
-- [ ] Load table: < 300ms for 100 rows × 10 columns
-- [ ] Update cell: < 100ms (single UPDATE + validation)
-- [ ] Bulk column validation: < 1s for 1000 cells
+- [x] Create table: < 500ms for 100 rows × 10 columns (1000 cell inserts)
+- [x] Load table: < 300ms for 100 rows × 10 columns
+- [x] Update cell: < 100ms (single UPDATE + validation)
+- [x] Bulk column validation: < 1s for 1000 cells
 - [ ] Initial grid render: < 500ms for 100 visible rows
 - [ ] Virtual scrolling: only visible rows + 50-row buffer
 - [ ] Scroll performance: 60 FPS (16ms per frame)

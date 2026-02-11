@@ -4130,3 +4130,32 @@ Align review-page change logs with audit records, fix row deletion reindexing co
 
 ### Status
 [UNVERIFIED]
+---
+
+## 2026-02-11 - D2 Backend Performance Checks
+
+### Objective
+Record backend performance checklist results for v8.7 table review.
+
+### What Was Built
+- Executed backend performance runs using `apps/api/test/perf-d2.mjs` against the provided attachment baseline.
+- Captured 10-run statistics for 100×20 create-table latency and isolated insert time as the dominant factor during instrumentation.
+- Left frontend performance checks pending per user direction.
+
+### Files Changed
+- `tasks/plan.md` - checked backend performance checklist items.
+- `tasks/executionnotes.md` - appended backend performance verification entry.
+
+### Verification
+Manual (script): `node apps/api/test/perf-d2.mjs` with `D2_ATTACHMENT_ID=0a2b9e3e-aeff-40bf-b570-cc0a05a35ee5`
+- Create 100×20 (2000 cells) over 10 runs: avg 349.8 ms, median 335.6 ms, p95 500.7 ms, min 271.8 ms, max 500.7 ms.
+- Instrumentation showed create-table time dominated by batch cell inserts (cellInsert ~247–385 ms) with other steps single-digit ms.
+- Frontend performance checklist items not run (deferred by user).
+
+### Status
+[NEEDS-TESTING]
+
+### Notes
+- **Impact**: Affects Feature #v8.7 Table Review for Structured Document Data.
+- **Assumptions**: Frontend performance checks will be completed later if required.
+- **Open Questions**: None.
