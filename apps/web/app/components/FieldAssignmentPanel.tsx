@@ -18,6 +18,7 @@ interface FieldAssignmentPanelProps {
   onLocalValuesChange?: (localValues: Record<string, string>) => void;
   resetLocalField?: ResetLocalField | null;
   readOnlyReason?: string;
+  highlightFieldKey?: string | null;
 }
 
 const typeInputAttributes: Record<FieldCharacterType, { type: React.HTMLInputTypeAttribute; inputMode?: 'text' | 'numeric' | 'decimal' | 'email' | 'tel' | 'url'; step?: string; placeholder?: string }> = {
@@ -89,6 +90,7 @@ export default function FieldAssignmentPanel({
   onLocalValuesChange,
   resetLocalField,
   readOnlyReason,
+  highlightFieldKey,
 }: FieldAssignmentPanelProps) {
   const [localValues, setLocalValues] = useState<Record<string, string>>({});
 
@@ -212,6 +214,8 @@ export default function FieldAssignmentPanel({
         // Show error styling if: backend has validation error OR user has unsaved local value
         const hasValidationError = (validation && !validation.valid) || hasLocalValue;
 
+        const isHighlighted = highlightFieldKey === field.fieldKey;
+
         return (
           <div
             key={field.id}
@@ -220,12 +224,14 @@ export default function FieldAssignmentPanel({
             style={{
               padding: '16px',
               borderRadius: 16,
-              border: hasValidationError ? '2px solid #fecaca' : '1px solid #e2e8f0',
-              background: hasValidationError ? '#fef2f2' : '#ffffff',
+              border: isHighlighted ? '2px solid #fb923c' : hasValidationError ? '2px solid #fecaca' : '1px solid #e2e8f0',
+              background: isHighlighted ? '#fff7ed' : hasValidationError ? '#fef2f2' : '#ffffff',
               transition: 'box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease',
-              boxShadow: hasValidationError
-                ? '0 4px 10px -2px rgba(220, 38, 38, 0.15)'
-                : '0 4px 10px -2px rgba(15, 23, 42, 0.08)',
+              boxShadow: isHighlighted
+                ? '0 6px 18px -4px rgba(251, 146, 60, 0.35)'
+                : hasValidationError
+                  ? '0 4px 10px -2px rgba(220, 38, 38, 0.15)'
+                  : '0 4px 10px -2px rgba(15, 23, 42, 0.08)',
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>

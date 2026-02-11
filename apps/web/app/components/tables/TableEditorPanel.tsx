@@ -10,6 +10,7 @@ import {
     RowSelectionState,
 } from '@tanstack/react-table';
 import { Table, Cell, ColumnMapping, updateCell, deleteRow, assignColumn, confirmTable } from '@/app/lib/api/tables';
+import { apiFetchJson } from '@/app/lib/api';
 import { Field, FieldCharacterType } from '@/app/lib/api/fields';
 import type { Notification } from '../NotificationToast';
 import CorrectionReasonModal from '../ocr/CorrectionReasonModal';
@@ -139,8 +140,18 @@ export default function TableEditorPanel({
     const scrollRef = useRef<HTMLDivElement | null>(null);
     const [visibleRange, setVisibleRange] = useState<{ start: number; end: number }>({ start: 0, end: 50 });
     const [recentlySavedCells, setRecentlySavedCells] = useState<Set<string>>(new Set());
-    const [changeLogCollapsed, setChangeLogCollapsed] = useState(false);
-    const [changeLog, setChangeLog] = useState<Array<{ id: string; timestamp: number; label: string; detail?: string }>>([]);
+    const [pendingFindKey, setPendingFindKey] = useState<{ visibleIndex: number } | null>(null);
+    const [findHighlightRowIndex, setFindHighlightRowIndex] = useState<number | null>(null);
+    const [pendingFindTarget, setPendingFindTarget] = useState<{ rowIndex: number; columnIndex: number } | null>(null);
+    const [changeLogCollapsed, setChangeLogCollapsed] = useState(true);
+    const [changeLogLoaded, setChangeLogLoaded] = useState(false);
+    const [changeLog, setChangeLog] = useState<Array<{
+        id: string;
+        timestamp: number;
+        label: string;
+        detail?: string;
+        target?: { rowIndex: number; columnIndex: number; cellId?: string; expectedValue?: string };
+    }>>([]);
     const ROW_HEIGHT = 40;
 
     const columnHelper = createColumnHelper<Cell[]>();
@@ -207,16 +218,16 @@ export default function TableEditorPanel({
         return count;
     }, [cells]);
 
-    const addChangeLogEntry = useCallback((entry: { label: string; detail?: string }) => {
-        setChangeLog(prev => [
-            {
-                id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                timestamp: Date.now(),
-                label: entry.label,
-                detail: entry.detail,
-            },
-            ...prev,
-        ]);
+    const addChangeLogEntry = useCallback((entry: { label: string; detail?: string; target?: { rowIndex: number; columnIndex: number; cellId?: string } }) => {
+        const record = {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            timestamp: Date.now(),
+            label: entry.label,
+            detail: entry.detail,
+            target: entry.target,
+        };
+        console.log('[ChangeLog][Table]', record);
+        setChangeLog(prev => [record, ...prev]);
     }, []);
 
     const filteredData = useMemo(() => {
@@ -228,6 +239,109 @@ export default function TableEditorPanel({
     const sortedChangeLog = useMemo(() => {
         return [...changeLog].sort((a, b) => b.timestamp - a.timestamp);
     }, [changeLog]);
+
+    const cellIdMap = useMemo(() => {
+        const map = new Map<string, { rowIndex: number; columnIndex: number }>();
+        cells.forEach(row => {
+            row.forEach(cell => {
+                if (cell.id) {
+                    map.set(cell.id, { rowIndex: cell.rowIndex, columnIndex: cell.columnIndex });
+                }
+            });
+        });
+        return map;
+    }, [cells]);
+
+    const tableRowIndexSet = useMemo(() => {
+        const set = new Set<number>();
+        cells.forEach(row => {
+            const idx = row[0]?.rowIndex;
+            if (Number.isFinite(idx)) set.add(idx as number);
+        });
+        return set;
+    }, [cells]);
+
+    useEffect(() => {
+        let isMounted = true;
+        const loadAuditHistory = async () => {
+            try {
+                const history = await apiFetchJson(
+                    `/audit/resource/${table.id}?type=baseline_table&limit=200&offset=0`,
+                    { method: 'GET' },
+                );
+                if (!isMounted || !Array.isArray(history)) return;
+                const entries = history.map((item: any) => {
+                    const details = item.details || {};
+                    const action = item.action || '';
+                    let label = action.replace('table.', 'Table ').replace(/\./g, ' ');
+                    let detail = '';
+                    let target: { rowIndex: number; columnIndex: number; cellId?: string; expectedValue?: string } | undefined;
+
+                    if (action === 'table.cell.update') {
+                        const row = Number(details.rowIndex);
+                        const col = Number(details.columnIndex);
+                        const before = details.previousValue ?? '';
+                        const after = details.newValue ?? '';
+                        label = `Cell R${row + 1}C${col + 1} updated`;
+                        detail = `"${before}" → "${after}"`;
+                        if (details.cellId) {
+                            target = { rowIndex: row, columnIndex: col, cellId: details.cellId };
+                        } else if (Number.isFinite(row) && Number.isFinite(col)) {
+                            target = { rowIndex: row, columnIndex: col };
+                        }
+                    } else if (action === 'table.row.delete') {
+                        const row = Number(details.rowIndex);
+                        label = Number.isFinite(row) ? `Row ${row + 1} deleted` : 'Row deleted';
+                        detail = details.reason ? `Reason: ${details.reason}` : '';
+                    } else if (action === 'table.column.assign') {
+                        const col = Number(details.columnIndex);
+                        label = Number.isFinite(col) ? `Column ${col + 1} mapping updated` : 'Column mapping updated';
+                        detail = details.fieldLabel || details.fieldKey ? `Mapped to ${details.fieldLabel || details.fieldKey}` : '';
+                    } else if (action === 'table.confirm') {
+                        label = 'Table confirmed';
+                    } else if (action === 'table.create') {
+                        label = 'Table created';
+                    }
+
+                    if (item.userEmail) {
+                        detail = detail ? `${detail} · ${item.userEmail}` : `${item.userEmail}`;
+                    }
+
+                    return {
+                        id: item.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                        timestamp: new Date(item.createdAt || Date.now()).getTime(),
+                        label,
+                        detail: detail || undefined,
+                        target,
+                    };
+                });
+                setChangeLog(entries);
+                setChangeLogLoaded(true);
+            } catch {
+                const stored = localStorage.getItem(`table-change-log:${table.id}`);
+                if (stored) {
+                    try {
+                        const parsed = JSON.parse(stored);
+                        if (Array.isArray(parsed)) {
+                            setChangeLog(parsed);
+                        }
+                    } catch {
+                        // Ignore invalid storage
+                    }
+                }
+                setChangeLogLoaded(true);
+            }
+        };
+        loadAuditHistory();
+        return () => {
+            isMounted = false;
+        };
+    }, [table.id]);
+
+    useEffect(() => {
+        if (!changeLogLoaded) return;
+        localStorage.setItem(`table-change-log:${table.id}`, JSON.stringify(changeLog));
+    }, [changeLog, table.id, changeLogLoaded]);
 
     const columns = useMemo(() => {
         const cols = [];
@@ -351,8 +465,8 @@ export default function TableEditorPanel({
                         }
 
                         if (isFocused) {
-                            borderColor = '2px solid #3b82f6';
-                            boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.2)';
+                                borderColor = '2px solid #3b82f6';
+                                boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.2)';
                         }
 
                         return (
@@ -444,6 +558,7 @@ export default function TableEditorPanel({
                 addChangeLogEntry({
                     label: `Cell R${rowIndex + 1}C${columnIndex + 1} updated`,
                     detail: `"${oldValue}" → "${newValue}"`,
+                    target: { rowIndex, columnIndex },
                 });
             }
 
@@ -640,8 +755,51 @@ export default function TableEditorPanel({
     }, [ROW_HEIGHT, totalRows]);
 
     useEffect(() => {
+        if (!pendingFindTarget) return;
+        const { rowIndex, columnIndex } = pendingFindTarget;
+        const visibleIndex = filteredData.findIndex(row => row[0]?.rowIndex === rowIndex);
+        const resolvedIndex = visibleIndex >= 0 ? visibleIndex : rowIndex;
+        const container = scrollRef.current;
+        const clientHeight = container?.clientHeight || 0;
+        const visible = Math.ceil(clientHeight / ROW_HEIGHT) + 20;
+        const start = Math.max(0, resolvedIndex - 5);
+        const end = Math.min(totalRows, start + visible);
+        setVisibleRange({ start, end });
+        const scrollTarget = Math.max(0, resolvedIndex) * ROW_HEIGHT;
+        if (scrollRef.current) {
+            scrollRef.current.scrollTop = Math.max(0, scrollTarget - 120);
+        }
+        handleScroll();
+        setFocusedCell({ rowIndex: Math.max(0, resolvedIndex), columnIndex });
+        setFocusedColumnIndex(columnIndex);
+
+        const focusTarget = () => {
+            const selector = `tr[data-row-index="${Math.max(0, resolvedIndex)}"] td:nth-child(${columnIndex + 3}) div[tabindex="0"]`;
+            const el = document.querySelector(selector) as HTMLElement | null;
+            el?.focus();
+        };
+        requestAnimationFrame(() => {
+            focusTarget();
+            setTimeout(() => focusTarget(), 50);
+        });
+
+        setPendingFindKey({ visibleIndex: Math.max(0, resolvedIndex) });
+        setPendingFindTarget(null);
+    }, [filteredData, pendingFindTarget, handleScroll]);
+
+    useEffect(() => {
         handleScroll();
     }, [handleScroll, totalRows]);
+
+    useEffect(() => {
+        if (!pendingFindKey) return;
+        const { visibleIndex } = pendingFindKey;
+        const inRange = visibleIndex >= visibleRange.start && visibleIndex < visibleRange.end;
+        if (!inRange) return;
+        setFindHighlightRowIndex(visibleIndex);
+        setTimeout(() => setFindHighlightRowIndex(null), 8000);
+        setPendingFindKey(null);
+    }, [pendingFindKey, visibleRange]);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'white' }}>
@@ -826,7 +984,7 @@ export default function TableEditorPanel({
             )}
 
             {/* Grid + Change Log */}
-            <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+            <div style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative' }}>
                 <div
                     style={{ flex: 1, overflow: 'auto', padding: 24, background: '#f1f5f9' }}
                     onKeyDown={handleKeyDown}
@@ -880,7 +1038,11 @@ export default function TableEditorPanel({
                                         style={{
                                             height: ROW_HEIGHT,
                                             borderBottom: '1px solid #f1f5f9',
-                                            background: row.getIsSelected() ? '#eff6ff' : 'transparent',
+                                            background: findHighlightRowIndex === row.index
+                                                ? '#fff7ed'
+                                                : row.getIsSelected()
+                                                    ? '#eff6ff'
+                                                    : 'transparent',
                                         }}
                                     >
                                         {row.getVisibleCells().map(cell => (
@@ -905,59 +1067,142 @@ export default function TableEditorPanel({
                         </table>
                     </div>
                 </div>
-                <div
-                    style={{
-                        width: changeLogCollapsed ? 44 : 300,
-                        borderLeft: '1px solid #e2e8f0',
-                        background: '#f8fafc',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        transition: 'width 0.2s ease',
-                    }}
-                >
-                    <div style={{
-                        padding: '12px 12px',
-                        borderBottom: '1px solid #e2e8f0',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 8,
-                    }}>
-                        {!changeLogCollapsed && (
-                            <strong style={{ fontSize: 12, color: '#334155' }}>Change Log</strong>
-                        )}
+                <div style={{ position: 'absolute', top: 12, right: 24, bottom: 72, zIndex: 30 }}>
+                    {changeLogCollapsed ? (
                         <button
-                            onClick={() => setChangeLogCollapsed(prev => !prev)}
+                            onClick={() => setChangeLogCollapsed(false)}
+                            title="Open change log"
                             style={{
-                                padding: '4px 8px',
-                                fontSize: 11,
-                                borderRadius: 6,
+                                width: 44,
+                                height: 44,
+                                borderRadius: 10,
                                 border: '1px solid #e2e8f0',
-                                background: 'white',
+                                background: '#ffffff',
                                 cursor: 'pointer',
                                 color: '#475569',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: '0 6px 16px rgba(15, 23, 42, 0.08)',
+                                fontSize: 16,
+                                fontWeight: 700,
                             }}
                         >
-                            {changeLogCollapsed ? 'Expand' : 'Collapse'}
+                            ›
                         </button>
-                    </div>
-                    {!changeLogCollapsed && (
-                        <div style={{ padding: 12, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minHeight: 0 }}>
-                            {sortedChangeLog.length === 0 ? (
-                                <div style={{ fontSize: 12, color: '#94a3b8' }}>No changes yet.</div>
-                            ) : (
-                                sortedChangeLog.map(entry => (
-                                    <div key={entry.id} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}>
-                                        <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>{entry.label}</div>
-                                        {entry.detail && (
-                                            <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>{entry.detail}</div>
-                                        )}
-                                        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
-                                            {new Date(entry.timestamp).toLocaleString()}
+                    ) : (
+                        <div
+                            style={{
+                                width: 292,
+                                height: '100%',
+                                border: '1px solid #e2e8f0',
+                                background: '#f8fafc',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                borderRadius: 12,
+                                boxShadow: '0 12px 30px rgba(15, 23, 42, 0.12)',
+                                overflow: 'hidden',
+                            }}
+                        >
+                            <div style={{
+                                padding: '10px 12px',
+                                borderBottom: '1px solid #e2e8f0',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: 8,
+                            }}>
+                                <strong style={{ fontSize: 12, color: '#334155' }}>Change Log</strong>
+                                <button
+                                    onClick={() => setChangeLogCollapsed(true)}
+                                    title="Collapse"
+                                    style={{
+                                        width: 24,
+                                        height: 24,
+                                        borderRadius: 999,
+                                        border: '1px solid #e2e8f0',
+                                        background: 'white',
+                                        cursor: 'pointer',
+                                        color: '#64748b',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                    }}
+                                >
+                                    ×
+                                </button>
+                            </div>
+                            <div
+                                style={{
+                                    padding: 12,
+                                    overflowY: 'auto',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: 10,
+                                    flex: 1,
+                                    minHeight: 0,
+                                    direction: 'rtl',
+                                }}
+                            >
+                                <div style={{ direction: 'ltr', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                {sortedChangeLog.length === 0 ? (
+                                    <div style={{ fontSize: 12, color: '#94a3b8' }}>No changes yet.</div>
+                                ) : (
+                                    sortedChangeLog.map(entry => (
+                                        <div key={entry.id} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                                <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>{entry.label}</div>
+                                                {entry.target && (
+                                                    <button
+                                                        onClick={() => {
+                                                            let rowIndex = entry.target!.rowIndex;
+                                                            let columnIndex = entry.target!.columnIndex;
+                                                            if (entry.target?.cellId) {
+                                                                const loc = cellIdMap.get(entry.target.cellId);
+                                                                if (!loc) {
+                                                                    showNotification('Row not found (it may have been deleted).', 'error');
+                                                                    return;
+                                                                }
+                                                                rowIndex = loc.rowIndex;
+                                                                columnIndex = loc.columnIndex;
+                                                            } else {
+                                                                if (!tableRowIndexSet.has(rowIndex)) {
+                                                                    showNotification('Row not found (it may have been deleted).', 'error');
+                                                                    return;
+                                                                }
+                                                            }
+                                                            const visibleIndex = filteredData.findIndex(row => row[0]?.rowIndex === rowIndex);
+                                                            if (showErrorsOnly && visibleIndex === -1) {
+                                                                setShowErrorsOnly(false);
+                                                            }
+                                                            setPendingFindTarget({ rowIndex, columnIndex });
+                                                        }}
+                                                        style={{
+                                                            border: '1px solid #dbeafe',
+                                                            background: '#eff6ff',
+                                                            color: '#2563eb',
+                                                            fontSize: 11,
+                                                            fontWeight: 600,
+                                                            padding: '2px 6px',
+                                                            borderRadius: 6,
+                                                            cursor: 'pointer',
+                                                        }}
+                                                    >
+                                                        Find
+                                                    </button>
+                                                )}
+                                            </div>
+                                            {entry.detail && (
+                                                <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>{entry.detail}</div>
+                                            )}
+                                            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
+                                                {new Date(entry.timestamp).toLocaleString()}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))
-                            )}
+                                    ))
+                                )}
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -969,7 +1214,10 @@ export default function TableEditorPanel({
                     isOpen={true}
                     title="Correction Required"
                     message="Please provide a reason for this correction:"
-                    onConfirm={(reason) => handleCellSave(correctionModal.rowIndex, correctionModal.columnIndex, correctionModal.value, reason)}
+                    onConfirm={(reason) => {
+                        setCorrectionModal(null);
+                        handleCellSave(correctionModal.rowIndex, correctionModal.columnIndex, correctionModal.value, reason);
+                    }}
                     onClose={() => setCorrectionModal(null)}
                     confirmLabel="Save"
                 />
@@ -995,7 +1243,10 @@ export default function TableEditorPanel({
                     isOpen={true}
                     title="Delete Row(s)"
                     message="Please provide a reason for deleting the selected row(s):"
-                    onConfirm={handleDeleteSelected}
+                    onConfirm={(reason) => {
+                        setDeleteRowModal(null);
+                        handleDeleteSelected(reason);
+                    }}
                     onClose={() => setDeleteRowModal(null)}
                     confirmLabel="Delete"
                 />

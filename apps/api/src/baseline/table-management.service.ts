@@ -142,7 +142,7 @@ export class TableManagementService {
                 userId,
                 action: 'table.create',
                 module: 'table',
-                resourceType: 'table',
+                resourceType: 'baseline_table',
                 resourceId: table.id,
                 details: {
                     baselineId,
@@ -248,7 +248,7 @@ export class TableManagementService {
                 userId,
                 action: 'table.column.assign',
                 module: 'table',
-                resourceType: 'table',
+                resourceType: 'baseline_table',
                 resourceId: tableId,
                 details: {
                     columnIndex,
@@ -364,18 +364,37 @@ export class TableManagementService {
                     },
                 });
 
+            // Fetch updated cell id/value for audit
+            const [updatedCell] = await tx
+                .select({
+                    id: baselineTableCells.id,
+                    cellValue: baselineTableCells.cellValue,
+                })
+                .from(baselineTableCells)
+                .where(
+                    and(
+                        eq(baselineTableCells.tableId, tableId),
+                        eq(baselineTableCells.rowIndex, rowIndex),
+                        eq(baselineTableCells.columnIndex, columnIndex),
+                    ),
+                )
+                .limit(1);
+
             // Audit
             await this.auditService.log({
                 userId,
                 action: 'table.cell.update',
                 module: 'table',
-                resourceType: 'table',
+                resourceType: 'baseline_table',
                 resourceId: tableId,
                 details: {
+                    cellId: updatedCell?.id ?? null,
                     rowIndex,
                     columnIndex,
                     hasMapping: !!field,
                     validationStatus,
+                    previousValue: currentCell?.cellValue ?? null,
+                    newValue: updatedCell?.cellValue ?? value ?? null,
                 },
             });
         });
@@ -402,7 +421,17 @@ export class TableManagementService {
                 throw new BadRequestException(`Invalid row index: ${rowIndex}`);
             }
 
-            // 1. Delete cells in the row
+            // 1. Capture cell ids for audit and delete cells in the row
+            const deletedCells = await tx
+                .select({ id: baselineTableCells.id })
+                .from(baselineTableCells)
+                .where(
+                    and(
+                        eq(baselineTableCells.tableId, tableId),
+                        eq(baselineTableCells.rowIndex, rowIndex)
+                    )
+                );
+
             await tx
                 .delete(baselineTableCells)
                 .where(
@@ -412,14 +441,25 @@ export class TableManagementService {
                     )
                 );
 
-            // In Drizzle:
+            // Shift subsequent rows down using a two-phase offset to avoid unique collisions
+            const rowOffset = 10000;
             await tx
                 .update(baselineTableCells)
-                .set({ rowIndex: sql`${baselineTableCells.rowIndex} - 1` })
+                .set({ rowIndex: sql`${baselineTableCells.rowIndex} + ${rowOffset}` })
                 .where(
                     and(
                         eq(baselineTableCells.tableId, tableId),
                         gt(baselineTableCells.rowIndex, rowIndex)
+                    )
+                );
+
+            await tx
+                .update(baselineTableCells)
+                .set({ rowIndex: sql`${baselineTableCells.rowIndex} - ${rowOffset + 1}` })
+                .where(
+                    and(
+                        eq(baselineTableCells.tableId, tableId),
+                        gt(baselineTableCells.rowIndex, rowIndex + rowOffset)
                     )
                 );
 
@@ -434,11 +474,12 @@ export class TableManagementService {
                 userId,
                 action: 'table.row.delete',
                 module: 'table',
-                resourceType: 'table',
+                resourceType: 'baseline_table',
                 resourceId: tableId,
                 details: {
                     rowIndex,
                     reason,
+                    deletedCellIds: deletedCells.map(c => c.id),
                 },
             });
         });
@@ -494,7 +535,7 @@ export class TableManagementService {
                 userId,
                 action: 'table.confirm',
                 module: 'table',
-                resourceType: 'table',
+                resourceType: 'baseline_table',
                 resourceId: tableId,
                 details: {
                     tableLabel: table.tableLabel,

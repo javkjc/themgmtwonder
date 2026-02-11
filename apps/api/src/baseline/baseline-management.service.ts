@@ -256,36 +256,20 @@ export class BaselineManagementService {
 
             // Check for unconfirmed tables
             const draftTables = await tx
-                .select({
-                    id: baselineTables.id,
-                    tableLabel: baselineTables.tableLabel,
-                    tableIndex: baselineTables.tableIndex,
-                    status: baselineTables.status,
-                })
+                .select({ id: baselineTables.id })
                 .from(baselineTables)
                 .where(
                     and(
                         eq(baselineTables.baselineId, baselineId),
                         eq(baselineTables.status, 'draft'),
                     ),
-                );
+                )
+                .limit(1);
 
             if (draftTables.length > 0) {
-                const count = draftTables.length;
-                const labels = draftTables.map((t) => t.tableLabel || `Table #${t.tableIndex}`);
-                const message =
-                    count === 1
-                        ? `Cannot confirm baseline: Table "${labels[0]}" is not confirmed`
-                        : `Cannot confirm baseline: ${count} tables are not confirmed: "${labels.join('", "')}"`;
-
-                throw new BadRequestException({
-                    error: message,
-                    draftTables: draftTables.map((t) => ({
-                        id: t.id,
-                        label: t.tableLabel || `Table #${t.tableIndex}`,
-                        status: t.status,
-                    })),
-                });
+                throw new BadRequestException(
+                    'Cannot confirm baseline: all tables must be confirmed first',
+                );
             }
 
             // 2. Find any existing confirmed baseline for the same attachment

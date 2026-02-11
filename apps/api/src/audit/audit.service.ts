@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { DbService } from '../db/db.service';
-import { auditLogs, users, todos } from '../db/schema';
+import { auditLogs, users, todos, baselineTables, extractionBaselines, attachments } from '../db/schema';
 import { desc, eq, and, gte, lte, ilike } from 'drizzle-orm';
 
 export type AuditActorType = 'user' | 'system';
@@ -205,17 +205,40 @@ export class AuditService {
     isAdmin: boolean = false,
   ) {
     if (!isAdmin) {
-      if (resourceType !== 'todo') {
-        throw new ForbiddenException('Not authorized to view history');
-      }
+      if (resourceType === 'todo') {
+        const owner = await this.dbs.db
+          .select({ userId: todos.userId })
+          .from(todos)
+          .where(eq(todos.id, resourceId))
+          .limit(1);
 
-      const owner = await this.dbs.db
-        .select({ userId: todos.userId })
-        .from(todos)
-        .where(eq(todos.id, resourceId))
-        .limit(1);
+        if (owner.length === 0 || owner[0].userId !== userId) {
+          throw new ForbiddenException('Not authorized to view history');
+        }
+      } else if (resourceType === 'baseline_table') {
+        const owner = await this.dbs.db
+          .select({ userId: attachments.userId })
+          .from(baselineTables)
+          .leftJoin(extractionBaselines, eq(baselineTables.baselineId, extractionBaselines.id))
+          .leftJoin(attachments, eq(extractionBaselines.attachmentId, attachments.id))
+          .where(eq(baselineTables.id, resourceId))
+          .limit(1);
 
-      if (owner.length === 0 || owner[0].userId !== userId) {
+        if (owner.length === 0 || owner[0].userId !== userId) {
+          throw new ForbiddenException('Not authorized to view history');
+        }
+      } else if (resourceType === 'baseline_field') {
+        const owner = await this.dbs.db
+          .select({ userId: attachments.userId })
+          .from(extractionBaselines)
+          .leftJoin(attachments, eq(extractionBaselines.attachmentId, attachments.id))
+          .where(eq(extractionBaselines.id, resourceId))
+          .limit(1);
+
+        if (owner.length === 0 || owner[0].userId !== userId) {
+          throw new ForbiddenException('Not authorized to view history');
+        }
+      } else {
         throw new ForbiddenException('Not authorized to view history');
       }
     }

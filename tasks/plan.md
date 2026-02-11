@@ -135,7 +135,7 @@ WHERE id = '<TABLE_ID>';
 
 ### A3  Baseline Confirmation Guard for Tables (Milestone 8.7.7 dependency) ([Complexity: Medium])
 
-**Status:** ✅ Completed on 2026-02-09
+**Status:** ✅ Completed on 2026-02-09 (Updated 2026-02-11)
 
 **Problem statement**  
 Baseline confirmation must be blocked when any table tied to that baseline is still in draft.
@@ -149,15 +149,14 @@ Baseline confirmation must be blocked when any table tied to that baseline is st
 
 **Implementation plan**
 1. Query for any `baseline_tables` with `status='draft'` for the baseline.
-2. If found, block confirmation with detailed message listing ALL draft tables:
-   - Single table: `Cannot confirm baseline: Table "<label or Table #N>" is not confirmed`
-   - Multiple tables: `Cannot confirm baseline: 2 tables are not confirmed: "Line Items", "Tax Summary"`
-   - Return 400 with { error: "...", draftTables: [{ id, label, status }] }
+2. If found, block confirmation with:
+   - `Cannot confirm baseline: all tables must be confirmed first`
+   - Return 400 with the message above.
 3. Ensure guard runs before baseline confirm transaction.
 
 **Checkpoint A3 � Verification**
 - Manual:
-  - Create draft table and attempt baseline confirm ? blocked with explicit message.
+  - Create draft table and attempt baseline confirm ? blocked with `Cannot confirm baseline: all tables must be confirmed first`.
   - Confirm all tables ? baseline confirm succeeds.
 - DB:
 ```sql
@@ -396,6 +395,11 @@ ORDER BY row_index, column_index;
   - Client shows explicit error message on 409 correction reason required.
 - Regression:
   - FieldAssignmentPanel still works when table editor closed.
+
+**Addendum (2026-02-11)**
+- Table change log now reads audit history (`baseline_table`) and supports Find navigation.
+- Field change log now reads audit history (`baseline_field`) with baseline ownership checks.
+- Row deletion uses two-phase index shift to avoid unique collisions.
 
 **Estimated effort:** 3-4 hours
 **Complexity flag:** Complex = GPT-4o required
@@ -713,3 +717,4 @@ WHERE id = '<BASELINE_ID>';
 - [ ] Tag commit: `git tag v8.7 -m "Table Review for Structured Document Data complete"`
 
 ---
+

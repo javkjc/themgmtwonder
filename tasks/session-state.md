@@ -1,4 +1,4 @@
-# Session State - 2026-02-10
+# Session State - 2026-02-11
 
 ## Current Status
 - Milestone 8.6: Field-Based Extraction Assignment & Baseline (COMPLETE)
@@ -15,12 +15,17 @@
     - ✅ Task D1: Table Utilization Tracking (backend + UI; manual verification pending)
 
 ## Recent Achievements
+- (2026-02-11) Blocked baseline confirmation until all tables are confirmed; added UI disable + error toast messaging.
+- (2026-02-11) Change logs now pull audit history for baseline tables/fields; non-admin access aligned to ownership.
+- (2026-02-11) Fixed row delete reindexing collisions and improved change log Find behavior.
 - (2026-02-10) Surfaced utilization metadata (table label/size/record/export) on task detail page badges.
 - (2026-02-10) Table API responses include baseline utilization metadata for editor/list lock messaging.
 - (2026-02-09) Added CSV export and confirmation banners in Table Editor.
 - (2026-02-09) Fixed manual table creation payload and table list visibility.
 
 ## Context
+- Baseline confirmation is blocked until all tables are confirmed; UI disables confirm actions when draft tables remain.
+- Review page change logs now use audit history (baseline_table/baseline_field) with owner-only access.
 - Table editor and list now show lock icons/banners when a baseline is utilized; task detail page uses the same context-rich message.
 - Backend utilization writes table context into `utilizationMetadata`; mutations are blocked when utilized.
 - Remaining work: verify utilization lock across views and run performance checks (D2).

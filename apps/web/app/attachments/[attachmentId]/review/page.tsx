@@ -150,6 +150,16 @@ export default function AttachmentOcrReviewPage() {
   const [activeTable, setActiveTable] = useState<FullTableResponse | null>(null);
   const [tableLoading, setTableLoading] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<'fields' | 'tables'>('fields');
+  const [fieldChangeLogCollapsed, setFieldChangeLogCollapsed] = useState(true);
+  const [fieldChangeLogLoaded, setFieldChangeLogLoaded] = useState(false);
+  const [fieldChangeLog, setFieldChangeLog] = useState<Array<{
+    id: string;
+    timestamp: number;
+    label: string;
+    detail?: string;
+    target?: { fieldKey: string };
+  }>>([]);
+  const [highlightFieldKey, setHighlightFieldKey] = useState<string | null>(null);
 
 
   const addNotification = useCallback((notification: Notification) => {
@@ -158,6 +168,93 @@ export default function AttachmentOcrReviewPage() {
       setNotifications((prev) => prev.filter((item) => item.id !== notification.id));
     }, DEFAULT_NOTIFICATION_TTL);
   }, []);
+
+  const addFieldChangeLogEntry = useCallback((entry: { label: string; detail?: string; target?: { fieldKey: string } }) => {
+    const record = { id: `${Date.now()}-${Math.random()}`, timestamp: Date.now(), ...entry };
+    console.log('[ChangeLog][Field]', record);
+    setFieldChangeLog((prev) => [record, ...prev]);
+  }, []);
+
+  const sortedFieldChangeLog = useMemo(() => {
+    return [...fieldChangeLog].sort((a, b) => b.timestamp - a.timestamp);
+  }, [fieldChangeLog]);
+
+  const fieldLabelMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    libraryFields.forEach((field: any) => {
+      if (field?.fieldKey) {
+        map[field.fieldKey] = field.label || field.fieldKey;
+      }
+    });
+    return map;
+  }, [libraryFields]);
+
+  useEffect(() => {
+    if (!baseline?.id) return;
+    let isMounted = true;
+    const loadHistory = async () => {
+      try {
+        const history = await apiFetchJson(
+          `/audit/resource/${baseline.id}?type=baseline_field&limit=200&offset=0`,
+          { method: 'GET' },
+        );
+        if (!isMounted || !Array.isArray(history)) return;
+        const entries = history.map((item: any) => {
+          const details = item.details || {};
+          const action = item.action || '';
+          const fieldKey = details.fieldKey || '';
+          const labelName = fieldLabelMap[fieldKey] || fieldKey || 'Field';
+          let label = labelName ? `Field "${labelName}" updated` : 'Field updated';
+          let detail = '';
+          let target = fieldKey ? { fieldKey } : undefined;
+
+          if (action === 'baseline.assignment.delete') {
+            label = labelName ? `Field "${labelName}" cleared` : 'Field cleared';
+            detail = details.correctionReason ? `Reason: ${details.correctionReason}` : '';
+          } else if (action === 'baseline.assignment.upsert') {
+            detail = details.correctedFrom ? `"${details.correctedFrom}" → updated` : '';
+          }
+
+          if (item.userEmail) {
+            detail = detail ? `${detail} · ${item.userEmail}` : `${item.userEmail}`;
+          }
+
+          return {
+            id: item.id || `${Date.now()}-${Math.random()}`,
+            timestamp: new Date(item.createdAt || Date.now()).getTime(),
+            label,
+            detail: detail || undefined,
+            target,
+          };
+        });
+        setFieldChangeLog(entries);
+        setFieldChangeLogLoaded(true);
+      } catch {
+        const stored = localStorage.getItem(`field-change-log:${baseline.id}`);
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed)) {
+              setFieldChangeLog(parsed);
+            }
+          } catch {
+            // Ignore invalid storage
+          }
+        }
+        setFieldChangeLogLoaded(true);
+      }
+    };
+    loadHistory();
+    return () => {
+      isMounted = false;
+    };
+  }, [baseline?.id, fieldLabelMap]);
+
+  useEffect(() => {
+    if (!baseline?.id) return;
+    if (!fieldChangeLogLoaded) return;
+    localStorage.setItem(`field-change-log:${baseline.id}`, JSON.stringify(fieldChangeLog));
+  }, [fieldChangeLog, baseline?.id, fieldChangeLogLoaded]);
 
   const logout = useCallback(async () => {
     try {
@@ -219,6 +316,16 @@ export default function AttachmentOcrReviewPage() {
     try {
       await upsertAssignment(baseline.id, { fieldKey, assignedValue: value, sourceSegmentId });
       await loadBaseline();
+      const oldValue = existing?.assignedValue ?? '';
+      const newValue = value ?? '';
+      if (oldValue !== newValue) {
+        const label = fieldLabelMap[fieldKey] || fieldKey;
+        addFieldChangeLogEntry({
+          label: `Field "${label}" updated`,
+          detail: `"${oldValue}" → "${newValue}"`,
+          target: { fieldKey },
+        });
+      }
       addNotification({
         id: Date.now().toString(),
         type: 'success',
@@ -252,10 +359,11 @@ export default function AttachmentOcrReviewPage() {
         message: e.message,
       });
     }
-  }, [baseline, loadBaseline, addNotification, libraryFields]);
+  }, [baseline, loadBaseline, addNotification, libraryFields, fieldLabelMap, addFieldChangeLogEntry]);
 
   const handleAssignmentDelete = useCallback(async (fieldKey: string) => {
     if (!baseline) return;
+    const existing = baseline.assignments?.find(a => a.fieldKey === fieldKey);
     if (baseline.status === 'reviewed') {
       setCorrectionPendingAction({ type: 'delete', fieldKey });
       setIsCorrectionModalOpen(true);
@@ -264,6 +372,13 @@ export default function AttachmentOcrReviewPage() {
     try {
       await deleteAssignment(baseline.id, fieldKey);
       await loadBaseline();
+      const oldValue = existing?.assignedValue ?? '';
+      const label = fieldLabelMap[fieldKey] || fieldKey;
+      addFieldChangeLogEntry({
+        label: `Field "${label}" cleared`,
+        detail: oldValue ? `"${oldValue}" removed` : undefined,
+        target: { fieldKey },
+      });
       addNotification({
         id: Date.now().toString(),
         type: 'success',
@@ -278,12 +393,13 @@ export default function AttachmentOcrReviewPage() {
         message: e.message,
       });
     }
-  }, [addNotification, baseline, loadBaseline]);
+  }, [addNotification, baseline, loadBaseline, fieldLabelMap, addFieldChangeLogEntry]);
 
   const handleCorrectionConfirm = useCallback(async (reason: string) => {
     if (!baseline || !correctionPendingAction) return;
     setIsCorrectionModalOpen(false);
     const { type, fieldKey, value, sourceSegmentId } = correctionPendingAction;
+    const existing = baseline.assignments?.find(a => a.fieldKey === fieldKey);
 
     try {
       if (type === 'upsert') {
@@ -292,6 +408,24 @@ export default function AttachmentOcrReviewPage() {
         await deleteAssignment(baseline.id, fieldKey, reason);
       }
       await loadBaseline();
+      const label = fieldLabelMap[fieldKey] || fieldKey;
+      const oldValue = existing?.assignedValue ?? '';
+      if (type === 'upsert') {
+        const newValue = value ?? '';
+        if (oldValue !== newValue) {
+          addFieldChangeLogEntry({
+            label: `Field "${label}" updated`,
+            detail: `"${oldValue}" → "${newValue}"`,
+            target: { fieldKey },
+          });
+        }
+      } else {
+        addFieldChangeLogEntry({
+          label: `Field "${label}" cleared`,
+          detail: oldValue ? `"${oldValue}" removed` : undefined,
+          target: { fieldKey },
+        });
+      }
       addNotification({
         id: Date.now().toString(),
         type: 'success',
@@ -308,7 +442,7 @@ export default function AttachmentOcrReviewPage() {
     } finally {
       setCorrectionPendingAction(null);
     }
-  }, [baseline, correctionPendingAction, loadBaseline, addNotification]);
+  }, [baseline, correctionPendingAction, loadBaseline, addNotification, fieldLabelMap, addFieldChangeLogEntry]);
 
   const handleCorrectionCancel = useCallback(() => {
     if (correctionPendingAction) {
@@ -322,6 +456,7 @@ export default function AttachmentOcrReviewPage() {
     if (!baseline || !validationPendingAction) return;
     setIsValidationModalOpen(false);
     const { fieldKey, value, sourceSegmentId } = validationPendingAction;
+    const existing = baseline.assignments?.find(a => a.fieldKey === fieldKey);
 
     try {
       await upsertAssignment(baseline.id, {
@@ -331,6 +466,16 @@ export default function AttachmentOcrReviewPage() {
         confirmInvalid: true
       });
       await loadBaseline();
+      const oldValue = existing?.assignedValue ?? '';
+      const newValue = value ?? '';
+      if (oldValue !== newValue) {
+        const label = fieldLabelMap[fieldKey] || fieldKey;
+        addFieldChangeLogEntry({
+          label: `Field "${label}" updated`,
+          detail: `"${oldValue}" → "${newValue}"`,
+          target: { fieldKey },
+        });
+      }
       addNotification({
         id: Date.now().toString(),
         type: 'success',
@@ -347,12 +492,13 @@ export default function AttachmentOcrReviewPage() {
     } finally {
       setValidationPendingAction(null);
     }
-  }, [baseline, validationPendingAction, loadBaseline, addNotification]);
+  }, [baseline, validationPendingAction, loadBaseline, addNotification, fieldLabelMap, addFieldChangeLogEntry]);
 
   const handleValidationUseSuggestion = useCallback(async () => {
     if (!baseline || !validationPendingAction || !validationPendingAction.suggestedCorrection) return;
     setIsValidationModalOpen(false);
     const { fieldKey, sourceSegmentId, suggestedCorrection } = validationPendingAction;
+    const existing = baseline.assignments?.find(a => a.fieldKey === fieldKey);
 
     try {
       await upsertAssignment(baseline.id, {
@@ -361,6 +507,15 @@ export default function AttachmentOcrReviewPage() {
         sourceSegmentId
       });
       await loadBaseline();
+      const oldValue = existing?.assignedValue ?? '';
+      if (oldValue !== suggestedCorrection) {
+        const label = fieldLabelMap[fieldKey] || fieldKey;
+        addFieldChangeLogEntry({
+          label: `Field "${label}" updated`,
+          detail: `"${oldValue}" → "${suggestedCorrection}"`,
+          target: { fieldKey },
+        });
+      }
       addNotification({
         id: Date.now().toString(),
         type: 'success',
@@ -377,7 +532,7 @@ export default function AttachmentOcrReviewPage() {
     } finally {
       setValidationPendingAction(null);
     }
-  }, [baseline, validationPendingAction, loadBaseline, addNotification]);
+  }, [baseline, validationPendingAction, loadBaseline, addNotification, fieldLabelMap, addFieldChangeLogEntry]);
 
   const handleValidationCancel = useCallback(() => {
     if (validationPendingAction) {
@@ -497,6 +652,8 @@ export default function AttachmentOcrReviewPage() {
     ).length;
     return { assigned, empty: Math.max(0, totalFields - assigned) };
   }, [libraryFields, baseline]);
+
+  const hasDraftTables = baseline?.tables?.some((table) => table.status === 'draft') ?? false;
 
   const isLowConfidence = useMemo(() => {
     if (ocrData?.parsedFields?.length) {
@@ -717,6 +874,17 @@ export default function AttachmentOcrReviewPage() {
   const handleConfirmBaseline = useCallback(async () => {
     if (!baseline) return;
 
+    if (hasDraftTables) {
+      addNotification({
+        id: Date.now().toString(),
+        type: 'error',
+        title: 'Cannot confirm baseline',
+        message: 'Please confirm all tables before confirming baseline',
+      });
+      setIsConfirmModalOpen(false);
+      return;
+    }
+
     // Validate all assignments before allowing transition
     const invalidAssignments = baseline.assignments?.filter(a =>
       a.validation && !a.validation.valid
@@ -781,7 +949,7 @@ export default function AttachmentOcrReviewPage() {
     } finally {
       setConfirmingBaseline(false);
     }
-  }, [addNotification, baseline, targetTaskId, libraryFields]);
+  }, [addNotification, baseline, hasDraftTables, targetTaskId, libraryFields]);
 
   const handleToggleSegmentSelection = useCallback((id: string) => {
     setSelectedSegmentIds((prev) => {
@@ -1010,27 +1178,148 @@ export default function AttachmentOcrReviewPage() {
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', maxHeight: isMobile ? 'auto' : 'calc(100vh - 350px)', paddingRight: 4 }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 0, position: 'relative' }}>
         {sidebarTab === 'fields' ? (
-          <FieldAssignmentPanel
-            fields={libraryFields}
-            assignments={baseline?.assignments || []}
-            isReadOnly={isFieldBuilderReadOnly}
-            readOnlyReason={readOnlyReason}
-            onUpdate={handleAssignmentUpdate}
-            onDelete={handleAssignmentDelete}
-            onLocalValuesChange={setPendingLocalValues}
-            resetLocalField={resetLocalField}
-          />
+          <>
+            <div style={{ flex: 1, overflowY: 'auto', maxHeight: isMobile ? 'auto' : 'calc(100vh - 350px)', paddingRight: 4 }}>
+              <FieldAssignmentPanel
+                fields={libraryFields}
+                assignments={baseline?.assignments || []}
+                isReadOnly={isFieldBuilderReadOnly}
+                readOnlyReason={readOnlyReason}
+                onUpdate={handleAssignmentUpdate}
+                onDelete={handleAssignmentDelete}
+                onLocalValuesChange={setPendingLocalValues}
+                resetLocalField={resetLocalField}
+                highlightFieldKey={highlightFieldKey}
+              />
+            </div>
+            {!isMobile && (
+              <div style={{ position: 'absolute', top: 8, right: 24, bottom: 72, zIndex: 30 }}>
+                {fieldChangeLogCollapsed ? (
+                  <button
+                    onClick={() => setFieldChangeLogCollapsed(false)}
+                    title="Open change log"
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 10,
+                      border: '1px solid #e2e8f0',
+                      background: '#ffffff',
+                      cursor: 'pointer',
+                      color: '#475569',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 6px 16px rgba(15, 23, 42, 0.08)',
+                      fontSize: 16,
+                      fontWeight: 700,
+                    }}
+                  >
+                    ›
+                  </button>
+                ) : (
+                  <div
+                    style={{
+                      width: 292,
+                      height: '100%',
+                      border: '1px solid #e2e8f0',
+                      background: '#f8fafc',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      borderRadius: 12,
+                      boxShadow: '0 12px 30px rgba(15, 23, 42, 0.12)',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <div style={{
+                      padding: '10px 12px',
+                      borderBottom: '1px solid #e2e8f0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                    }}>
+                      <strong style={{ fontSize: 12, color: '#334155' }}>Change Log</strong>
+                      <button
+                        onClick={() => setFieldChangeLogCollapsed(true)}
+                        title="Collapse"
+                        style={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: 999,
+                          border: '1px solid #e2e8f0',
+                          background: 'white',
+                          cursor: 'pointer',
+                          color: '#64748b',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <div style={{ padding: 12, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minHeight: 0, direction: 'rtl' }}>
+                      <div style={{ direction: 'ltr', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {sortedFieldChangeLog.length === 0 ? (
+                          <div style={{ fontSize: 12, color: '#94a3b8' }}>No changes yet.</div>
+                        ) : (
+                          sortedFieldChangeLog.map(entry => (
+                            <div key={entry.id} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>{entry.label}</div>
+                                {entry.target && (
+                                  <button
+                                    onClick={() => {
+                                      const fieldKey = entry.target!.fieldKey;
+                                      setHighlightFieldKey(fieldKey);
+                                      const input = document.getElementById(`field-${fieldKey}`);
+                                      input?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                      setTimeout(() => setHighlightFieldKey(null), 2000);
+                                    }}
+                                    style={{
+                                      border: '1px solid #dbeafe',
+                                      background: '#eff6ff',
+                                      color: '#2563eb',
+                                      fontSize: 11,
+                                      fontWeight: 600,
+                                      padding: '2px 6px',
+                                      borderRadius: 6,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    Find
+                                  </button>
+                                )}
+                              </div>
+                              {entry.detail && (
+                                <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>{entry.detail}</div>
+                              )}
+                              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
+                                {new Date(entry.timestamp).toLocaleString()}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         ) : (
-          <TableListPanel
-            tables={baseline?.tables || []}
-            activeTableId={activeTable?.table.id || null}
-            onSelectTable={loadTableDetail}
-            onDeleteTable={handleDeleteTable}
-            onCreateTable={() => setIsTableCreationOpen(true)}
-            isReadOnly={isFieldBuilderReadOnly}
-          />
+          <div style={{ flex: 1, overflowY: 'auto', maxHeight: isMobile ? 'auto' : 'calc(100vh - 350px)', paddingRight: 4 }}>
+            <TableListPanel
+              tables={baseline?.tables || []}
+              activeTableId={activeTable?.table.id || null}
+              onSelectTable={loadTableDetail}
+              onDeleteTable={handleDeleteTable}
+              onCreateTable={() => setIsTableCreationOpen(true)}
+              isReadOnly={isFieldBuilderReadOnly}
+            />
+          </div>
         )}
       </div>
     </div>
@@ -1072,7 +1361,8 @@ export default function AttachmentOcrReviewPage() {
             {baseline?.status === 'reviewed' && (
               <button
                 onClick={() => setIsConfirmModalOpen(true)}
-                disabled={baselineLoading || confirmingBaseline}
+                disabled={hasDraftTables || baselineLoading || confirmingBaseline}
+                title={hasDraftTables ? 'All tables must be confirmed first' : 'Confirm baseline'}
                 style={{
                   padding: '8px 14px',
                   borderRadius: 10,
@@ -1081,7 +1371,7 @@ export default function AttachmentOcrReviewPage() {
                   color: '#166534',
                   fontSize: 14,
                   fontWeight: 700,
-                  cursor: baselineLoading || confirmingBaseline ? 'not-allowed' : 'pointer',
+                  cursor: hasDraftTables || baselineLoading || confirmingBaseline ? 'not-allowed' : 'pointer',
                 }}
               >
                 {confirmingBaseline ? 'Confirming...' : 'Confirm Baseline'}
@@ -1484,16 +1774,17 @@ export default function AttachmentOcrReviewPage() {
                 </button>
                 <button
                   onClick={handleConfirmBaseline}
-                  disabled={confirmingBaseline}
+                  disabled={hasDraftTables || confirmingBaseline}
+                  title={hasDraftTables ? 'All tables must be confirmed first' : 'Confirm baseline'}
                   style={{
                     padding: '8px 14px',
                     borderRadius: 10,
                     border: '1px solid #16a34a',
-                    background: confirmingBaseline ? '#bbf7d0' : '#22c55e',
+                    background: confirmingBaseline || hasDraftTables ? '#bbf7d0' : '#22c55e',
                     color: '#065f46',
                     fontSize: 14,
                     fontWeight: 700,
-                    cursor: confirmingBaseline ? 'not-allowed' : 'pointer',
+                    cursor: confirmingBaseline || hasDraftTables ? 'not-allowed' : 'pointer',
                   }}
                 >
                   {confirmingBaseline ? 'Confirming...' : 'Confirm Baseline'}

@@ -4066,3 +4066,67 @@ Repair accidental code corruption in `listTablesForBaseline` and restore the sha
 
 ### Status
 [UNVERIFIED]
+
+---
+
+## 2026-02-11 - Baseline Confirm Blocked Until Tables Confirmed (A3 UX + Guard Update)
+
+### Objective
+Block baseline confirmation until all tables are confirmed, with a simple, consistent error message and UI guard.
+
+### What Was Built
+- Backend: simplified the draft-table guard in `confirmBaseline` to return a single 400 error message when any draft tables remain.
+- Frontend: added a draft-table check before confirming, disabled the confirm buttons when draft tables exist, and surfaced a tooltip plus error toast.
+
+### Files Changed
+- `apps/api/src/baseline/baseline-management.service.ts`
+- `apps/web/app/attachments/[attachmentId]/review/page.tsx`
+- `tasks/plan.md`
+
+### Verification
+Manual (user-reported):
+- Create table → Don’t confirm → Try baseline confirm → blocked with “Please confirm all tables before confirming baseline”.
+- Create 2 tables → Confirm 1 → Try baseline confirm → blocked.
+- Create table → Confirm table → Baseline confirm → succeeds.
+
+### Status
+[VERIFIED]
+
+---
+
+## 2026-02-11 - Review Page Change Log + Audit Resource Alignment
+
+### Objective
+Align review-page change logs with audit records, fix row deletion reindexing collisions, and refine change log UX/Find behavior.
+
+### What Was Built
+- **Audit resource types updated**:
+  - Table audits now use `resourceType: baseline_table`.
+  - Field assignment audits now use `resourceType: baseline_field` with `resourceId = baselineId` and `assignmentId` in details.
+- **Audit access rules**: Non-admins can fetch audit history for `baseline_table` and `baseline_field` when they own the attachment via baseline.
+- **Change log data source**:
+  - Table change log pulls from `/audit/resource/:tableId?type=baseline_table`.
+  - Field change log pulls from `/audit/resource/:baselineId?type=baseline_field`.
+- **Change log Find**:
+  - Uses `cellId` when present; shows "Row not found" if deleted.
+  - For older entries without `cellId`, falls back to row/column; avoids navigating to deleted rows.
+- **Row deletion fix**: Two-phase row index shift to avoid unique collisions during row delete.
+- **UX refinements**:
+  - Change log overlay positioned above global queue.
+  - Scrollbar moved to left side of change log.
+  - Row highlight on Find (8s) and focus behavior adjusted.
+
+### Files Changed
+- `apps/api/src/baseline/table-management.service.ts`
+- `apps/api/src/baseline/baseline-assignments.service.ts`
+- `apps/api/src/audit/audit.service.ts`
+- `apps/web/app/components/tables/TableEditorPanel.tsx`
+- `apps/web/app/attachments/[attachmentId]/review/page.tsx`
+- `apps/web/app/components/FieldAssignmentPanel.tsx`
+
+### Verification
+- Manual: user-reported testing of baseline confirm guard and change log interactions.
+- Automated: not run.
+
+### Status
+[UNVERIFIED]
