@@ -1950,7 +1950,7 @@ E2E Tests:
 
 ---
 
-## v8.7 — Table Review for Structured Document Data 📋 (Planned)
+## v8.7 — Table Review for Structured Document Data ✅ (Complete)
 
 **What this is**
 - User-driven table review for structured data (line items, loan summaries, usage breakdowns)
@@ -3155,7 +3155,7 @@ Notify admin when complete
 
 
 
-## v8.10 — Multi-Language OCR Support 📋 (Planned)
+## v8.10 — Multi-Language OCR Support 📋 (To be confirmed)
 What this is
 
 Support OCR for non-English documents (Spanish, French, German, Chinese, etc.)

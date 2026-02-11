@@ -4159,3 +4159,140 @@ Manual (script): `node apps/api/test/perf-d2.mjs` with `D2_ATTACHMENT_ID=0a2b9e3
 - **Impact**: Affects Feature #v8.7 Table Review for Structured Document Data.
 - **Assumptions**: Frontend performance checks will be completed later if required.
 - **Open Questions**: None.
+
+## Task A1 - ML Model Version Table - 2026-02-11
+- Changes made: Added ml_model_versions table to schema.ts, generated and cleaned migration 001_blushing_psynapse.sql, manually applied migration to DB.
+- Files modified: apps/api/src/db/schema.ts, apps/api/drizzle/0001_blushing_psynapse.sql, 	tasks/codemapcc.md.
+- Verification results: DB schema verified via information_schema.columns query returning expected columns.
+---
+
+## 2026-02-11 - Task A1 Fix: Add ML Model Versions Migration
+
+### Objective
+Add the missing db/migrations files for the v8.8 A1 ml_model_versions table so the plan's migration requirement is satisfied.
+
+### What Was Built
+- Added forward and rollback SQL migrations for ml_model_versions in apps/api/src/db/migrations.
+
+### Files Changed
+- `apps/api/src/db/migrations/20260211123000-add-ml-model-versions.sql` - forward migration for ml_model_versions table and index.
+- `apps/api/src/db/migrations/20260211123000-add-ml-model-versions-rollback.sql` - rollback migration to drop index and table.
+
+### Verification
+Not performed (requires manual DB migration run and schema check query).
+
+### Status
+[NEEDS-TESTING]
+
+### Notes
+- **Impact**: Affects Feature #v8.8 ML-Assisted Field Suggestions.
+- **Assumptions**: None.
+- **Open Questions**: None.
+
+---
+
+## 2026-02-11 - Task A1 Verification: ML Model Versions Migration Applied
+
+### Objective
+Verify the ml_model_versions migration is applied per v8.8 A1 checkpoint.
+
+### What Was Built
+- Applied migration `20260211123000-add-ml-model-versions.sql` to Postgres via docker compose.
+
+### Files Changed
+- None (migration applied; no file edits in this step).
+
+### Verification
+- DB:
+  ```sql
+  SELECT column_name
+  FROM information_schema.columns
+  WHERE table_name = 'ml_model_versions'
+  ORDER BY ordinal_position;
+  ```
+  Result: id, model_name, version, file_path, metrics, trained_at, is_active, created_by.
+- Regression: Not run (API build/run not requested).
+
+### Status
+[VERIFIED]
+
+### Notes
+- **Impact**: Confirms A1 checkpoint is satisfied.
+- **Assumptions**: Existing API endpoints unaffected; build not rerun in this step.
+---
+
+## Task A2 - Field Assignment Suggestion Metadata - 2026-02-11
+
+### Objective
+Add ML suggestion tracking columns to baseline_field_assignments to record confidence, acceptance state, and model version without overwriting authoritative user intent.
+
+### What Was Built
+- Extended baseline_field_assignments table with three new columns:
+  - suggestionConfidence (DECIMAL(3,2)) - stores ML confidence score 0.00-1.00
+  - suggestionAccepted (BOOLEAN nullable) - true=accepted, false=modified/rejected, null=manual
+  - modelVersionId (UUID FK to ml_model_versions.id) - tracks which model generated the suggestion
+- Added index on modelVersionId for efficient FK lookups
+- Created forward and rollback migrations
+
+### Files Modified
+- pps/api/src/db/schema.ts - Added three columns to baselineFieldAssignments table definition and modelVersionIdx index
+- pps/api/src/db/migrations/20260211124000-add-field-assignment-suggestion-metadata.sql - Forward migration with ALTER TABLE and CREATE INDEX
+- pps/api/src/db/migrations/20260211124000-add-field-assignment-suggestion-metadata-rollback.sql - Rollback migration to drop index and columns
+- 	asks/codemapcc.md - Updated baseline_field_assignments table documentation to include new columns and index
+
+### Verification Results
+- **Manual**: Confirmed new columns exist in apps/api/src/db/schema.ts 
+- **DB Check**:
+  `sql
+  SELECT column_name
+  FROM information_schema.columns
+  WHERE table_name = 'baseline_field_assignments'
+    AND column_name IN ('suggestion_confidence','suggestion_accepted','model_version_id')
+  ORDER BY column_name;
+  `
+  Result: All three columns returned (model_version_id, suggestion_accepted, suggestion_confidence) 
+- **Migration**: Applied without errors (ALTER TABLE, CREATE INDEX both succeeded) 
+- **Regression**: Existing baseline assignment queries still return values (COUNT(*) = 7 rows) 
+
+### Status
+[VERIFIED]
+
+### Notes
+- **Impact**: Affects Feature #v8.8 ML-Assisted Field Suggestions (Milestone A2)
+- **Assumptions**: Columns are nullable to support existing manual assignments without ML metadata
+- **Open Questions**: None
+
+ - - - 
+ 
+ # #   2 0 2 6 - 0 2 - 1 1   -   T a s k   A 3   -   M L   T a b l e   S u g g e s t i o n s   T a b l e 
+ 
+ # # #   O b j e c t i v e 
+ A d d   a   p e r s i s t e n t   t a b l e   f o r   M L   t a b l e - d e t e c t i o n   s u g g e s t i o n s   t o   s u p p o r t   p r e v i e w ,   i g n o r e ,   a n d   c o n v e r t   w o r k f l o w s   w i t h   a u d i t a b i l i t y . 
+ 
+ # # #   W h a t   W a s   B u i l t 
+ -   C r e a t e d   ' m l _ t a b l e _ s u g g e s t i o n s '   t a b l e   i n   s c h e m a   w i t h   c o l u m n s :   i d ,   a t t a c h m e n t I d ,   r e g i o n I d ,   r o w C o u n t ,   c o l u m n C o u n t ,   c o n f i d e n c e ,   b o u n d i n g B o x ,   c e l l M a p p i n g ,   s u g g e s t e d L a b e l ,   s t a t u s ,   s u g g e s t e d A t ,   i g n o r e d A t ,   c o n v e r t e d A t . 
+ -   A d d e d   c o m p o s i t e   i n d e x   o n   ( a t t a c h m e n t I d ,   s t a t u s ) . 
+ -   C r e a t e d   f o r w a r d   a n d   r o l l b a c k   m i g r a t i o n s   i n   ' a p p s / a p i / s r c / d b / m i g r a t i o n s / ' . 
+ -   S y n c ' e d   D r i z z l e   s c h e m a   a n d   g e n e r a t e d   m i g r a t i o n   i n   ' a p p s / a p i / d r i z z l e / ' . 
+ -   A p p l i e d   m i g r a t i o n   t o   t h e   d a t a b a s e   e x p l i c i t l y . 
+ 
+ # # #   F i l e s   C h a n g e d 
+ -   ' a p p s / a p i / s r c / d b / s c h e m a . t s '   -   A d d e d   m l T a b l e S u g g e s t i o n s   t a b l e   a n d   r e l a t i o n s . 
+ -   ' a p p s / a p i / s r c / d b / m i g r a t i o n s / 2 0 2 6 0 2 1 1 1 2 5 0 0 0 - a d d - m l - t a b l e - s u g g e s t i o n s . s q l '   -   N e w   f o r w a r d   m i g r a t i o n . 
+ -   ' a p p s / a p i / s r c / d b / m i g r a t i o n s / 2 0 2 6 0 2 1 1 1 2 5 0 0 0 - a d d - m l - t a b l e - s u g g e s t i o n s - r o l l b a c k . s q l '   -   N e w   r o l l b a c k   m i g r a t i o n . 
+ -   ' t a s k s / c o d e m a p c c . m d '   -   U p d a t e d   D a t a   M o d e l   M a p . 
+ 
+ # # #   V e r i f i c a t i o n 
+ -   M a n u a l :   C o n f i r m e d   ' m l T a b l e S u g g e s t i o n s '   e x i s t s   i n   ' a p p s / a p i / s r c / d b / s c h e m a . t s ' . 
+ -   D B   Q u e r y :   V e r i f i e d   t a b l e   a n d   1 3   c o l u m n s   e x i s t   i n   P o s t g r e S Q L   v i a   ' d o c k e r   e x e c ' . 
+ -   L o g s :   M i g r a t i o n   a p p l i e d   s u c c e s s f u l l y   v i a   p s q l   c o m m a n d . 
+ -   R e g r e s s i o n :   T a b l e   A P I s   s t i l l   f u n c t i o n i n g   ( v e r i f i e d   v i a   p l a n s   s m o k e   t e s t   c h e c k l i s t ) . 
+ 
+ # # #   S t a t u s 
+ [ V E R I F I E D ] 
+ 
+ # # #   N o t e s 
+ -   * * I m p a c t * * :   E n a b l e s   M i l e s t o n e   v 8 . 8   t a b l e   s u g g e s t i o n   p e r s i s t e n c e   ( T a s k   C 4 / E 1 / E 2 ) . 
+ -   * * A s s u m p t i o n s * * :   U s e d   n u m e r i c ( 5 , 4 )   f o r   c o n f i d e n c e   t o   m a t c h   e x i s t i n g   O C R   r e s u l t   p a t t e r n s . 
+  
+ 

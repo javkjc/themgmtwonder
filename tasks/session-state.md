@@ -1,36 +1,34 @@
-# Session State - 2026-02-11
+﻿# Session State - 2026-02-11
 
 ## Current Status
-- Milestone 8.7: Table Review for Structured Document Data (In Progress)
-  - ? Task A1: Table Data Model
-  - ? Task A2: Table Management Service
-  - ? Task A3: Baseline Confirmation Guard
-  - ? Task B1: Table Controller + DTOs
-  - ? Task B2: Table Read Models
-  - ? Task C1: Table Creation Modal
-  - ? Task C2: Table Editor Panel
-  - ? Task C3: Table Confirmation UI
-  - ? Task C4: Table List Panel + Switching
-  - ? Task D1: Table Utilization Tracking (manual verification completed)
-  - ? Performance Checklist: Backend items verified; frontend items pending
+- Milestone v8.8 — ML-Assisted Field Suggestions (In Progress)
+  - ✅ A1: ML Model Version Table (completed and verified)
+  - ✅ A2: Field Assignment Suggestion Metadata (completed and verified)
+  - ✅ A3: ML Table Suggestions Table (completed and verified)
+  - ⏳ B1: ML Service Skeleton + Health Check (Next)
+  - Pending: B2–B3 (ML service), C1–C4 (API integration), D1–D3 (Field suggestion UI), E1–E2 (Table suggestion UI)
 
 ## Recent Achievements
-- Ran D1 manual verification using attachment `0a2b9e3e-aeff-40bf-b570-cc0a05a35ee5` and confirmed utilization lock (403 on update).
-- Ran backend performance checks via `apps/api/test/perf-d2.mjs` (10 runs) and documented create-table latency stats.
-- Isolated create-table variance to batch cell insert timing (instrumentation run, then removed).
-- Updated `tasks/plan.md` to check backend performance checklist items and appended execution notes.
+- Completed A3: Added `ml_table_suggestions` table to schema and database.
+- Created and applied migration `20260211125000` successfully.
+- Verified table structure and ordinal positions in DB.
+- Updated `codemapcc.md` with the new data model for table suggestions.
+- All A-series (Data Model & Audit Tracking) tasks for v8.8 are now complete.
 
 ## Context
-- Backend performance targets meet thresholds with occasional near-threshold spike; p95 for 100�20 create was ~500.7 ms.
-- Frontend performance checks (render time, virtual scrolling, FPS, optimistic update) are still pending by user choice.
+- Docker db is up; API/Web not running in this session.
+- `ml_table_suggestions` table exists with 13 columns and composite index on `(attachment_id, status)`.
+- Drizzle schema is in sync.
+- A manual migration file was added to `src/db/migrations` and also generated via `drizzle-kit` in `drizzle/`.
 
 ## Next Immediate Step
-- If required, run frontend performance checklist measurements and update `tasks/plan.md`/`tasks/executionnotes.md`.
+- Start B1: Create ML service skeleton (FastAPI) and wire into docker-compose.
 
 ## Verification Status
-- ? D1 utilization lock verified (manual).
-- ? Backend performance checklist items verified via script runs.
-- ? Frontend performance checklist not verified.
+- A1 VERIFIED (ml_model_versions table confirmed)
+- A2 VERIFIED (suggestion metadata columns confirmed)
+- A3 VERIFIED (ml_table_suggestions table confirmed, migration applied)
+- Other v8.8 tasks not yet started.
 
 ## Known Issues (Non-Blocking)
-- None.
+- None

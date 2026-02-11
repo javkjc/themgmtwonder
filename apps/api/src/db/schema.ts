@@ -291,12 +291,18 @@ export const baselineFieldAssignments = pgTable(
         validationValid: boolean('validation_valid'),
         validationError: text('validation_error'),
         validationSuggestion: text('validation_suggestion'),
+        // ML suggestion metadata (v8.8)
+        suggestionConfidence: decimal('suggestion_confidence', { precision: 3, scale: 2 }),
+        suggestionAccepted: boolean('suggestion_accepted'),
+        modelVersionId: uuid('model_version_id')
+            .references(() => mlModelVersions.id),
     },
     (table) => ({
         baselineFieldUnique: unique('baseline_field_unique').on(table.baselineId, table.fieldKey),
         baselineIdx: index('idx_baseline_field_assignments_baseline_id').on(table.baselineId),
         fieldKeyIdx: index('idx_baseline_field_assignments_field_key').on(table.fieldKey),
         sourceSegmentIdx: index('idx_baseline_field_assignments_source_segment_id').on(table.sourceSegmentId),
+        modelVersionIdx: index('idx_baseline_field_assignments_model_version_id').on(table.modelVersionId),
     })
 );
 
@@ -389,6 +395,50 @@ export const auditLogs = pgTable(
     })
 );
 
+// ML Model Versions table
+export const mlModelVersions = pgTable(
+    'ml_model_versions',
+    {
+        id: uuid('id').primaryKey().defaultRandom(),
+        modelName: text('model_name').notNull(),
+        version: text('version').notNull(),
+        filePath: text('file_path').notNull(),
+        metrics: jsonb('metrics'),
+        trainedAt: timestamp('trained_at').defaultNow().notNull(),
+        isActive: boolean('is_active').default(false).notNull(),
+        createdBy: text('created_by'),
+    },
+    (table) => ({
+        modelNameVersionUnique: unique('ml_model_versions_model_name_version_unique').on(table.modelName, table.version),
+        isActiveIdx: index('ml_model_versions_is_active_idx').on(table.isActive),
+    })
+);
+
+// ML Table Suggestions table
+export const mlTableSuggestions = pgTable(
+    'ml_table_suggestions',
+    {
+        id: uuid('id').primaryKey().defaultRandom(),
+        attachmentId: uuid('attachment_id')
+            .notNull()
+            .references(() => attachments.id, { onDelete: 'cascade' }),
+        regionId: uuid('region_id'),
+        rowCount: integer('row_count').notNull(),
+        columnCount: integer('column_count').notNull(),
+        confidence: numeric('confidence', { precision: 5, scale: 4 }),
+        boundingBox: jsonb('bounding_box'),
+        cellMapping: jsonb('cell_mapping'),
+        suggestedLabel: text('suggested_label'),
+        status: varchar('status', { length: 20 }).default('pending').notNull(),
+        suggestedAt: timestamp('suggested_at').defaultNow().notNull(),
+        ignoredAt: timestamp('ignored_at'),
+        convertedAt: timestamp('converted_at'),
+    },
+    (table) => ({
+        attachmentStatusIdx: index('idx_ml_table_suggestions_attachment_status').on(table.attachmentId, table.status),
+    })
+);
+
 // Define Relations
 export const usersRelations = relations(users, ({ many }) => ({
     todos: many(todos),
@@ -440,6 +490,7 @@ export const attachmentsRelations = relations(attachments, ({ one, many }) => ({
         references: [users.id],
     }),
     ocrOutputs: many(attachmentOcrOutputs),
+    tableSuggestions: many(mlTableSuggestions),
 }));
 
 export const attachmentOcrOutputsRelations = relations(attachmentOcrOutputs, ({ one, many }) => ({
@@ -529,6 +580,13 @@ export const baselineTableColumnMappingsRelations = relations(baselineTableColum
     field: one(fieldLibrary, {
         fields: [baselineTableColumnMappings.fieldKey],
         references: [fieldLibrary.fieldKey],
+    }),
+}));
+
+export const mlTableSuggestionsRelations = relations(mlTableSuggestions, ({ one }) => ({
+    attachment: one(attachments, {
+        fields: [mlTableSuggestions.attachmentId],
+        references: [attachments.id],
     }),
 }));
 

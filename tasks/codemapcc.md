@@ -17,6 +17,11 @@
   - main.py (GET /health + POST /ocr; accepts raw bytes, handles image/PDF conversion via pdf2image, limits PDF output to 10 pages, returns {text,meta} with engine/filename/mime info)
   - requirements.txt (fastapi, uvicorn, paddleocr, paddlepaddle, Pillow, numpy, pdf2image, pdf2image deps)
   - ocrw.Dockerfile (python:3.10-slim build, apt deps, uvicorn main:app --host 0.0.0.0 --port 4000)
+- apps/ml-service (FastAPI inference microservice for ML suggestions)
+  - main.py (FastAPI app; /health plus ML endpoints planned in v8.8)
+  - requirements.txt (FastAPI + Uvicorn + model deps)
+  - ml.Dockerfile (python base, installs requirements.txt)
+- docker-compose.yml (to wire ml-service container on backend network)
 - Shared/utils: apps/web/app/lib/{api.ts,categories.ts,constants.ts,dateTime.ts,durationSettings.ts}; hooks as client data layer
 - db/schema: apps/api/src/db/schema.ts (Drizzle models)
 
@@ -312,18 +317,20 @@ Overlap logic:
   - attachments ? id (uuid pk), todoId fk todos.id, userId fk users.id, filename, storedFilename, mimeType, size, createdAt
   - attachment_ocr_outputs ? id (uuid pk), attachmentId fk attachments.id cascade, extractedText (text), metadata (text, JSON string), processing_status (text), status (enum: draft/confirmed/archived), confirmed_at/confirmed_by (timestamp/uuid fk users), utilized_at/utilization_type/utilization_metadata (utilization tracking), archived_at/archived_by/archive_reason (archive tracking), createdAt; defined in apps/api/src/db/schema.ts; migrations apps/api/drizzle/0018_attachment_ocr_outputs.sql + apps/api/src/db/migrations/20260202142000-v3.5-ocr-states.sql (forward) and apps/api/src/db/migrations/20260202142000-v3.5-ocr-states-rollback.sql
   - extracted_text_segments ? id (uuid pk), attachmentOcrOutputId fk attachment_ocr_outputs.id cascade, text (text), confidence (float), boundingBox (jsonb nullable), pageNumber (int nullable), createdAt; index on attachmentOcrOutputId; defined in apps/api/src/db/schema.ts
-  - Indexes: idx_ocr_status, idx_ocr_attachment_status, idx_ocr_utilization (partial WHERE utilization_type IS NOT NULL), plus attachment_ocr_outputs_attachment_id_idx and idx_extracted_text_segments_output_id
+  - Indexes: idx_ocr_status, idx_ocr_attachment_status, idx_ocr_utilization (partial WHERE utilization_type IS NOT NULL), plus attachment_ocr_outputs_attachment_id_idx, idx_extracted_text_segments_output_id, and idx_ml_table_suggestions_attachment_status
   - ocr_results ? id (uuid pk), attachmentOcrOutputId fk attachment_ocr_outputs.id, fieldName, fieldType (text|number|date|currency, defaults to text), value, confidence (float), boundingBox (json nullable), pageNumber (int nullable), createdAt; indexes on attachmentOcrOutputId and fieldName; populated by OcrParsingService.parseOcrOutput() only when parent output is confirmed
   - ocr_corrections ? id (uuid pk), ocrResultId fk ocr_results.id, correctedValue, correctionReason, correctedBy fk users.id, createdAt; append-only (corrections never deleted); loaded via OcrCorrectionsService.getCorrectionHistory()
   - field_library ? id (uuid pk), fieldKey (text unique), label, characterType (enum: varchar/int/decimal/date/boolean), characterLimit (int nullable, varchar only), status (enum: active/hidden/archived), version (int, increments on characterType change), createdAt, updatedAt; admin-managed via FieldLibraryController
   - extraction_baselines ? id (uuid pk), attachmentId fk attachments.id (cascade), status (enum: draft/reviewed/confirmed/archived), confirmedAt, confirmedBy fk users.id, utilizedAt, utilizationType (enum: record_created/workflow_committed/data_exported nullable), archivedAt, archivedBy fk users.id, createdAt; partial unique index on (attachmentId) WHERE status='confirmed' enforces one confirmed baseline per attachment
-  - baseline_field_assignments ? id (uuid pk), baselineId fk extraction_baselines.id (cascade), fieldKey fk field_library.fieldKey, assignedValue, sourceSegmentId (uuid fk extracted_text_segments.id, set null), correctedFrom, correctionReason, assignedBy fk users.id, assignedAt; unique(baselineId, fieldKey); indexes on baselineId, fieldKey, sourceSegmentId; defined in apps/api/src/db/schema.ts
+  - baseline_field_assignments — id (uuid pk), baselineId fk extraction_baselines.id (cascade), fieldKey fk field_library.fieldKey, assignedValue, sourceSegmentId (uuid fk extracted_text_segments.id, set null), correctedFrom, correctionReason, assignedBy fk users.id, assignedAt, suggestionConfidence (decimal 3,2), suggestionAccepted (boolean nullable), modelVersionId (uuid fk ml_model_versions.id nullable); unique(baselineId, fieldKey); indexes on baselineId, fieldKey, sourceSegmentId, modelVersionId; defined in apps/api/src/db/schema.ts
   - baseline_tables ? id (uuid pk), baselineId fk extraction_baselines.id (cascade), tableIndex, tableLabel, status (draft/confirmed), rowCount, columnCount, confirmedAt, confirmedBy, createdAt, updatedAt; unique(baselineId, tableIndex); defined in apps/api/src/db/schema.ts
   - baseline_table_cells ? id (uuid pk), tableId fk baseline_tables.id (cascade), rowIndex, columnIndex, cellValue, validationStatus, errorText, correctionFrom, correctionReason, updatedAt; unique(tableId, rowIndex, columnIndex); index on (tableId, validationStatus); defined in apps/api/src/db/schema.ts
   - baseline_table_column_mappings ? id (uuid pk), tableId fk baseline_tables.id (cascade), columnIndex, fieldKey fk field_library.fieldKey; unique(tableId, columnIndex); index on (tableId); defined in apps/api/src/db/schema.ts
   - remarks ? id (uuid pk), todoId fk todos.id, userId fk users.id, content (text max 150 chars), createdAt
   - audit_logs ? id (uuid pk), userId fk users.id nullable, action, resourceType, resourceId, details json string, ipAddress, userAgent, createdAt
   - system_settings ? id int pk default 1, minDurationMin, maxDurationMin, defaultDurationMin, createdAt, updatedAt
+  - ml_model_versions — id (uuid pk), modelName (text), version (text), filePath (text), metrics (jsonb), trainedAt (timestamp), isActive (boolean), createdBy (text); unique(modelName, version); index on isActive; defined in apps/api/src/db/schema.ts
+  - ml_table_suggestions (id (uuid pk), attachmentId fk attachments.id cascade, regionId uuid, rowCount int, columnCount int, confidence numeric(5,4), boundingBox jsonb, cellMapping jsonb, suggestedLabel text, status (enum: pending/ignored/converted), suggestedAt, ignoredAt, convertedAt); defined in apps/api/src/db/schema.ts; index on (attachmentId, status)
 - Relations:
   - todos.userId ? users.id (cascade)
   - categories.userId ? users.id
