@@ -45,6 +45,15 @@ services:
       - backend
     expose:
       - 4000
+  ml-service:
+    build:
+      context: ./apps/ml-service
+      dockerfile: ml.Dockerfile
+    container_name: todo-ml-service
+    networks:
+      - backend
+    expose:
+      - 5000
   web:
     build:
       context: ./apps/web

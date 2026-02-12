@@ -160,6 +160,7 @@ ORDER BY ordinal_position;
 > **Context:** Provide local, internal ML inference endpoints for field suggestions and table detection without external calls.
 
 ### B1 — ML Service Skeleton + Health Check ([Complexity: Medium])
+**Status:** ✅ Completed on 2026-02-12
 
 **Problem statement**  
 We need a FastAPI microservice container for local inference, reachable only on the internal network, with a health endpoint for readiness checks.
@@ -653,5 +654,4 @@ Users need a preview modal for a suggested table and a one-click conversion into
 - [ ] Tag commit: `git tag v8.8 -m "ML-Assisted Field Suggestions complete"`
 
 ---
-
 
