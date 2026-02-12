@@ -20,6 +20,7 @@ import { AuditService } from '../audit/audit.service';
 import { FieldAssignmentValidatorService } from './field-assignment-validator.service';
 import { FieldLibraryService } from '../field-library/field-library.service';
 import { AssignBaselineFieldDto } from './dto/assign-baseline-field.dto';
+import { DeleteAssignmentDto } from './dto/delete-assignment.dto';
 import { AuthorizationService } from '../common/authorization.service';
 
 type BaselineContext = {
@@ -155,6 +156,10 @@ export class BaselineAssignmentsService {
                 validationValid: baselineFieldAssignments.validationValid,
                 validationError: baselineFieldAssignments.validationError,
                 validationSuggestion: baselineFieldAssignments.validationSuggestion,
+                // ML suggestion metadata (v8.8 - C3)
+                suggestionConfidence: baselineFieldAssignments.suggestionConfidence,
+                suggestionAccepted: baselineFieldAssignments.suggestionAccepted,
+                modelVersionId: baselineFieldAssignments.modelVersionId,
             })
             .from(baselineFieldAssignments)
             .where(eq(baselineFieldAssignments.baselineId, baselineId));
@@ -166,6 +171,10 @@ export class BaselineAssignmentsService {
                 error: row.validationError ?? undefined,
                 suggestedCorrection: row.validationSuggestion ?? undefined,
             } : undefined,
+            suggestionConfidence:
+                row.suggestionConfidence === null || row.suggestionConfidence === undefined
+                    ? null
+                    : Number(row.suggestionConfidence),
         }));
     }
 
@@ -211,6 +220,20 @@ export class BaselineAssignmentsService {
         const providedReason = dto.correctionReason?.trim();
         const isOverwrite = !!existing;
 
+        // ML suggestion logic (v8.8 - C3):
+        // - If modifying a suggestion (existing has suggestionConfidence), require correctionReason
+        // - suggestionAccepted=false when modifying a suggestion (server enforces if value changed)
+        const isModifyingSuggestion =
+            existing?.suggestionConfidence !== null && existing?.suggestionConfidence !== undefined;
+        const valueChanged = existing ? (existing.assignedValue ?? null) !== (normalizedValue ?? null) : false;
+        const isSuggestionModification = isModifyingSuggestion && (dto.suggestionAccepted === false || valueChanged);
+
+        if (isSuggestionModification && (!providedReason || providedReason.length < 10)) {
+            throw new BadRequestException(
+                'correctionReason (min 10 chars) is required when modifying an ML suggestion',
+            );
+        }
+
         if (context.status === 'reviewed' && isOverwrite) {
             if (!providedReason || providedReason.length < 10) {
                 throw new BadRequestException(
@@ -229,6 +252,17 @@ export class BaselineAssignmentsService {
                 ? providedReason ?? null
                 : providedReason ?? null;
 
+        // ML suggestion metadata handling (v8.8 - C3)
+        // Convert confidence to string for decimal column
+        const suggestionConfidence = dto.suggestionConfidence !== undefined && dto.suggestionConfidence !== null
+            ? String(dto.suggestionConfidence)
+            : existing?.suggestionConfidence ?? null;
+        const suggestionAccepted =
+            dto.suggestionAccepted !== undefined
+                ? dto.suggestionAccepted
+                : existing?.suggestionAccepted ?? null;
+        const modelVersionId = dto.modelVersionId ?? existing?.modelVersionId ?? null;
+
         const [assignment] = await this.dbs.db
             .insert(baselineFieldAssignments)
             .values({
@@ -243,6 +277,10 @@ export class BaselineAssignmentsService {
                 validationValid: validation.valid,
                 validationError: validation.error ?? null,
                 validationSuggestion: validation.suggestedCorrection ?? null,
+                // ML suggestion metadata (v8.8 - C3)
+                suggestionConfidence: suggestionConfidence,
+                suggestionAccepted: suggestionAccepted,
+                modelVersionId: modelVersionId,
             })
             .onConflictDoUpdate({
                 target: [baselineFieldAssignments.baselineId, baselineFieldAssignments.fieldKey],
@@ -256,6 +294,10 @@ export class BaselineAssignmentsService {
                     validationValid: validation.valid,
                     validationError: validation.error ?? null,
                     validationSuggestion: validation.suggestedCorrection ?? null,
+                    // ML suggestion metadata (v8.8 - C3)
+                    suggestionConfidence: suggestionConfidence,
+                    suggestionAccepted: suggestionAccepted,
+                    modelVersionId: modelVersionId,
                 },
             })
             .returning();
@@ -273,6 +315,9 @@ export class BaselineAssignmentsService {
                 assignedBy: userId,
                 correctedFrom: assignment.correctedFrom,
                 correctionReason: assignment.correctionReason,
+                // ML suggestion metadata (v8.8 - C3)
+                suggestionAccepted: assignment.suggestionAccepted,
+                modelVersionId: assignment.modelVersionId,
             },
         });
 
@@ -283,7 +328,7 @@ export class BaselineAssignmentsService {
         baselineId: string,
         fieldKey: string,
         userId: string,
-        correctionReason?: string | null,
+        dto?: DeleteAssignmentDto,
     ) {
         const context = await this.ensureBaselineEditable(baselineId, userId);
 
@@ -302,7 +347,7 @@ export class BaselineAssignmentsService {
             throw new NotFoundException('Assignment not found');
         }
 
-        const trimmedReason = correctionReason?.trim();
+        const trimmedReason = dto?.reason?.trim();
         if (context.status === 'reviewed') {
             if (!trimmedReason || trimmedReason.length < 10) {
                 throw new BadRequestException(
@@ -337,6 +382,10 @@ export class BaselineAssignmentsService {
                 assignedBy: userId,
                 correctedFrom: existing.assignedValue ?? null,
                 correctionReason: trimmedReason ?? null,
+                // ML suggestion rejection metadata (v8.8 - C3)
+                suggestionRejected: dto?.suggestionRejected ?? null,
+                suggestionConfidence: dto?.suggestionConfidence ?? existing.suggestionConfidence ?? null,
+                modelVersionId: dto?.modelVersionId ?? existing.modelVersionId ?? null,
             },
         });
 

@@ -41,3 +41,9 @@ This file captures patterns that caused issues and rules to prevent repeating mi
 - **Rule**: What to do instead
 - **Related Feature**: [Link to tasks/features.md if applicable]
 ```
+
+### 2026-02-12 - Verified Without Full Checkpoint
+- **Problem**: Marked C1 as verified while the ML service-down graceful-degradation test was deferred.
+- **Root Cause**: Verification status updated before all checkpoint steps were complete.
+- **Rule**: Only mark tasks verified when every checkpoint item is executed; otherwise set status to [UNVERIFIED] and document the missing test.
+- **Related Feature**: v8.8 ML-Assisted Field Suggestions

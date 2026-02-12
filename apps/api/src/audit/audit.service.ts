@@ -81,7 +81,8 @@ export type AuditAction =
   | 'table.cell.update'
   | 'table.row.delete'
   | 'table.column.assign'
-  | 'table.confirm';
+  | 'table.confirm'
+  | 'ml.suggest.generate';
 
 export type AuditModule =
   | 'auth'
@@ -95,7 +96,8 @@ export type AuditModule =
   | 'field_library'
   | 'field_library'
   | 'baseline'
-  | 'table';
+  | 'table'
+  | 'ml';
 
 export type CreateAuditLogDto = {
   userId?: string | null;

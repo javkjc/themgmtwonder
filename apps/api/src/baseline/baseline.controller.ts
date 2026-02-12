@@ -18,6 +18,7 @@ import { extractionBaselines, attachments } from '../db/schema';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { BaselineAssignmentsService } from './baseline-assignments.service';
 import { AssignBaselineFieldDto } from './dto/assign-baseline-field.dto';
+import { DeleteAssignmentDto } from './dto/delete-assignment.dto';
 import { AuthorizationService } from '../common/authorization.service';
 
 type RequestWithUser = { user: { userId: string } };
@@ -150,19 +151,20 @@ export class BaselineController {
 
   /**
    * Delete a field assignment from a baseline (requires correction reason).
+   * Accepts optional ML suggestion rejection metadata in body (v8.8 - C3).
    */
   @Delete('baselines/:baselineId/assign/:fieldKey')
   async deleteAssignment(
     @Req() req: RequestWithUser,
     @Param('baselineId') baselineId: string,
     @Param('fieldKey') fieldKey: string,
-    @Body('correctionReason') correctionReason?: string,
+    @Body() dto?: DeleteAssignmentDto,
   ) {
     return this.assignmentsService.deleteAssignment(
       baselineId,
       fieldKey,
       req.user.userId,
-      correctionReason,
+      dto,
     );
   }
 

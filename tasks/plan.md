@@ -191,6 +191,7 @@ We need a FastAPI microservice container for local inference, reachable only on 
 **Complexity flag:** Medium = GPT-4o preferred
 
 ### B2 — Field Suggestion Endpoint ([Complexity: Complex])
+**Status:** ✅ Completed on 2026-02-12
 
 **Problem statement**  
 We need a deterministic field-to-text suggestion endpoint that embeds segments and field labels, computes similarity, and returns top matches with confidence.
@@ -219,6 +220,8 @@ We need a deterministic field-to-text suggestion endpoint that embeds segments a
 **Complexity flag:** Complex = GPT-4o required
 
 ### B3 — Table Detection Endpoint (Rule-Based) ([Complexity: Complex])
+
+**Status:** ✅ Completed on 2026-02-12
 
 **Problem statement**  
 We need a rule-based table detection endpoint that analyzes OCR segments and returns candidate grid structures with confidence scores.
@@ -253,8 +256,9 @@ We need a rule-based table detection endpoint that analyzes OCR segments and ret
 > **Context:** Wire ML service into the backend, enforce explicit intent, rate limits, validation, and audit logs.
 
 ### C1 — ML Client Service + Config ([Complexity: Medium])
+**Status:** ✅ Completed on 2026-02-12
 
-**Problem statement**  
+**Problem statement**
 The API needs a safe client for ML service calls with timeouts, error handling, and graceful degradation.
 
 **Files / Locations**
@@ -281,8 +285,9 @@ The API needs a safe client for ML service calls with timeouts, error handling, 
 **Complexity flag:** Medium = GPT-4o preferred
 
 ### C2 — Field Suggestion Generation Endpoint ([Complexity: Complex])
+**Status:** ✅ Completed on 2026-02-12
 
-**Problem statement**  
+**Problem statement**
 We need a POST endpoint to generate suggestions on-demand, persist suggestion metadata, and avoid overwriting user edits.
 
 **Files / Locations**
@@ -297,7 +302,8 @@ We need a POST endpoint to generate suggestions on-demand, persist suggestion me
 2. Load baseline, segments, and active fields; call `MlService.suggestFields()`.
 3. For each suggested field, create assignment only if fieldKey is unassigned or assignment has no manual value.
 4. Persist `suggestionConfidence`, `modelVersionId`, `suggestionAccepted = null` for suggestions.
-5. Return summary `{ suggestedAssignments, modelVersionId, suggestionCount }`.
+5. Return summary `{ suggestedAssignments, modelVersionId, suggestionCo
+unt }`.
 6. Rate limit by counting `audit_logs` entries for `ml.suggest.generate` in last hour; return 429 with retry minutes.
 7. Log audit event `ml.suggest.generate` with `baselineId`, `modelVersionId`, `count`.
 
@@ -322,8 +328,9 @@ ORDER BY field_key;
 **Complexity flag:** Complex = GPT-4o required
 
 ### C3 — Accept / Modify / Clear Suggestion Actions ([Complexity: Medium])
+**Status:** ✅ Completed on 2026-02-12
 
-**Problem statement**  
+**Problem statement**
 We need consistent server-side tracking when users accept, modify, or clear ML suggestions.
 
 **Files / Locations**
@@ -654,4 +661,3 @@ Users need a preview modal for a suggested table and a one-click conversion into
 - [ ] Tag commit: `git tag v8.8 -m "ML-Assisted Field Suggestions complete"`
 
 ---
-

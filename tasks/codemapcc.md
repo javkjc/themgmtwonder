@@ -19,6 +19,7 @@
   - ocrw.Dockerfile (python:3.10-slim build, apt deps, uvicorn main:app --host 0.0.0.0 --port 4000)
 - apps/ml-service (FastAPI inference microservice for ML suggestions; internal-only)
   - main.py (FastAPI app; GET /health returns {status: "ok"})
+  - model.py (loads sentence-transformers model and provides embedding helpers)
   - requirements.txt (fastapi, uvicorn, sentence-transformers, torch, numpy)
   - ml.Dockerfile (python:3.10-slim build, installs requirements.txt, uvicorn main:app on port 5000)
 - docker-compose.yml (to wire ml-service container on backend network)
@@ -109,6 +110,20 @@
   - Table API client: apps/web/app/lib/api/tables.ts (createTable, fetchTablesForBaseline, fetchTable, updateCell, deleteRow, assignColumn, confirmTable).
 
 ## 3) Backend Map (NestJS)
+- Service: ML Service (FastAPI)
+  - Path: apps/ml-service/main.py
+  - Base route: /
+  - Endpoints:
+    - POST /ml/suggest-fields
+      - Request: { baselineId: string, segments: [{ id: string, text: string }], fields: [{ fieldKey: string, label: string }], threshold?: number }
+      - Response: { ok: boolean, modelVersion: string, threshold: number, suggestions: [{ segmentId: string, fieldKey: string, confidence: number }], error?: { code: string, message: string } }
+      - Model: all-MiniLM-L6-v2
+    - POST /ml/detect-tables
+      - Request: { attachmentId: string, segments: [{ id: string, text: string, boundingBox: {x, y, width, height}, pageNumber?: number, confidence?: number }], threshold?: number }
+      - Response: { ok: boolean, attachmentId: string, threshold: number, tables: [{ regionId: string, rowCount: number, columnCount: number, confidence: number, boundingBox: {x, y, width, height}, cells: [{ rowIndex, columnIndex, text, segmentId }], suggestedLabel: string }], processingTimeMs: number, error?: {code, message} }
+      - Heuristics: row grouping, column alignment, spacing consistency
+  - Utilities:
+    - apps/ml-service/table_detect.py - Rule-based table detection heuristics
 - Controller: AppController
   - Path: apps/api/src/app.controller.ts
   - Base route: /
@@ -182,6 +197,37 @@
     - POST /admin/users/:id/reset-password ? resetPassword() ? AdminService.resetUserPassword()
   - DTOs: none
   - Guards/errors: JwtAuthGuard + AdminGuard class-wide; NotFoundException on unknown user; AuditService.log called after reset
+- Module: MlModule
+  - Path: apps/api/src/ml/ml.module.ts
+  - Purpose: ML service client module for field suggestions and table detection
+  - Imports: DbModule, AuditModule, CommonModule
+  - Controllers: FieldSuggestionController
+  - Exports: MlService, FieldSuggestionService
+- Service: MlService
+  - Path: apps/api/src/ml/ml.service.ts
+  - Purpose: HTTP client wrapper for ML service with timeouts, error handling, and graceful degradation
+  - Methods:
+    - suggestFields(payload): Calls POST /ml/suggest-fields with 5s timeout
+    - detectTables(payload): Calls POST /ml/detect-tables with 5s timeout
+  - Error handling: Normalizes errors to { ok: false, error: { code, message } }
+  - Logging: Logs failures with service, endpoint, statusCode, errorType fields
+  - Config: Reads ML_SERVICE_URL from env (defaults to http://ml-service:5000)
+- Controller: FieldSuggestionController
+  - Path: apps/api/src/ml/field-suggestion.controller.ts
+  - Base route: none (declares path on method)
+  - Endpoints:
+    - POST /baselines/:baselineId/suggestions/generate → generateSuggestions() → FieldSuggestionService.generateSuggestions()
+  - Guards/errors: JwtAuthGuard; 400 for archived/utilized baselines; 429 for rate limit (10/hour); 404 for missing baseline/OCR
+  - Response: { suggestedAssignments: [{fieldKey, assignedValue, confidence, sourceSegmentId}], modelVersionId, suggestionCount }
+- Service: FieldSuggestionService
+  - Path: apps/api/src/ml/field-suggestion.service.ts
+  - Purpose: Orchestrates ML field suggestion generation and persistence for baselines
+  - Methods:
+    - generateSuggestions(baselineId, userId): Loads segments and active fields, calls MlService, persists suggestions with metadata, enforces rate limits
+  - Rate limit: 10 requests per hour per user (counts audit_logs with action='ml.suggest.generate')
+  - Suggestion logic: Only creates assignments for unassigned fields or fields without manual values (suggestionConfidence null)
+  - Model version: Creates or reuses ml_model_versions record for 'all-MiniLM-L6-v2' v1.0.0
+  - Graceful degradation: Returns empty suggestions if ML service fails
 - Controller: AttachmentsController
   - Path: apps/api/src/attachments/attachments.controller.ts
   - Base route: /attachments
@@ -256,8 +302,9 @@
     - POST /baselines/:baselineId/review ? markReviewed() ? BaselineManagementService.markReviewed()
     - POST /baselines/:baselineId/confirm ? confirmBaseline() ? BaselineManagementService.confirmBaseline()
     - GET /baselines/:baselineId/assignments ? listAssignments() ? BaselineAssignmentsService.listAssignments()
-    - POST /baselines/:baselineId/assign ? assignField() ? BaselineAssignmentsService.upsertAssignment()
-    - DELETE /baselines/:baselineId/assign/:fieldKey ? deleteAssignment() ? BaselineAssignmentsService.deleteAssignment()
+    - POST /baselines/:baselineId/assign ? assignField() ? BaselineAssignmentsService.upsertAssignment() (accepts AssignBaselineFieldDto with ML metadata: suggestionAccepted, suggestionConfidence, modelVersionId, correctedFrom)
+    - DELETE /baselines/:baselineId/assign/:fieldKey ? deleteAssignment() ? BaselineAssignmentsService.deleteAssignment() (accepts DeleteAssignmentDto with reason and ML rejection metadata: suggestionRejected, suggestionConfidence, modelVersionId)
+  - DTOs: apps/api/src/baseline/dto/{assign-baseline-field.dto.ts,delete-assignment.dto.ts}
   - Guards/errors: JwtAuthGuard; attachment ownership enforced; lifecycle transitions validated (400 on invalid state)
 - Controller: TableController
   - Path: apps/api/src/baseline/table.controller.ts
@@ -271,7 +318,7 @@
     - DELETE /tables/:tableId/rows/:rowIndex â†’ deleteRow() â†’ TableManagementService.deleteRow()
     - POST /tables/:tableId/columns/:columnIndex/assign â†’ assignColumn() â†’ TableManagementService.assignColumnToField()
     - POST /tables/:tableId/confirm â†’ confirmTable() â†’ TableManagementService.confirmTable()
-  - DTOs: apps/api/src/baseline/dto/{create-table.dto.ts,update-cell.dto.ts,assign-column.dto.ts,delete-row.dto.ts}
+  - DTOs: apps/api/src/baseline/dto/{assign-baseline-field.dto.ts,delete-assignment.dto.ts,create-table.dto.ts,update-cell.dto.ts,assign-column.dto.ts,delete-row.dto.ts}
   - Guards/errors: JwtAuthGuard; ownership enforced (Baseline â†’ Attachment â†’ Todo); strict validation on inputs
 - Service: BaselineManagementService
   - Path: apps/api/src/baseline/baseline-management.service.ts
