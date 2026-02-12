@@ -22,6 +22,7 @@ import { FieldLibraryService } from '../field-library/field-library.service';
 import { AssignBaselineFieldDto } from './dto/assign-baseline-field.dto';
 import { DeleteAssignmentDto } from './dto/delete-assignment.dto';
 import { AuthorizationService } from '../common/authorization.service';
+import { BaselineManagementService } from './baseline-management.service';
 
 type BaselineContext = {
     id: string;
@@ -42,6 +43,7 @@ export class BaselineAssignmentsService {
         private readonly validator: FieldAssignmentValidatorService,
         private readonly fieldLibraryService: FieldLibraryService,
         private readonly authService: AuthorizationService,
+        private readonly baselineManagementService: BaselineManagementService,
     ) { }
 
     async getAggregatedBaseline(attachmentId: string, userId: string) {
@@ -58,16 +60,9 @@ export class BaselineAssignmentsService {
             .limit(10);
 
         // Find first non-archived baseline (will be the most recent)
-        const baselineRecord = allBaselines.find(b => b.status !== 'archived');
+        let baselineRecord = allBaselines.find(b => b.status !== 'archived');
 
-        if (!baselineRecord) {
-            return null;
-        }
-
-        // 2. Fetch Assignments
-        const assignments = await this.listAssignments(baselineRecord.id, userId);
-
-        // 3. Find Current OCR Output & Segments
+        // 2. Find Current OCR Output & Segments
         const [currentOcr] = await this.dbs.db
             .select()
             .from(attachmentOcrOutputs)
@@ -78,6 +73,31 @@ export class BaselineAssignmentsService {
                 ),
             )
             .limit(1);
+
+        if (!baselineRecord && !currentOcr) {
+            return null;
+        }
+
+        if (!baselineRecord && currentOcr) {
+            baselineRecord = await this.baselineManagementService.createDraftBaseline(
+                attachmentId,
+                userId,
+            );
+        }
+
+        if (baselineRecord && currentOcr && baselineRecord.createdAt < currentOcr.createdAt) {
+            baselineRecord = await this.baselineManagementService.createDraftBaseline(
+                attachmentId,
+                userId,
+            );
+        }
+
+        if (!baselineRecord) {
+            return null;
+        }
+
+        // 3. Fetch Assignments
+        const assignments = await this.listAssignments(baselineRecord.id, userId);
 
         let segments: any[] = [];
         if (currentOcr) {
@@ -220,19 +240,7 @@ export class BaselineAssignmentsService {
         const providedReason = dto.correctionReason?.trim();
         const isOverwrite = !!existing;
 
-        // ML suggestion logic (v8.8 - C3):
-        // - If modifying a suggestion (existing has suggestionConfidence), require correctionReason
-        // - suggestionAccepted=false when modifying a suggestion (server enforces if value changed)
-        const isModifyingSuggestion =
-            existing?.suggestionConfidence !== null && existing?.suggestionConfidence !== undefined;
         const valueChanged = existing ? (existing.assignedValue ?? null) !== (normalizedValue ?? null) : false;
-        const isSuggestionModification = isModifyingSuggestion && (dto.suggestionAccepted === false || valueChanged);
-
-        if (isSuggestionModification && (!providedReason || providedReason.length < 10)) {
-            throw new BadRequestException(
-                'correctionReason (min 10 chars) is required when modifying an ML suggestion',
-            );
-        }
 
         if (context.status === 'reviewed' && isOverwrite) {
             if (!providedReason || providedReason.length < 10) {

@@ -106,7 +106,8 @@
   - Extracted text pool: apps/web/app/components/ocr/ExtractedTextPool.tsx renders truncated segments with confidence badges and bounding-box hover highlighting for review; supports checkboxes for multi-select and select-all.
   - Field assignment panel: apps/web/app/components/FieldAssignmentPanel.tsx renders active field library fields with type-specific inputs (text/number/decimal/date/currency), validation status indicators, user-friendly labels, example tooltips, drag-drop zones, and read-only mode for confirmed/utilized baselines.
   - Validation modals: apps/web/app/components/ValidationConfirmationModal.tsx (invalid value confirmation with "Save As-Is" / "Use Suggestion" / "Cancel" actions), apps/web/app/components/CorrectionReasonModal.tsx (requires 10+ char reason for overwrite/delete on reviewed baselines).
-  - Baseline API client: apps/web/app/lib/api/baselines.ts (fetchBaselineForAttachment, upsertAssignment with confirmInvalid flag, deleteAssignment, markBaselineReviewed, confirmBaseline).
+  - Baseline API client: apps/web/app/lib/api/baselines.ts (fetchBaselineForAttachment, upsertAssignment with confirmInvalid flag, deleteAssignment, markBaselineReviewed, confirmBaseline, generateSuggestions).
+  - Suggestions UI: apps/web/app/components/suggestions/SuggestionTrigger.tsx (trigger ML field suggestions with tooltip), apps/web/app/components/suggestions/SuggestedFieldInput.tsx (visualizing field suggestions with confidence badges), apps/web/app/components/suggestions/SuggestionActionModal.tsx (modal for accepting/modifying/clearing ML suggestions).
   - Table API client: apps/web/app/lib/api/tables.ts (createTable, fetchTablesForBaseline, fetchTable, updateCell, deleteRow, assignColumn, confirmTable).
 
 ## 3) Backend Map (NestJS)
@@ -115,15 +116,26 @@
   - Base route: /
   - Endpoints:
     - POST /ml/suggest-fields
-      - Request: { baselineId: string, segments: [{ id: string, text: string }], fields: [{ fieldKey: string, label: string }], threshold?: number }
+      - Request: { baselineId: string, segments: [{ id: string, text: string, boundingBox?: {x, y, width, height}, pageNumber?: number }], fields: [{ fieldKey: string, label: string, characterType?: string }], threshold?: number }
       - Response: { ok: boolean, modelVersion: string, threshold: number, suggestions: [{ segmentId: string, fieldKey: string, confidence: number }], error?: { code: string, message: string } }
-      - Model: all-MiniLM-L6-v2
+      - Model: all-MiniLM-L6-v2 (sentence-transformers)
+      - Algorithm: Three-pass strategy combining spatial layout, token matching, and semantic embeddings
+        1. Token overlap boost: Adds 0.0-0.30 to similarity scores for exact label token matches (distinctive tokens weighted higher)
+        2. Label-to-value proximity (first pass): For numeric/date fields, finds label segments, then locates nearby value segments using bounding boxes
+        3. Semantic matching (fallback): Uses ML embeddings for remaining segments
+      - Key Functions:
+        - is_numeric_value(text): Detects numeric values; recognizes currency symbols, strips parenthetical content, 40% digit threshold
+        - is_date_value(text): Detects date values via month names or date patterns
+        - calculate_token_overlap_boost(segment, field): Computes 0.0-0.30 boost for token matches
+        - matches_label(segment, field): Checks if segment contains all field label tokens
+        - find_value_near_label(label, segments, type): Finds value near label using spatial proximity
     - POST /ml/detect-tables
       - Request: { attachmentId: string, segments: [{ id: string, text: string, boundingBox: {x, y, width, height}, pageNumber?: number, confidence?: number }], threshold?: number }
       - Response: { ok: boolean, attachmentId: string, threshold: number, tables: [{ regionId: string, rowCount: number, columnCount: number, confidence: number, boundingBox: {x, y, width, height}, cells: [{ rowIndex, columnIndex, text, segmentId }], suggestedLabel: string }], processingTimeMs: number, error?: {code, message} }
       - Heuristics: row grouping, column alignment, spacing consistency
   - Utilities:
     - apps/ml-service/table_detect.py - Rule-based table detection heuristics
+    - apps/ml-service/model.py - Sentence transformer model loading and embedding generation
 - Controller: AppController
   - Path: apps/api/src/app.controller.ts
   - Base route: /
@@ -200,9 +212,9 @@
 - Module: MlModule
   - Path: apps/api/src/ml/ml.module.ts
   - Purpose: ML service client module for field suggestions and table detection
-  - Imports: DbModule, AuditModule, CommonModule
-  - Controllers: FieldSuggestionController
-  - Exports: MlService, FieldSuggestionService
+  - Imports: DbModule, AuditModule, CommonModule, BaselineModule
+  - Controllers: FieldSuggestionController, TableSuggestionController
+  - Exports: MlService, FieldSuggestionService, TableSuggestionService
 - Service: MlService
   - Path: apps/api/src/ml/ml.service.ts
   - Purpose: HTTP client wrapper for ML service with timeouts, error handling, and graceful degradation
@@ -212,6 +224,16 @@
   - Error handling: Normalizes errors to { ok: false, error: { code, message } }
   - Logging: Logs failures with service, endpoint, statusCode, errorType fields
   - Config: Reads ML_SERVICE_URL from env (defaults to http://ml-service:5000)
+- Service: TableSuggestionService
+  - Path: apps/api/src/ml/table-suggestion.service.ts
+  - Purpose: Orchestrates ML table detection, persistence, ignore, and convert workflows
+  - Methods:
+    - detectTables(attachmentId, userId, threshold): Calls ML service, persists suggestions with status 'pending'
+    - listSuggestions(attachmentId, userId): Returns pending suggestions for an attachment
+    - ignoreSuggestion(suggestionId, userId): Marks suggestion as 'ignored', sets ignoredAt
+    - convertSuggestion(suggestionId, userId): Marks as 'converted', returns cell data for table creation
+  - Audit: Emits ml.table.detect, ml.table.ignore, ml.table.convert events
+  - Ownership: Enforces attachment ownership via todo.userId checks
 - Controller: FieldSuggestionController
   - Path: apps/api/src/ml/field-suggestion.controller.ts
   - Base route: none (declares path on method)
@@ -219,6 +241,16 @@
     - POST /baselines/:baselineId/suggestions/generate → generateSuggestions() → FieldSuggestionService.generateSuggestions()
   - Guards/errors: JwtAuthGuard; 400 for archived/utilized baselines; 429 for rate limit (10/hour); 404 for missing baseline/OCR
   - Response: { suggestedAssignments: [{fieldKey, assignedValue, confidence, sourceSegmentId}], modelVersionId, suggestionCount }
+- Controller: TableSuggestionController
+  - Path: apps/api/src/ml/table-suggestion.controller.ts
+  - Base route: none (declares paths on methods)
+  - Endpoints:
+    - POST /attachments/:attachmentId/table-suggestions/detect → detectTables() → TableSuggestionService.detectTables()
+    - GET /attachments/:attachmentId/table-suggestions → listSuggestions() → TableSuggestionService.listSuggestions()
+    - POST /table-suggestions/:id/ignore → ignoreSuggestion() → TableSuggestionService.ignoreSuggestion()
+    - POST /table-suggestions/:id/convert → convertSuggestion() → TableSuggestionService.convertSuggestion() + TableManagementService.createTable()
+  - Guards/errors: JwtAuthGuard; 403 for ownership violations; 400 for non-editable baselines; 404 for missing resources
+  - Response (convert): { success: boolean, tableId: string, redirectUrl: string }
 - Service: FieldSuggestionService
   - Path: apps/api/src/ml/field-suggestion.service.ts
   - Purpose: Orchestrates ML field suggestion generation and persistence for baselines

@@ -82,7 +82,10 @@ export type AuditAction =
   | 'table.row.delete'
   | 'table.column.assign'
   | 'table.confirm'
-  | 'ml.suggest.generate';
+  | 'ml.suggest.generate'
+  | 'ml.table.detect'
+  | 'ml.table.ignore'
+  | 'ml.table.convert';
 
 export type AuditModule =
   | 'auth'

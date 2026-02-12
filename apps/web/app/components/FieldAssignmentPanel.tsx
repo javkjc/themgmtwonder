@@ -1,8 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Assignment, AssignmentValidation } from '@/app/lib/api/baselines';
+import { Assignment, AssignmentValidation, Segment } from '@/app/types';
 import { Field, FieldCharacterType } from '@/app/lib/api/fields';
+import SuggestedFieldInput from './suggestions/SuggestedFieldInput';
+import SuggestionActionModal from './suggestions/SuggestionActionModal';
+import { AssignPayload, DeleteAssignmentPayload } from '../lib/api/baselines';
 
 interface ResetLocalField {
   key: string;
@@ -13,12 +16,14 @@ interface FieldAssignmentPanelProps {
   fields: Field[];
   assignments: Assignment[];
   isReadOnly: boolean;
-  onUpdate?: (fieldKey: string, value: string, sourceSegmentId?: string) => Promise<void>;
-  onDelete?: (fieldKey: string) => Promise<void>;
+  onUpdate?: (fieldKey: string, value: string, sourceSegmentId?: string, metadata?: Partial<AssignPayload>) => Promise<void>;
+  onDelete?: (fieldKey: string, metadata?: DeleteAssignmentPayload) => Promise<void>;
+  onAccept?: (fieldKey: string) => Promise<void>;
   onLocalValuesChange?: (localValues: Record<string, string>) => void;
   resetLocalField?: ResetLocalField | null;
   readOnlyReason?: string;
   highlightFieldKey?: string | null;
+  segments?: Segment[];
 }
 
 const typeInputAttributes: Record<FieldCharacterType, { type: React.HTMLInputTypeAttribute; inputMode?: 'text' | 'numeric' | 'decimal' | 'email' | 'tel' | 'url'; step?: string; placeholder?: string }> = {
@@ -87,12 +92,25 @@ export default function FieldAssignmentPanel({
   isReadOnly,
   onUpdate,
   onDelete,
+  onAccept,
   onLocalValuesChange,
   resetLocalField,
   readOnlyReason,
   highlightFieldKey,
+  segments = [],
 }: FieldAssignmentPanelProps) {
   const [localValues, setLocalValues] = useState<Record<string, string>>({});
+  const [showOnlySuggested, setShowOnlySuggested] = useState(false);
+
+  // Suggestion Action Modal State
+  const [isSuggestModalOpen, setIsSuggestModalOpen] = useState(false);
+  const [suggestPendingAction, setSuggestPendingAction] = useState<{
+    type: 'modify' | 'clear';
+    fieldKey: string;
+    fieldLabel: string;
+    value?: string;
+    originalValue?: string;
+  } | null>(null);
 
   const assignmentMap = useMemo(() => {
     const map: Record<string, Assignment> = {};
@@ -101,6 +119,15 @@ export default function FieldAssignmentPanel({
     });
     return map;
   }, [assignments]);
+
+  const suggestedCount = useMemo(() => {
+    return fields.filter(f => assignmentMap[f.fieldKey]?.suggestionConfidence !== null && assignmentMap[f.fieldKey]?.suggestionConfidence !== undefined).length;
+  }, [fields, assignmentMap]);
+
+  const filteredFields = useMemo(() => {
+    if (!showOnlySuggested) return fields;
+    return fields.filter(f => assignmentMap[f.fieldKey]?.suggestionConfidence !== null && assignmentMap[f.fieldKey]?.suggestionConfidence !== undefined);
+  }, [fields, assignmentMap, showOnlySuggested]);
 
   // Clear local values when assignments update from backend
   useEffect(() => {
@@ -141,13 +168,100 @@ export default function FieldAssignmentPanel({
       if (isReadOnly || !onUpdate) return;
       const existing = assignmentMap[fieldKey];
       if (existing?.assignedValue === value) return;
+
+      // If it's a suggestion that hasn't been accepted/modified yet, trigger reason modal on change
+      const isInitialSuggestion = existing?.suggestionAccepted === null && existing?.suggestionConfidence !== null;
+      if (isInitialSuggestion && existing?.assignedValue !== value) {
+        const field = fields.find(f => f.fieldKey === fieldKey);
+        setSuggestPendingAction({
+          type: 'modify',
+          fieldKey,
+          fieldLabel: field?.label || fieldKey,
+          value,
+          originalValue: existing?.assignedValue || '',
+        });
+        setIsSuggestModalOpen(true);
+        return;
+      }
+
       try {
         await onUpdate(fieldKey, value);
       } catch {
         // Handled by parent; keep UI stable for now.
       }
     },
-    [assignmentMap, isReadOnly, onUpdate],
+    [assignmentMap, isReadOnly, onUpdate, fields],
+  );
+
+  const handleAccept = useCallback(
+    async (fieldKey: string) => {
+      if (isReadOnly || !onAccept) return;
+      await onAccept(fieldKey);
+    },
+    [isReadOnly, onAccept],
+  );
+
+  const handleClearTrigger = useCallback(
+    (fieldKey: string) => {
+      if (isReadOnly || !onDelete) return;
+      const existing = assignmentMap[fieldKey];
+      const isSuggestion = existing?.suggestionConfidence !== null;
+
+      if (isSuggestion) {
+        const field = fields.find(f => f.fieldKey === fieldKey);
+        setSuggestPendingAction({
+          type: 'clear',
+          fieldKey,
+          fieldLabel: field?.label || fieldKey,
+          originalValue: existing?.assignedValue || '',
+        });
+        setIsSuggestModalOpen(true);
+      } else {
+        onDelete(fieldKey);
+      }
+    },
+    [isReadOnly, onDelete, assignmentMap, fields],
+  );
+
+  const handleSuggestModalConfirm = useCallback(
+    async (reason: string) => {
+      if (!suggestPendingAction) return;
+      const { type, fieldKey, value, originalValue } = suggestPendingAction;
+      setIsSuggestModalOpen(false);
+
+      try {
+        if (type === 'modify') {
+          if (onUpdate) {
+            await onUpdate(fieldKey, value!, undefined, {
+              suggestionAccepted: false,
+              correctedFrom: originalValue,
+              correctionReason: reason,
+            });
+          }
+        } else if (type === 'clear') {
+          if (onDelete) {
+            const existing = assignmentMap[fieldKey];
+            await onDelete(fieldKey, {
+              correctionReason: reason,
+              suggestionRejected: true,
+              suggestionConfidence: existing?.suggestionConfidence || undefined,
+              modelVersionId: existing?.modelVersionId || undefined,
+            });
+          }
+        }
+      } catch {
+        // Error handled by parent toast
+        if (type === 'modify') {
+          setLocalValues((prev) => {
+            const { [fieldKey]: _, ...rest } = prev;
+            return rest;
+          });
+        }
+      } finally {
+        setSuggestPendingAction(null);
+      }
+    },
+    [suggestPendingAction, onUpdate, onDelete, assignmentMap],
   );
 
   const handleDrop = useCallback(
@@ -202,7 +316,43 @@ export default function FieldAssignmentPanel({
           {readOnlyReason}
         </div>
       )}
-      {fields.map((field) => {
+
+      {suggestedCount > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '8px 12px',
+            background: '#f1f5f9',
+            borderRadius: 12,
+            border: '1px solid #e2e8f0',
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#475569' }}>
+            ✨ {suggestedCount} of {fields.length} fields auto-suggested
+          </div>
+          <button
+            onClick={() => setShowOnlySuggested(!showOnlySuggested)}
+            style={{
+              padding: '6px 12px',
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+              border: showOnlySuggested ? '1px solid #2563eb' : '1px solid #cbd5e1',
+              background: showOnlySuggested ? '#2563eb' : '#ffffff',
+              color: showOnlySuggested ? '#ffffff' : '#475569',
+              transition: 'all 0.2s ease',
+              boxShadow: showOnlySuggested ? '0 2px 4px rgba(37, 99, 235, 0.2)' : 'none',
+            }}
+          >
+            {showOnlySuggested ? 'Show All Fields' : 'Show Suggested Only'}
+          </button>
+        </div>
+      )}
+
+      {filteredFields.map((field) => {
         const assignment = assignmentMap[field.fieldKey];
         const hasLocalValue = localValues[field.fieldKey] !== undefined;
         const value = localValues[field.fieldKey] ?? assignment?.assignedValue ?? '';
@@ -258,34 +408,23 @@ export default function FieldAssignmentPanel({
             </div>
 
             <div style={{ position: 'relative', width: '100%' }}>
-              <input
-                id={`field-${field.fieldKey}`}
+              <SuggestedFieldInput
+                assignment={assignment || ({ fieldKey: field.fieldKey } as Assignment)}
+                segments={segments}
                 value={value}
-                disabled={isReadOnly}
-                onChange={(event) =>
-                  setLocalValues((prev) => ({
-                    ...prev,
-                    [field.fieldKey]: event.target.value,
-                  }))
-                }
-                onBlur={(event) => handleBlur(field.fieldKey, event.target.value)}
-                autoComplete="off"
+                isReadOnly={isReadOnly}
                 placeholder={assignment ? '' : (inputAttrs.placeholder ?? 'Unassigned')}
                 type={inputAttrs.type}
                 inputMode={inputAttrs.inputMode ?? undefined}
                 step={inputAttrs.step ?? undefined}
-                style={{
-                  width: '100%',
-                  borderRadius: 10,
-                  border: `1px solid ${validation && !validation.valid ? '#fecaca' : '#cbd5e1'}`,
-                  padding: '10px 12px',
-                  paddingRight: field.characterType === 'date' ? '42px' : '12px',
-                  fontSize: 14,
-                  color: isReadOnly ? '#475569' : '#0f172a',
-                  background: isReadOnly ? '#f8fafc' : '#ffffff',
-                  outline: 'none',
-                  transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
-                }}
+                onChange={(newValue) =>
+                  setLocalValues((prev) => ({
+                    ...prev,
+                    [field.fieldKey]: newValue,
+                  }))
+                }
+                onBlur={(newValue) => handleBlur(field.fieldKey, newValue)}
+                onAccept={() => handleAccept(field.fieldKey)}
               />
               {field.characterType === 'date' && !isReadOnly && (
                 <label
@@ -341,7 +480,29 @@ export default function FieldAssignmentPanel({
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: status.color }}>{status.label}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: status.color }}>{status.label}</span>
+                {!isReadOnly && value && (
+                  <button
+                    onClick={() => handleClearTrigger(field.fieldKey)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#94a3b8',
+                      fontSize: 10,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      padding: '2px 4px',
+                      borderRadius: 4,
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
               {assignment?.sourceSegmentId && (
                 <span style={{ fontSize: 11, color: '#64748b' }}>Linked to text segment</span>
               )}
@@ -385,6 +546,32 @@ export default function FieldAssignmentPanel({
           </div>
         );
       })}
+      <SuggestionActionModal
+        isOpen={isSuggestModalOpen}
+        onClose={() => {
+          if (suggestPendingAction?.type === 'modify' && suggestPendingAction.fieldKey) {
+            setLocalValues((prev) => {
+              const { [suggestPendingAction!.fieldKey]: _, ...rest } = prev;
+              return rest;
+            });
+          }
+          setIsSuggestModalOpen(false);
+          setSuggestPendingAction(null);
+        }}
+        onConfirm={handleSuggestModalConfirm}
+        title={suggestPendingAction?.type === 'modify' ? 'Modify Suggestion' : 'Clear Suggestion'}
+        message={
+          suggestPendingAction?.type === 'modify'
+            ? `You are changing the suggested value for "${suggestPendingAction?.fieldLabel}".`
+            : `You are clearing the suggested value for "${suggestPendingAction?.fieldLabel}".`
+        }
+        description={
+          suggestPendingAction?.type === 'modify'
+            ? `Original: "${suggestPendingAction?.originalValue}"`
+            : undefined
+        }
+        confirmLabel={suggestPendingAction?.type === 'modify' ? 'Update Field' : 'Clear Field'}
+      />
     </div>
   );
 }

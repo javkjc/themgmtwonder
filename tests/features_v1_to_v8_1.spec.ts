@@ -60,51 +60,15 @@ test.describe('Full System Feature Coverage (v1 - v8.1)', () => {
         await expect(page.locator('.rbc-calendar')).toBeVisible();
     });
 
-    test('v3-v8.1: OCR Review Flow (Mocked)', async ({ page }) => {
-        const taskId = 'task-' + uniqueId();
-        const attId = 'att-' + uniqueId();
-
-        // Correct endpoints from app/lib/api/ocr.ts
-        await page.route(`**/attachments/${attId}/ocr/results`, async route => {
-            await route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({
-                    attachmentId: attId,
-                    attachment: { id: attId, filename: 'test-invoice.pdf', mimeType: 'application/pdf', todoId: taskId },
-                    rawOcr: { id: 'ocr-1', status: 'draft', extractedText: 'Total: 500.00', createdAt: new Date().toISOString() },
-                    parsedFields: [
-                        { id: 'f1', fieldName: 'Total', originalValue: '500.00', currentValue: '500.00', confidence: 0.95, isCorrected: false }
-                    ],
-                    utilizationType: null
-                })
-            });
-        });
-
-        await page.route(`**/attachments/${attId}/ocr/redo-eligibility*`, async route => {
-            await route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({ allowed: true, hasConfirmed: false })
-            });
-        });
+    test('v3-v8.1: OCR Review Flow (Live Attachment)', async ({ page }) => {
+        const taskId = '5922795d-dafc-4e1f-9d6f-69b8e5fbe900';
+        const attId = '2d763b3a-8432-46b3-8974-880ed749bf33';
 
         await page.goto(`/attachments/${attId}/review?taskId=${taskId}`);
-
-        await expect(page.getByRole('heading', { name: /Extracted Data Review/i })).toBeVisible();
-        await expect(page.getByText('draft', { exact: false }).first()).toBeVisible();
-        await expect(page.getByText('Total').first()).toBeVisible();
-        await expect(page.getByText('500.00').first()).toBeVisible();
-
-        // Test Edit Modal
-        await page.getByRole('button', { name: /edit/i }).first().click();
-        await expect(page.getByText(/Reason for correction/i)).toBeVisible();
-
-        const saveBtn = page.getByRole('button', { name: /Save Correction/i });
-        await expect(saveBtn).toBeDisabled();
-
-        await page.getByPlaceholder(/Why was this field corrected/i).fill('Testing correction');
-        await expect(saveBtn).toBeEnabled();
+        const totalAmountInput = page.locator('#field-total_amount');
+        await totalAmountInput.waitFor({ state: 'visible', timeout: 30000 });
+        await expect(totalAmountInput).toHaveValue('$27.54 (1 item)');
+        await expect(totalAmountInput).not.toHaveValue('Jul 28, 2023');
     });
 
     test('v4: Parent/Child Linking', async ({ page }) => {

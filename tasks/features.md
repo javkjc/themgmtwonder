@@ -2959,6 +2959,10 @@ Rate Limiting:
 - HTTP 429 response: "Suggestion quota exceeded. Try again in X minutes."
 - Admin users: Exempt from rate limiting
 
+**Extension Note**
+- v8.8.1 adds pairing, field context, field selection, table enhancements, and eval metrics. No learning or memory is introduced in v8.8.x.
+
+
 **Security Considerations:**
 
 ML Model Protection:
@@ -2999,19 +3003,68 @@ E2E Tests:
 
 ---
 
+## v8.8.1 — Adaptive Doc Intelligence (Pairing + Field Context + Selection + Table Enhancements + Eval) 📋 (Planned)
+
+**What this is**
+- Layout-aware label/value pairing as a derived candidate layer (no mutation of raw segments)
+- Field context enrichment for better matching (neighbor text, positional cues, section headers)
+- Field selection/ranking to reduce UI noise and improve review throughput
+- Table detection enhancement (precision improvements on v8.8 table suggestions)
+- Evaluation/monitoring (accept/modify/clear rates, top-1 accuracy, confusion by field)
+
+**What this is not**
+- ❌ Not learning or memory (v8.9+)
+- ❌ Not auto-assignment or auto-confirm
+- ❌ Not background automation
+
+**Design Intent**
+Improve suggestion quality and reviewer efficiency without changing governance invariants.
+
+**Dependencies**
+- **REQUIRES:** v8.6 (baseline review + validation)
+- **REQUIRES:** v8.8 (ML suggestion endpoints + explicit user actions)
+- **NO NEW INFRASTRUCTURE** (no vector store, no background jobs)
+
+**Key Principles**
+- Derived data only, never authoritative
+- Suggestions remain opt-in
+- Full provenance for any pairing context (segment IDs, positional metadata)
+- No new auto-triggering behavior beyond v8.8’s explicit suggestion flow
+
+
+**Impact Areas**
+- Pairing layer feeds ML suggestion inputs (label/value candidates are derived only)
+- Field selection influences what appears in the review panel (toggle "show all" required)
+- Table detection enhancements reuse v8.8 ML flow with stricter confidence thresholds
+- Evaluation is read‑only metrics from audit logs (no workflow coupling)
+
+**Risks / Governance**
+- Pairing heuristics can be wrong. Mitigation: store as candidate with confidence + provenance only.
+- Field selection might hide needed fields. Mitigation: explicit “Show all fields” toggle.
+- Table false positives. Mitigation: higher thresholds + ignore‑forever per attachment.
+
+--- 
+
 ## v8.9 — ML Model Training & Fine-Tuning 📋 (Planned)
-What this is
+
+**What this is**
 
 Collect user corrections from v8.8 to build training dataset
 Fine-tune Sentence-BERT on domain-specific field matching
 Improve suggestion accuracy over time (active learning loop)
 A/B test model versions to measure improvement
 
-What this is not
+**What this is not**
 
 Not automatic model updates (admin triggers retraining)
 Not real-time learning (batch training, e.g., weekly)
 Not mandatory (v8.6 works with pre-trained models)
+
+**Scope Clarification**
+- v8.9 includes semantic memory/learning from confirmed baselines and cross‑encoder reranking/model‑ops.
+- v8.9 builds on v8.8.1 outputs (pairing/context/selection) but does not change v8.8.x invariants.
+- Memory + reranking only influence ranking on confirmed baselines; suggestions remain opt-in
+
 
 
 Capability A: Correction Dataset Collection

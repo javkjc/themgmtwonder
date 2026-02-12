@@ -558,7 +558,7 @@ export default function TableEditorPanel({
                 addChangeLogEntry({
                     label: `Cell R${rowIndex + 1}C${columnIndex + 1} updated`,
                     detail: `"${oldValue}" → "${newValue}"`,
-                    target: { rowIndex, columnIndex },
+                    target: { rowIndex, columnIndex, cellId: originalCell.id },
                 });
             }
 
@@ -1154,29 +1154,36 @@ export default function TableEditorPanel({
                                                 <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>{entry.label}</div>
                                                 {entry.target && (
                                                     <button
-                                                        onClick={() => {
-                                                            let rowIndex = entry.target!.rowIndex;
-                                                            let columnIndex = entry.target!.columnIndex;
-                                                            if (entry.target?.cellId) {
-                                                                const loc = cellIdMap.get(entry.target.cellId);
-                                                                if (!loc) {
-                                                                    showNotification('Row not found (it may have been deleted).', 'error');
-                                                                    return;
-                                                                }
-                                                                rowIndex = loc.rowIndex;
-                                                                columnIndex = loc.columnIndex;
-                                                            } else {
-                                                                if (!tableRowIndexSet.has(rowIndex)) {
-                                                                    showNotification('Row not found (it may have been deleted).', 'error');
-                                                                    return;
-                                                                }
+                                                    onClick={() => {
+                                                        let rowIndex = entry.target!.rowIndex;
+                                                        let columnIndex = entry.target!.columnIndex;
+                                                        if (entry.target?.cellId) {
+                                                            const loc = cellIdMap.get(entry.target.cellId);
+                                                            if (!loc) {
+                                                                showNotification('Row not found (it may have been deleted).', 'error');
+                                                                return;
                                                             }
-                                                            const visibleIndex = filteredData.findIndex(row => row[0]?.rowIndex === rowIndex);
-                                                            if (showErrorsOnly && visibleIndex === -1) {
+                                                            rowIndex = loc.rowIndex;
+                                                            columnIndex = loc.columnIndex;
+                                                        } else {
+                                                            if (!tableRowIndexSet.has(rowIndex)) {
+                                                                showNotification('Row not found (it may have been deleted).', 'error');
+                                                                return;
+                                                            }
+                                                        }
+                                                        const visibleIndex = filteredData.findIndex(row => row[0]?.rowIndex === rowIndex);
+                                                        if (visibleIndex === -1) {
+                                                            if (showErrorsOnly) {
                                                                 setShowErrorsOnly(false);
                                                             }
-                                                            setPendingFindTarget({ rowIndex, columnIndex });
-                                                        }}
+                                                            showNotification('Row not found in current view.', 'error');
+                                                            return;
+                                                        }
+                                                        if (showErrorsOnly) {
+                                                            setShowErrorsOnly(false);
+                                                        }
+                                                        setPendingFindTarget({ rowIndex, columnIndex });
+                                                    }}
                                                         style={{
                                                             border: '1px solid #dbeafe',
                                                             background: '#eff6ff',

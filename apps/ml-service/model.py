@@ -29,7 +29,7 @@ def load_model(timeout_seconds: float = 20.0) -> None:
     global _model, _model_error, _model_loaded_at
 
     with _lock:
-        if _model is not None or _model_error is not None:
+        if _model is not None:
             return
 
         start_time = time.time()

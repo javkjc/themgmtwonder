@@ -24,6 +24,9 @@ export interface Assignment {
   correctedFrom: string | null;
   correctionReason: string | null;
   validation?: AssignmentValidation;
+  suggestionConfidence?: number | null;
+  suggestionAccepted?: boolean | null;
+  modelVersionId?: string | null;
 }
 
 export interface Segment {
@@ -59,11 +62,26 @@ export interface AssignPayload {
   sourceSegmentId?: string;
   correctionReason?: string;
   confirmInvalid?: boolean;
+  suggestionAccepted?: boolean;
+  correctedFrom?: string;
+  suggestionConfidence?: number;
+  modelVersionId?: string;
 }
 
 export interface AssignmentUpsertResponse {
   assignment: Assignment;
   validation: AssignmentValidation;
+}
+
+export interface GenerateSuggestionsResponse {
+  suggestedAssignments: Array<{
+    fieldKey: string;
+    assignedValue: string;
+    confidence: number;
+    sourceSegmentId: string | null;
+  }>;
+  modelVersionId: string | null;
+  suggestionCount: number;
 }
 
 export async function upsertAssignment(
@@ -80,15 +98,25 @@ export interface DeleteAssignmentResponse {
   deleted: boolean;
 }
 
+export interface DeleteAssignmentPayload {
+  correctionReason?: string;
+  suggestionRejected?: boolean;
+  suggestionConfidence?: number;
+  modelVersionId?: string;
+}
+
 export async function deleteAssignment(
   baselineId: string,
   fieldKey: string,
-  reason?: string | null,
+  payload?: DeleteAssignmentPayload | string | null,
 ): Promise<DeleteAssignmentResponse> {
-  const payload = reason ? { correctionReason: reason } : {};
+  const body = typeof payload === 'string'
+    ? { correctionReason: payload }
+    : payload || {};
+
   return apiFetchJson(`/baselines/${baselineId}/assign/${fieldKey}`, {
     method: 'DELETE',
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
 }
 
@@ -125,5 +153,14 @@ export async function markBaselineReviewed(
 export async function confirmBaseline(baselineId: string): Promise<Baseline> {
   return apiFetchJson(`/baselines/${baselineId}/confirm`, {
     method: 'POST',
+  });
+}
+
+export async function generateSuggestions(
+  baselineId: string,
+): Promise<GenerateSuggestionsResponse> {
+  return apiFetchJson(`/baselines/${baselineId}/suggestions/generate`, {
+    method: 'POST',
+    body: JSON.stringify({}),
   });
 }

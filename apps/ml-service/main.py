@@ -116,7 +116,7 @@ class DetectTablesResponse(BaseModel):
 
 @app.on_event("startup")
 def startup_event() -> None:
-    load_model(timeout_seconds=20.0)
+    load_model(timeout_seconds=120.0)
 
 
 @app.get("/health")
@@ -127,14 +127,152 @@ def health():
 def is_numeric_value(text: str) -> bool:
     """Check if text looks like a numeric value (not a label)"""
     text = text.strip()
-    # Check for currency, numbers, decimals, negative values
-    if any(c.isdigit() for c in text):
-        # Remove common numeric characters
-        cleaned = text.replace(",", "").replace(".", "").replace("-", "").replace("$", "").replace("€", "").replace("£", "")
-        # If mostly digits remain, it's likely a value
-        if cleaned and sum(c.isdigit() for c in cleaned) / len(cleaned) > 0.5:
+
+    # Quick check: if no digits, definitely not numeric
+    if not any(c.isdigit() for c in text):
+        return False
+
+    # Check for currency symbols - strong indicator it's a value
+    if any(symbol in text for symbol in ["$", "€", "£", "¥", "₹"]):
+        return True
+
+    # Check for number patterns with decimals/commas
+    # Remove currency symbols, whitespace, and common numeric formatting
+    cleaned = text.replace("$", "").replace("€", "").replace("£", "").replace("¥", "").replace("₹", "")
+    cleaned = cleaned.replace(",", "").replace(" ", "")
+
+    # Split on common delimiters to extract the main numeric part
+    # This handles cases like "$27.54 (1 item)" -> "$27.54"
+    for delimiter in ["(", ")", "[", "]", "{", "}"]:
+        if delimiter in cleaned:
+            parts = cleaned.split(delimiter)
+            # Take the first part that contains digits
+            for part in parts:
+                if any(c.isdigit() for c in part):
+                    cleaned = part.strip()
+                    break
+
+    # Now check if what remains is mostly numeric
+    # Remove decimal points and dashes (for negative numbers)
+    numeric_check = cleaned.replace(".", "").replace("-", "")
+
+    if numeric_check:
+        digit_ratio = sum(c.isdigit() for c in numeric_check) / len(numeric_check)
+        # More lenient threshold: 40% instead of 50%
+        if digit_ratio > 0.4:
             return True
+
     return False
+
+
+def normalize_text(text: str) -> str:
+    return (
+        text.lower()
+        .replace(",", " ")
+        .replace(".", " ")
+        .replace(":", " ")
+        .replace("-", " ")
+        .replace("/", " ")
+        .replace("  ", " ")
+        .strip()
+    )
+
+
+def label_tokens(label: str) -> List[str]:
+    tokens = [t for t in normalize_text(label).split() if t]
+    # Normalize common synonyms/abbreviations
+    normalized = []
+    for token in tokens:
+        if token in ["#", "no", "num", "number"]:
+            normalized.append("number")
+        else:
+            normalized.append(token)
+    return normalized
+
+
+def matches_label(segment_text: str, field_label: str) -> bool:
+    tokens = label_tokens(field_label)
+    if not tokens:
+        return False
+    seg = normalize_text(segment_text)
+    # Normalize segment text with same synonym rules
+    seg_tokens = normalize_text(seg).split()
+    seg_tokens = ["number" if t in ["#", "no", "num", "number"] else t for t in seg_tokens]
+
+    # For multi-word labels, require at least one significant token match
+    # (not just generic words like "total", "date", "number")
+    if len(tokens) > 1:
+        # Check if any distinctive (non-generic) token matches
+        distinctive_field_tokens = [t for t in tokens if t not in {"date", "number", "total", "amount", "name", "id"}]
+        distinctive_seg_tokens = [t for t in seg_tokens if t not in {"date", "number", "total", "amount", "name", "id"}]
+
+        # If there are distinctive tokens in the field label, require at least one to match
+        if distinctive_field_tokens:
+            has_distinctive_match = any(t in seg_tokens for t in distinctive_field_tokens)
+            if has_distinctive_match:
+                # Also require at least one common token to match
+                common_matches = sum(1 for t in tokens if t in seg_tokens)
+                return common_matches >= 1
+        else:
+            # All tokens are generic (e.g., "total amount"), require majority match
+            matches = sum(1 for t in tokens if t in seg_tokens)
+            return matches >= len(tokens) / 2
+
+    # For single-word labels, require exact match
+    return all(token in seg_tokens for token in tokens)
+
+
+def calculate_token_overlap_boost(segment_text: str, field_label: str) -> float:
+    """
+    Calculate a boost score based on exact token matches between segment and field label.
+    Returns a value between 0.0 and 0.3 to add to the similarity score.
+
+    Examples:
+    - "Receive Date" segment vs "Receive Date" field → high boost (0.3)
+    - "Order Date" segment vs "Receive Date" field → low boost (0.1, only "date" matches)
+    - "Jul 28, 2023" segment vs "Receive Date" field → no boost (0.0)
+    """
+    field_tokens = set(label_tokens(field_label))
+    seg_tokens = set(label_tokens(segment_text))
+
+    if not field_tokens or not seg_tokens:
+        return 0.0
+
+    # Calculate overlap ratio
+    overlap = field_tokens & seg_tokens  # Intersection
+    overlap_ratio = len(overlap) / len(field_tokens)
+
+    # Special boost for distinctive tokens (not common words like "date", "number")
+    distinctive_matches = overlap - {"date", "number", "total", "amount", "name", "id"}
+
+    # Base boost from overlap ratio (up to 0.15)
+    base_boost = overlap_ratio * 0.15
+
+    # Additional boost for distinctive token matches (up to 0.15)
+    distinctive_boost = min(len(distinctive_matches) / max(len(field_tokens), 1), 1.0) * 0.15
+
+    return base_boost + distinctive_boost
+
+
+def is_date_value(text: str) -> bool:
+    # Basic heuristics: contains month name or date-like digits
+    lower = text.strip().lower()
+    if any(month in lower for month in [
+        "jan", "feb", "mar", "apr", "may", "jun",
+        "jul", "aug", "sep", "oct", "nov", "dec"
+    ]):
+        return True
+    # Date patterns like 2023-07-28, 07/28/2023, 28/07/2023
+    digits = [c for c in lower if c.isdigit()]
+    return len(digits) >= 6 and any(sep in lower for sep in ["-", "/"])
+
+
+def is_value_for_field(text: str, field_type: Optional[str]) -> bool:
+    if field_type in ["int", "decimal", "currency"]:
+        return is_numeric_value(text)
+    if field_type == "date":
+        return is_date_value(text)
+    return True
 
 
 def find_value_near_label(
@@ -165,17 +303,18 @@ def find_value_near_label(
         is_to_right = seg_box.x > label_box.x
         is_below = seg_box.y > label_box.y
 
-        # For numeric fields, prefer numeric-looking values
-        if field_type in ["int", "decimal", "currency"]:
-            if not is_numeric_value(seg.text):
-                continue
+        # Prefer value-looking segments based on field type
+        if not is_value_for_field(seg.text, field_type):
+            continue
 
         # Calculate proximity score (closer is better)
         horizontal_dist = abs(seg_box.x - (label_box.x + label_box.width))
         vertical_dist = abs(seg_box.y - label_box.y)
 
         # Prefer right-aligned values (common in forms)
-        if is_to_right and abs(vertical_dist) < 20:  # Same row
+        # Accept values on approximately the same row (within 20px vertical tolerance)
+        # This handles cases where value appears slightly above OR below the label
+        if is_to_right and vertical_dist < 20:  # Same row (value can be above or below)
             proximity = horizontal_dist
         elif is_below and abs(horizontal_dist) < 50:  # Below, aligned
             proximity = vertical_dist + 50  # Penalty for not being on same row
@@ -198,6 +337,10 @@ def suggest_fields(payload: SuggestFieldsRequest) -> SuggestFieldsResponse:
     threshold = float(np.clip(threshold, 0.0, 1.0))
 
     model_error = get_model_error()
+    if model_error is not None:
+        load_model(timeout_seconds=120.0)
+        model_error = get_model_error()
+
     if model_error is not None:
         logging.error(
             "ml_suggest_fields_unavailable",
@@ -241,8 +384,112 @@ def suggest_fields(payload: SuggestFieldsRequest) -> SuggestFieldsResponse:
 
         similarity_matrix = segment_embeddings @ field_embeddings.T
 
+        # Apply token overlap boost to similarity scores
+        for seg_idx, segment in enumerate(payload.segments):
+            for field_idx, field in enumerate(payload.fields):
+                boost = calculate_token_overlap_boost(segment.text, field.label)
+                if boost > 0:
+                    similarity_matrix[seg_idx, field_idx] = min(
+                        similarity_matrix[seg_idx, field_idx] + boost, 1.0
+                    )
+
         suggestions: List[Suggestion] = []
         processed_segments = set()  # Track which segments we've used
+        suggested_field_keys = set()
+
+        # First pass: try label-to-value proximity using text match (for numeric/date)
+        for field in payload.fields:
+            if field.characterType not in ["int", "decimal", "currency", "date"]:
+                continue
+            if field.fieldKey in suggested_field_keys:
+                continue
+            logging.info(
+                "ml_suggest_fields_first_pass_field",
+                extra={
+                    "baselineId": payload.baselineId,
+                    "fieldKey": field.fieldKey,
+                    "fieldLabel": field.label,
+                    "fieldType": field.characterType,
+                },
+            )
+            for segment in payload.segments:
+                if segment.id in processed_segments:
+                    logging.info(
+                        "ml_suggest_fields_first_pass_skip_segment",
+                        extra={
+                            "baselineId": payload.baselineId,
+                            "fieldKey": field.fieldKey,
+                            "segmentId": segment.id,
+                            "segmentText": segment.text,
+                            "reason": "processed_segment",
+                        },
+                    )
+                    continue
+                if not segment.boundingBox:
+                    logging.info(
+                        "ml_suggest_fields_first_pass_skip_segment",
+                        extra={
+                            "baselineId": payload.baselineId,
+                            "fieldKey": field.fieldKey,
+                            "segmentId": segment.id,
+                            "segmentText": segment.text,
+                            "reason": "missing_bounding_box",
+                        },
+                    )
+                    continue
+                if not matches_label(segment.text, field.label):
+                    logging.info(
+                        "ml_suggest_fields_first_pass_no_label_match",
+                        extra={
+                            "baselineId": payload.baselineId,
+                            "fieldKey": field.fieldKey,
+                            "fieldLabel": field.label,
+                            "segmentId": segment.id,
+                            "segmentText": segment.text,
+                        },
+                    )
+                    continue
+
+                value_segment = find_value_near_label(
+                    segment,
+                    payload.segments,
+                    field.characterType,
+                )
+                if value_segment:
+                    logging.info(
+                        "ml_suggest_fields_first_pass_match",
+                        extra={
+                            "baselineId": payload.baselineId,
+                            "fieldKey": field.fieldKey,
+                            "fieldLabel": field.label,
+                            "labelSegmentId": segment.id,
+                            "labelSegmentText": segment.text,
+                            "valueSegmentId": value_segment.id,
+                            "valueSegmentText": value_segment.text,
+                        },
+                    )
+                    suggestions.append(
+                        Suggestion(
+                            segmentId=value_segment.id,
+                            fieldKey=field.fieldKey,
+                            confidence=0.9,
+                        )
+                    )
+                    processed_segments.add(segment.id)
+                    processed_segments.add(value_segment.id)
+                    suggested_field_keys.add(field.fieldKey)
+                    break
+                else:
+                    logging.info(
+                        "ml_suggest_fields_first_pass_no_value_near_label",
+                        extra={
+                            "baselineId": payload.baselineId,
+                            "fieldKey": field.fieldKey,
+                            "fieldLabel": field.label,
+                            "labelSegmentId": segment.id,
+                            "labelSegmentText": segment.text,
+                        },
+                    )
 
         for row_index, segment in enumerate(payload.segments):
             if segment.id in processed_segments:
@@ -255,14 +502,16 @@ def suggest_fields(payload: SuggestFieldsRequest) -> SuggestFieldsResponse:
 
             if confidence >= threshold:
                 matched_field = payload.fields[best_index]
+                if matched_field.fieldKey in suggested_field_keys:
+                    continue
 
                 # Check if this segment looks like a label (not a value)
                 is_likely_label = not is_numeric_value(segment.text) and len(segment.text.split()) <= 5
 
-                # For numeric fields, try to find nearby value
+                # For numeric/date fields, try to find nearby value
                 if (
                     is_likely_label
-                    and matched_field.characterType in ["int", "decimal", "currency"]
+                    and matched_field.characterType in ["int", "decimal", "currency", "date"]
                     and segment.boundingBox
                 ):
                     value_segment = find_value_near_label(
@@ -281,6 +530,7 @@ def suggest_fields(payload: SuggestFieldsRequest) -> SuggestFieldsResponse:
                         )
                         processed_segments.add(segment.id)
                         processed_segments.add(value_segment.id)
+                        suggested_field_keys.add(matched_field.fieldKey)
                         continue
 
                 # Use the segment directly
@@ -292,6 +542,7 @@ def suggest_fields(payload: SuggestFieldsRequest) -> SuggestFieldsResponse:
                     )
                 )
                 processed_segments.add(segment.id)
+                suggested_field_keys.add(matched_field.fieldKey)
 
         logging.info(
             "ml_suggest_fields",

@@ -2,9 +2,9 @@ import { test as setup } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const ADMIN_EMAIL = 'admin@taskflow.local';
-const ADMIN_PASSWORD = 'TemporaryPassword123!';
-const ADMIN_NEW_PASSWORD = 'SecurePassword456!';
+const ADMIN_EMAIL = process.env.E2E_EMAIL ?? 'a@a.com';
+const ADMIN_PASSWORD = process.env.E2E_PASSWORD ?? '12341234';
+const ADMIN_NEW_PASSWORD = process.env.E2E_NEW_PASSWORD ?? 'SecurePassword456!';
 const AUTH_DIR = path.join(process.cwd(), '.auth');
 const AUTH_FILE = path.join(AUTH_DIR, 'user.json');
 
@@ -29,7 +29,9 @@ setup('authenticate', async ({ page }) => {
     console.log(`Current URL: ${url}`);
 
     const loginVisible = await page.getByTestId('auth-email').isVisible({ timeout: 5000 }).catch(() => false);
-    const dashboardVisible = await page.getByTestId('task-create-open').isVisible({ timeout: 5000 }).catch(() => false);
+    const dashboardVisible = await page.getByRole('heading', { name: 'My Tasks' })
+        .isVisible({ timeout: 5000 })
+        .catch(() => false);
 
     console.log(`State Check: LoginVisible=${loginVisible}, DashboardVisible=${dashboardVisible}`);
 
@@ -40,8 +42,10 @@ setup('authenticate', async ({ page }) => {
         await page.getByTestId('auth-password').fill(ADMIN_PASSWORD);
         await page.getByTestId('auth-submit').click();
 
-        // Wait for navigation
+        // Wait for navigation and hydration
         await page.waitForURL('**/', { timeout: 10000 });
+        await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => null);
+        await page.waitForTimeout(1000);
 
         // Check if password change is required
         const changePasswordVisible = await page.getByTestId('auth-new-password')
@@ -56,12 +60,23 @@ setup('authenticate', async ({ page }) => {
 
             // Wait for navigation to dashboard
             await page.waitForURL('**/', { timeout: 10000 });
+            await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => null);
+            await page.waitForTimeout(1000);
         }
 
         // Verify we're on dashboard
-        const dashboardReady = await page.getByTestId('task-create-open')
-            .isVisible({ timeout: 10000 })
-            .catch(() => false);
+        // Dashboard can take a moment to hydrate and load tasks.
+        let dashboardReady = false;
+        try {
+            await page.waitForSelector('h1:has-text("My Tasks")', { timeout: 30000 });
+            dashboardReady = true;
+        } catch {
+            // Fall back to button visibility if heading not found.
+            const createVisible = await page.locator('button:has-text("Create Task")')
+                .isVisible()
+                .catch(() => false);
+            dashboardReady = createVisible;
+        }
 
         if (!dashboardReady) {
             await page.screenshot({ path: 'auth-setup-failure.png' });

@@ -28,6 +28,7 @@ import {
   confirmBaseline as confirmBaselineApi,
   createDraftBaseline as createDraftBaselineApi,
   fetchBaselineForAttachment,
+  generateSuggestions,
   markBaselineReviewed,
   upsertAssignment,
   deleteAssignment,
@@ -39,6 +40,7 @@ import type { Me } from '@/app/types';
 
 import ExtractedTextPool from '@/app/components/ocr/ExtractedTextPool';
 import FieldAssignmentPanel from '@/app/components/FieldAssignmentPanel';
+import SuggestionTrigger from '@/app/components/suggestions/SuggestionTrigger';
 import CorrectionReasonModal from '@/app/components/ocr/CorrectionReasonModal';
 import ValidationConfirmationModal from '@/app/components/ValidationConfirmationModal';
 import ConfirmationModal from '@/app/components/ConfirmationModal';
@@ -303,7 +305,7 @@ export default function AttachmentOcrReviewPage() {
     }
   }, [attachmentId]);
 
-  const handleAssignmentUpdate = useCallback(async (fieldKey: string, value: string, sourceSegmentId?: string) => {
+  const handleAssignmentUpdate = useCallback(async (fieldKey: string, value: string, sourceSegmentId?: string, metadata?: Partial<AssignPayload>) => {
     if (!baseline) return;
     const existing = baseline.assignments?.find(a => a.fieldKey === fieldKey);
 
@@ -314,7 +316,7 @@ export default function AttachmentOcrReviewPage() {
     }
 
     try {
-      await upsertAssignment(baseline.id, { fieldKey, assignedValue: value, sourceSegmentId });
+      await upsertAssignment(baseline.id, { fieldKey, assignedValue: value, sourceSegmentId, ...metadata });
       await loadBaseline();
       const oldValue = existing?.assignedValue ?? '';
       const newValue = value ?? '';
@@ -361,7 +363,7 @@ export default function AttachmentOcrReviewPage() {
     }
   }, [baseline, loadBaseline, addNotification, libraryFields, fieldLabelMap, addFieldChangeLogEntry]);
 
-  const handleAssignmentDelete = useCallback(async (fieldKey: string) => {
+  const handleAssignmentDelete = useCallback(async (fieldKey: string, metadata?: DeleteAssignmentPayload) => {
     if (!baseline) return;
     const existing = baseline.assignments?.find(a => a.fieldKey === fieldKey);
     if (baseline.status === 'reviewed') {
@@ -370,7 +372,7 @@ export default function AttachmentOcrReviewPage() {
       return;
     }
     try {
-      await deleteAssignment(baseline.id, fieldKey);
+      await deleteAssignment(baseline.id, fieldKey, metadata);
       await loadBaseline();
       const oldValue = existing?.assignedValue ?? '';
       const label = fieldLabelMap[fieldKey] || fieldKey;
@@ -394,6 +396,34 @@ export default function AttachmentOcrReviewPage() {
       });
     }
   }, [addNotification, baseline, loadBaseline, fieldLabelMap, addFieldChangeLogEntry]);
+
+  const handleAccept = useCallback(async (fieldKey: string) => {
+    if (!baseline) return;
+    const existing = baseline.assignments?.find(a => a.fieldKey === fieldKey);
+    if (!existing || existing.assignedValue === null) return;
+    try {
+      await upsertAssignment(baseline.id, {
+        fieldKey,
+        assignedValue: existing.assignedValue,
+        sourceSegmentId: existing.sourceSegmentId || undefined,
+        suggestionAccepted: true,
+      });
+      await loadBaseline();
+      addNotification({
+        id: Date.now().toString(),
+        type: 'success',
+        title: 'Suggestion accepted',
+        message: `${fieldLabelMap[fieldKey] || fieldKey} verified`,
+      });
+    } catch (e: any) {
+      addNotification({
+        id: Date.now().toString(),
+        type: 'error',
+        title: 'Accept failed',
+        message: e.message,
+      });
+    }
+  }, [baseline, loadBaseline, addNotification, fieldLabelMap]);
 
   const handleCorrectionConfirm = useCallback(async (reason: string) => {
     if (!baseline || !correctionPendingAction) return;
@@ -533,6 +563,33 @@ export default function AttachmentOcrReviewPage() {
       setValidationPendingAction(null);
     }
   }, [baseline, validationPendingAction, loadBaseline, addNotification, fieldLabelMap, addFieldChangeLogEntry]);
+
+  const handleGenerateSuggestions = useCallback(async () => {
+    if (!baseline?.id) {
+      throw new Error('Baseline unavailable');
+    }
+    const result = await generateSuggestions(baseline.id);
+    const count =
+      result?.suggestionCount ?? result?.suggestedAssignments?.length ?? 0;
+    if (count === 0) {
+      await loadBaseline();
+      addNotification({
+        id: Date.now().toString(),
+        type: 'error',
+        title: 'No suggestions generated',
+        message: 'Suggestions unavailable. Continue with manual assignment.',
+      });
+      throw new Error('No suggestions generated');
+    }
+    addNotification({
+      id: Date.now().toString(),
+      type: 'success',
+      title: 'Suggestions generated',
+      message: `${count} field suggestions generated.`,
+    });
+    await loadBaseline();
+    return count;
+  }, [baseline?.id, addNotification, loadBaseline]);
 
   const handleValidationCancel = useCallback(() => {
     if (validationPendingAction) {
@@ -1143,7 +1200,7 @@ export default function AttachmentOcrReviewPage() {
 
   const renderPanel3 = () => (
     <div style={{ flex: '1 1 30%', minWidth: isMobile ? '100%' : 300, display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
         <div style={{ display: 'flex', gap: 12 }}>
           <button
             onClick={() => setSidebarTab('fields')}
@@ -1176,6 +1233,12 @@ export default function AttachmentOcrReviewPage() {
             Tables ({baseline?.tables?.length || 0})
           </button>
         </div>
+        {sidebarTab === 'fields' && (
+          <SuggestionTrigger
+            disabled={!baseline?.id || isFieldBuilderReadOnly || baselineLoading}
+            onGenerate={handleGenerateSuggestions}
+          />
+        )}
       </div>
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 0, position: 'relative' }}>
@@ -1189,9 +1252,11 @@ export default function AttachmentOcrReviewPage() {
                 readOnlyReason={readOnlyReason}
                 onUpdate={handleAssignmentUpdate}
                 onDelete={handleAssignmentDelete}
+                onAccept={handleAccept}
                 onLocalValuesChange={setPendingLocalValues}
                 resetLocalField={resetLocalField}
                 highlightFieldKey={highlightFieldKey}
+                segments={baseline?.segments || []}
               />
             </div>
             {!isMobile && (
