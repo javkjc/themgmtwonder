@@ -116,7 +116,7 @@ export class OcrService {
     private readonly auditService: AuditService,
     private readonly ocrParsingService: OcrParsingService,
     private readonly ocrCorrectionsService: OcrCorrectionsService,
-  ) { }
+  ) {}
 
   async createDerivedOutput({
     userId,
@@ -152,11 +152,11 @@ export class OcrService {
         and(
           eq(extractionBaselines.attachmentId, attachmentId),
           ne(extractionBaselines.status, 'archived'),
-        )
+        ),
       );
 
     if (existingBaselines.length > 0) {
-      const baselineIds = existingBaselines.map(b => b.id);
+      const baselineIds = existingBaselines.map((b) => b.id);
 
       // Delete all tables from all baselines for this attachment
       // CASCADE delete will automatically remove cells and column mappings
@@ -174,7 +174,7 @@ export class OcrService {
           and(
             eq(extractionBaselines.attachmentId, attachmentId),
             ne(extractionBaselines.status, 'archived'),
-          )
+          ),
         );
 
       // Log baseline resets
@@ -473,19 +473,19 @@ export class OcrService {
     const existingSegments =
       editedExtractedText === undefined
         ? (
-          await this.dbs.db
-            .select()
-            .from(extractedTextSegments)
-            .where(eq(extractedTextSegments.attachmentOcrOutputId, ocrId))
-        ).map((segment) => ({
-          text: segment.text,
-          confidence:
-            segment.confidence === null || segment.confidence === undefined
-              ? null
-              : Number(segment.confidence),
-          boundingBox: segment.boundingBox as BoundingBox | null,
-          pageNumber: segment.pageNumber ?? 1,
-        }))
+            await this.dbs.db
+              .select()
+              .from(extractedTextSegments)
+              .where(eq(extractedTextSegments.attachmentOcrOutputId, ocrId))
+          ).map((segment) => ({
+            text: segment.text,
+            confidence:
+              segment.confidence === null || segment.confidence === undefined
+                ? null
+                : Number(segment.confidence),
+            boundingBox: segment.boundingBox as BoundingBox | null,
+            pageNumber: segment.pageNumber ?? 1,
+          }))
         : [];
 
     const [confirmedOcr] = await this.dbs.db
@@ -623,7 +623,9 @@ export class OcrService {
     const normalizedReason = dto.reason.trim();
 
     if (!normalizedValue) {
-      throw new BadRequestException('Field value cannot be empty or whitespace');
+      throw new BadRequestException(
+        'Field value cannot be empty or whitespace',
+      );
     }
 
     if (!normalizedReason) {
@@ -740,7 +742,7 @@ export class OcrService {
     if (ocr.utilizationType !== 'data_export') {
       throw new BadRequestException(
         `Can only archive OCR with Category C utilization (data_export). ` +
-        `Current utilization: ${ocr.utilizationType ?? 'none'}.`,
+          `Current utilization: ${ocr.utilizationType ?? 'none'}.`,
       );
     }
 
@@ -846,11 +848,11 @@ export class OcrService {
       },
       rawOcr: rawOcrOutput
         ? {
-          id: rawOcrOutput.id,
-          extractedText: rawOcrOutput.extractedText || '',
-          status: rawOcrOutput.status,
-          createdAt: rawOcrOutput.createdAt,
-        }
+            id: rawOcrOutput.id,
+            extractedText: rawOcrOutput.extractedText || '',
+            status: rawOcrOutput.status,
+            createdAt: rawOcrOutput.createdAt,
+          }
         : null,
       utilizationType: rawOcrOutput?.utilizationType || null,
       parsedFields,
@@ -933,16 +935,20 @@ export class OcrService {
         continue;
       }
 
-      const { text, confidence, boundingBox, pageNumber } = item as Record<string, unknown>;
+      const { text, confidence, boundingBox, pageNumber } = item as Record<
+        string,
+        unknown
+      >;
       if (typeof text !== 'string' || !text.trim()) {
         continue;
       }
 
       const normalizedConfidence =
         typeof confidence === 'number' ? this.clamp01(confidence) : null;
-      const normalizedPage = Number.isFinite(pageNumber) && (pageNumber as number) > 0
-        ? Math.trunc(pageNumber as number)
-        : 1;
+      const normalizedPage =
+        Number.isFinite(pageNumber) && (pageNumber as number) > 0
+          ? Math.trunc(pageNumber as number)
+          : 1;
       const normalizedBoundingBox = this.normalizeBoundingBox(boundingBox);
 
       segments.push({
@@ -964,7 +970,9 @@ export class OcrService {
     // Clear any existing segments for this OCR output (e.g., re-confirm with edited text)
     await this.dbs.db
       .delete(extractedTextSegments)
-      .where(eq(extractedTextSegments.attachmentOcrOutputId, attachmentOcrOutputId));
+      .where(
+        eq(extractedTextSegments.attachmentOcrOutputId, attachmentOcrOutputId),
+      );
 
     const normalizedSegments = this.normalizeWorkerSegments(structuredSegments);
 

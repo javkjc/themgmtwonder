@@ -16,7 +16,7 @@ export class FieldLibraryService {
   constructor(
     private readonly dbs: DbService,
     private readonly audit: AuditService,
-  ) { }
+  ) {}
 
   async listFields(status?: 'active' | 'hidden' | 'archived') {
     const query = this.dbs.db.select().from(fieldLibrary);
@@ -181,9 +181,7 @@ export class FieldLibraryService {
 
     // Validate state transition
     if (field.status === 'active') {
-      throw new BadRequestException(
-        `Field "${fieldKey}" is already active`,
-      );
+      throw new BadRequestException(`Field "${fieldKey}" is already active`);
     }
 
     if (field.status === 'archived') {

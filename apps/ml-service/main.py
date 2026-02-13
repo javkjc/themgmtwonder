@@ -583,7 +583,7 @@ def suggest_fields(payload: SuggestFieldsRequest) -> SuggestFieldsResponse:
 @app.post("/ml/detect-tables", response_model=DetectTablesResponse)
 def detect_tables_endpoint(payload: DetectTablesRequest) -> DetectTablesResponse:
     start_time = time.perf_counter()
-    threshold = payload.threshold if payload.threshold is not None else 0.60
+    threshold = payload.threshold if payload.threshold is not None else 0.50
     threshold = float(np.clip(threshold, 0.0, 1.0))
 
     # Input validation: max 1000 segments, max 5000 chars per segment

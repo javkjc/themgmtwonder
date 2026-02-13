@@ -47,7 +47,7 @@ export class AttachmentsController {
     private readonly ocrQueueService: OcrQueueService,
     private readonly todosService: TodosService,
     private readonly remarksService: RemarksService,
-  ) { }
+  ) {}
 
   // List attachments for a todo
   @Get('todo/:todoId')

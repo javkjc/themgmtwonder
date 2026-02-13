@@ -1,6 +1,13 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { DbService } from '../db/db.service';
-import { auditLogs, users, todos, baselineTables, extractionBaselines, attachments } from '../db/schema';
+import {
+  auditLogs,
+  users,
+  todos,
+  baselineTables,
+  extractionBaselines,
+  attachments,
+} from '../db/schema';
 import { desc, eq, and, gte, lte, ilike } from 'drizzle-orm';
 
 export type AuditActorType = 'user' | 'system';
@@ -97,7 +104,6 @@ export type AuditModule =
   | 'admin'
   | 'process'
   | 'field_library'
-  | 'field_library'
   | 'baseline'
   | 'table'
   | 'ml';
@@ -124,7 +130,7 @@ export type ListAuditLogsQuery = {
 
 @Injectable()
 export class AuditService {
-  constructor(private readonly dbs: DbService) { }
+  constructor(private readonly dbs: DbService) {}
 
   async log(dto: CreateAuditLogDto) {
     try {
@@ -224,8 +230,14 @@ export class AuditService {
         const owner = await this.dbs.db
           .select({ userId: attachments.userId })
           .from(baselineTables)
-          .leftJoin(extractionBaselines, eq(baselineTables.baselineId, extractionBaselines.id))
-          .leftJoin(attachments, eq(extractionBaselines.attachmentId, attachments.id))
+          .leftJoin(
+            extractionBaselines,
+            eq(baselineTables.baselineId, extractionBaselines.id),
+          )
+          .leftJoin(
+            attachments,
+            eq(extractionBaselines.attachmentId, attachments.id),
+          )
           .where(eq(baselineTables.id, resourceId))
           .limit(1);
 
@@ -236,7 +248,10 @@ export class AuditService {
         const owner = await this.dbs.db
           .select({ userId: attachments.userId })
           .from(extractionBaselines)
-          .leftJoin(attachments, eq(extractionBaselines.attachmentId, attachments.id))
+          .leftJoin(
+            attachments,
+            eq(extractionBaselines.attachmentId, attachments.id),
+          )
           .where(eq(extractionBaselines.id, resourceId))
           .limit(1);
 

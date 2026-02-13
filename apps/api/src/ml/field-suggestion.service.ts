@@ -58,11 +58,15 @@ export class FieldSuggestionService {
     );
 
     if (context.status === 'archived') {
-      throw new BadRequestException('Cannot generate suggestions for archived baseline');
+      throw new BadRequestException(
+        'Cannot generate suggestions for archived baseline',
+      );
     }
 
     if (context.utilizationType || context.utilizedAt) {
-      throw new BadRequestException('Cannot generate suggestions for utilized baseline');
+      throw new BadRequestException(
+        'Cannot generate suggestions for utilized baseline',
+      );
     }
 
     // 2. Rate limit check

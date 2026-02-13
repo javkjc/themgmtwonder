@@ -46,7 +46,9 @@ describe('Constants', () => {
     });
 
     it('should have numeric values for all limits', () => {
-      expect(typeof BASELINE_LIMITS.MIN_CORRECTION_REASON_LENGTH).toBe('number');
+      expect(typeof BASELINE_LIMITS.MIN_CORRECTION_REASON_LENGTH).toBe(
+        'number',
+      );
     });
 
     it('should have expected value matching current implementation', () => {
@@ -73,37 +75,45 @@ describe('Constants', () => {
 
     it('should throw BadRequestException with correct message for zero dimensions', () => {
       expect(() => validateTableDimensions(0, 0)).toThrow(
-        'Table must have at least 1 row and 1 column'
+        'Table must have at least 1 row and 1 column',
       );
     });
 
     it('should throw BadRequestException for rows > MAX_ROWS', () => {
-      expect(() => validateTableDimensions(1001, 10)).toThrow(BadRequestException);
+      expect(() => validateTableDimensions(1001, 10)).toThrow(
+        BadRequestException,
+      );
     });
 
     it('should throw BadRequestException for columns > MAX_COLUMNS', () => {
-      expect(() => validateTableDimensions(10, 51)).toThrow(BadRequestException);
+      expect(() => validateTableDimensions(10, 51)).toThrow(
+        BadRequestException,
+      );
     });
 
     it('should throw BadRequestException with correct message for exceeding limits', () => {
       expect(() => validateTableDimensions(2000, 5)).toThrow(
-        'Table size exceeds limits'
+        'Table size exceeds limits',
       );
       expect(() => validateTableDimensions(5, 100)).toThrow(
-        'Table size exceeds limits'
+        'Table size exceeds limits',
       );
     });
 
     it('should throw BadRequestException for total cells > MAX_CELLS', () => {
       // 1000 * 51 = 51000 > 50000
-      expect(() => validateTableDimensions(1000, 51)).toThrow(BadRequestException);
+      expect(() => validateTableDimensions(1000, 51)).toThrow(
+        BadRequestException,
+      );
       // 501 * 100 = 50100 > 50000
-      expect(() => validateTableDimensions(501, 100)).toThrow(BadRequestException);
+      expect(() => validateTableDimensions(501, 100)).toThrow(
+        BadRequestException,
+      );
     });
 
     it('should throw BadRequestException with correct message for exceeding cell count', () => {
       expect(() => validateTableDimensions(1000, 51)).toThrow(
-        'Table exceeds maximum cell count'
+        'Table exceeds maximum cell count',
       );
     });
 
@@ -113,7 +123,9 @@ describe('Constants', () => {
 
     it('should accept dimensions where rows * cols = MAX_CELLS', () => {
       // 500 * 100 = 50000 (should be valid)
-      expect(() => validateTableDimensions(500, 100)).toThrow(BadRequestException);
+      expect(() => validateTableDimensions(500, 100)).toThrow(
+        BadRequestException,
+      );
       // Exceeds MAX_COLUMNS (50), so should throw
 
       // 1000 * 50 = 50000 (should be valid)
@@ -146,13 +158,15 @@ describe('Constants', () => {
 
     it('should throw BadRequestException for strings exceeding max length', () => {
       const tooLongString = 'a'.repeat(5001);
-      expect(() => validateCellValue(tooLongString)).toThrow(BadRequestException);
+      expect(() => validateCellValue(tooLongString)).toThrow(
+        BadRequestException,
+      );
     });
 
     it('should throw BadRequestException with correct message', () => {
       const tooLongString = 'a'.repeat(6000);
       expect(() => validateCellValue(tooLongString)).toThrow(
-        'Cell value exceeds maximum length of 5000 characters'
+        'Cell value exceeds maximum length of 5000 characters',
       );
     });
 
@@ -161,24 +175,32 @@ describe('Constants', () => {
       expect(() => validateCellValue(unicodeString)).not.toThrow();
 
       const tooLongUnicode = '你好'.repeat(2501); // 5002 characters
-      expect(() => validateCellValue(tooLongUnicode)).toThrow(BadRequestException);
+      expect(() => validateCellValue(tooLongUnicode)).toThrow(
+        BadRequestException,
+      );
     });
   });
 
   describe('validateCorrectionReason', () => {
     it('should not throw for valid correction reasons', () => {
       expect(() => validateCorrectionReason('Fixed typo error')).not.toThrow();
-      expect(() => validateCorrectionReason('Updated based on new information')).not.toThrow();
+      expect(() =>
+        validateCorrectionReason('Updated based on new information'),
+      ).not.toThrow();
     });
 
     it('should throw BadRequestException for reasons shorter than minimum length', () => {
-      expect(() => validateCorrectionReason('short')).toThrow(BadRequestException);
-      expect(() => validateCorrectionReason('fix')).toThrow(BadRequestException);
+      expect(() => validateCorrectionReason('short')).toThrow(
+        BadRequestException,
+      );
+      expect(() => validateCorrectionReason('fix')).toThrow(
+        BadRequestException,
+      );
     });
 
     it('should throw BadRequestException with correct message', () => {
       expect(() => validateCorrectionReason('test')).toThrow(
-        `Correction reason must be at least ${BASELINE_LIMITS.MIN_CORRECTION_REASON_LENGTH} characters`
+        `Correction reason must be at least ${BASELINE_LIMITS.MIN_CORRECTION_REASON_LENGTH} characters`,
       );
     });
 
@@ -189,14 +211,18 @@ describe('Constants', () => {
 
     it('should reject reason at 9 characters', () => {
       const shortReason = '123456789'; // 9 characters
-      expect(() => validateCorrectionReason(shortReason)).toThrow(BadRequestException);
+      expect(() => validateCorrectionReason(shortReason)).toThrow(
+        BadRequestException,
+      );
     });
 
     it('should handle whitespace correctly', () => {
       // Should count actual characters including spaces
       expect(() => validateCorrectionReason('a b c d e f')).not.toThrow(); // 11 chars with spaces
       expect(() => validateCorrectionReason('   test   ')).not.toThrow(); // 10 chars total (valid)
-      expect(() => validateCorrectionReason('  test  ')).toThrow(BadRequestException); // 9 chars (invalid)
+      expect(() => validateCorrectionReason('  test  ')).toThrow(
+        BadRequestException,
+      ); // 9 chars (invalid)
     });
   });
 });

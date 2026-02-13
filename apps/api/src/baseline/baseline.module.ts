@@ -16,19 +16,19 @@ import { TableController } from './table.controller';
  * Provides baseline lifecycle management services and assignment APIs.
  */
 @Module({
-    imports: [DbModule, AuditModule, FieldLibraryModule],
-    controllers: [BaselineController, TableController],
-    providers: [
-        BaselineManagementService,
-        TableManagementService,
-        FieldAssignmentValidatorService,
-        BaselineAssignmentsService,
-    ],
-    exports: [
-        BaselineManagementService,
-        TableManagementService,
-        FieldAssignmentValidatorService,
-        BaselineAssignmentsService,
-    ],
+  imports: [DbModule, AuditModule, FieldLibraryModule],
+  controllers: [BaselineController, TableController],
+  providers: [
+    BaselineManagementService,
+    TableManagementService,
+    FieldAssignmentValidatorService,
+    BaselineAssignmentsService,
+  ],
+  exports: [
+    BaselineManagementService,
+    TableManagementService,
+    FieldAssignmentValidatorService,
+    BaselineAssignmentsService,
+  ],
 })
-export class BaselineModule { }
+export class BaselineModule {}

@@ -13,7 +13,12 @@ import { FieldAssignmentValidatorService } from '../baseline/field-assignment-va
 @Module({
   imports: [DbModule, AuditModule, CommonModule, BaselineModule],
   controllers: [FieldSuggestionController, TableSuggestionController],
-  providers: [MlService, FieldSuggestionService, TableSuggestionService, FieldAssignmentValidatorService],
+  providers: [
+    MlService,
+    FieldSuggestionService,
+    TableSuggestionService,
+    FieldAssignmentValidatorService,
+  ],
   exports: [MlService, FieldSuggestionService, TableSuggestionService],
 })
 export class MlModule {}

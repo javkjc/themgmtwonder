@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import * as path from 'path';
 import { DbService } from '../db/db.service';
@@ -33,9 +39,12 @@ export class OcrQueueService implements OnModuleInit, OnModuleDestroy {
     await this.ensureJobsTable();
 
     const pollMs = Number(process.env.OCR_QUEUE_POLL_MS ?? DEFAULT_POLL_MS);
-    this.intervalId = setInterval(() => {
-      void this.tick();
-    }, Number.isFinite(pollMs) && pollMs > 100 ? pollMs : DEFAULT_POLL_MS);
+    this.intervalId = setInterval(
+      () => {
+        void this.tick();
+      },
+      Number.isFinite(pollMs) && pollMs > 100 ? pollMs : DEFAULT_POLL_MS,
+    );
   }
 
   onModuleDestroy() {
@@ -51,7 +60,12 @@ export class OcrQueueService implements OnModuleInit, OnModuleDestroy {
     const [{ count }] = await this.dbs.db
       .select({ count: sql<number>`count(*)` })
       .from(ocrJobs)
-      .where(and(eq(ocrJobs.userId, userId), inArray(ocrJobs.status, ['queued', 'processing'])));
+      .where(
+        and(
+          eq(ocrJobs.userId, userId),
+          inArray(ocrJobs.status, ['queued', 'processing']),
+        ),
+      );
 
     if ((count ?? 0) >= MAX_ACTIVE_PER_USER) {
       throw new BadRequestException(
@@ -79,9 +93,22 @@ export class OcrQueueService implements OnModuleInit, OnModuleDestroy {
       ? and(
           eq(ocrJobs.userId, userId),
           eq(ocrJobs.attachmentId, attachmentId),
-          inArray(ocrJobs.status, ['queued', 'processing', 'completed', 'failed']),
+          inArray(ocrJobs.status, [
+            'queued',
+            'processing',
+            'completed',
+            'failed',
+          ]),
         )
-      : and(eq(ocrJobs.userId, userId), inArray(ocrJobs.status, ['queued', 'processing', 'completed', 'failed']));
+      : and(
+          eq(ocrJobs.userId, userId),
+          inArray(ocrJobs.status, [
+            'queued',
+            'processing',
+            'completed',
+            'failed',
+          ]),
+        );
 
     return this.dbs.db
       .select({
@@ -138,7 +165,9 @@ export class OcrQueueService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (job.status !== 'queued' && job.status !== 'processing') {
-      throw new BadRequestException('Only queued or processing jobs can be cancelled');
+      throw new BadRequestException(
+        'Only queued or processing jobs can be cancelled',
+      );
     }
 
     await this.dbs.db

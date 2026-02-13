@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Assignment, AssignmentValidation, Segment } from '@/app/types';
 import { Field, FieldCharacterType } from '@/app/lib/api/fields';
-import SuggestedFieldInput from './suggestions/SuggestedFieldInput';
-import SuggestionActionModal from './suggestions/SuggestionActionModal';
+import SuggestedFieldInput from '@/app/components/suggestions/SuggestedFieldInput';
+import SuggestionActionModal from '@/app/components/suggestions/SuggestionActionModal';
 import { AssignPayload, DeleteAssignmentPayload } from '../lib/api/baselines';
 
 interface ResetLocalField {
@@ -241,12 +241,12 @@ export default function FieldAssignmentPanel({
         } else if (type === 'clear') {
           if (onDelete) {
             const existing = assignmentMap[fieldKey];
-            await onDelete(fieldKey, {
-              correctionReason: reason,
-              suggestionRejected: true,
-              suggestionConfidence: existing?.suggestionConfidence || undefined,
-              modelVersionId: existing?.modelVersionId || undefined,
-            });
+              await onDelete(fieldKey, {
+                reason,
+                suggestionRejected: true,
+                suggestionConfidence: existing?.suggestionConfidence || undefined,
+                modelVersionId: existing?.modelVersionId || undefined,
+              });
           }
         }
       } catch {

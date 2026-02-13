@@ -9,7 +9,17 @@ import { OcrParsingService } from './ocr-parsing.service';
 @Module({
   imports: [DbModule],
   controllers: [OcrController],
-  providers: [OcrService, OcrParsingService, OcrCorrectionsService, OcrQueueService],
-  exports: [OcrService, OcrParsingService, OcrCorrectionsService, OcrQueueService],
+  providers: [
+    OcrService,
+    OcrParsingService,
+    OcrCorrectionsService,
+    OcrQueueService,
+  ],
+  exports: [
+    OcrService,
+    OcrParsingService,
+    OcrCorrectionsService,
+    OcrQueueService,
+  ],
 })
 export class OcrModule {}

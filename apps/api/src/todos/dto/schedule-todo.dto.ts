@@ -1,10 +1,4 @@
-import {
-  IsInt,
-  IsOptional,
-  Max,
-  Min,
-  IsISO8601,
-} from 'class-validator';
+import { IsInt, IsOptional, Max, Min, IsISO8601 } from 'class-validator';
 
 export class ScheduleTodoDto {
   // null = unschedule

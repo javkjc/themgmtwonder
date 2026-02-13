@@ -61,7 +61,7 @@ class Segment:
 
 
 def group_segments_into_rows(
-    segments: List[Segment], y_tolerance: float = 10.0
+    segments: List[Segment], y_tolerance: float = 0.02
 ) -> List[List[Segment]]:
     """
     Group segments into rows based on vertical proximity.
@@ -69,6 +69,7 @@ def group_segments_into_rows(
     Args:
         segments: List of OCR segments
         y_tolerance: Maximum vertical distance to consider segments in same row
+                     (default 0.02 for normalized coordinates 0.0-1.0)
 
     Returns:
         List of rows, each containing segments ordered left-to-right
@@ -234,16 +235,24 @@ def compute_table_confidence(rows: List[List[Segment]]) -> float:
 
 def validate_grid_structure(rows: List[List[Segment]]) -> bool:
     """
-    Validate that rows form a valid grid (minimum 2x2).
+    Validate that rows form a valid grid structure.
 
     Returns True if structure is valid, False otherwise.
     """
     if len(rows) < 2:
         return False
 
-    # Check that we have at least 2 columns
-    min_cols = min(len(row) for row in rows)
-    if min_cols < 2:
+    # Count rows with 2+ columns (label-value pairs or table cells)
+    rows_with_multiple_cols = sum(1 for row in rows if len(row) >= 2)
+
+    # Require at least 2 rows with 2+ columns (minimum table structure)
+    # This allows for header rows, subtotals, or other single-column rows
+    if rows_with_multiple_cols < 2:
+        return False
+
+    # Also check that we have some consistent column structure
+    max_cols = max(len(row) for row in rows)
+    if max_cols < 2:
         return False
 
     return True
@@ -330,22 +339,30 @@ def detect_tables(
     # Group segments into rows
     rows = group_segments_into_rows(seg_objects)
 
+    logger.info(f"[Table Detection] Grouped {len(seg_objects)} segments into {len(rows)} rows")
+    if rows:
+        logger.info(f"[Table Detection] Row column counts: {[len(row) for row in rows]}")
+
     if not rows:
+        logger.info("[Table Detection] No rows detected, returning empty")
         return []
 
     # Validate grid structure (minimum 2x2)
-    if not validate_grid_structure(rows):
-        logger.debug(
-            f"Grid validation failed: {len(rows)} rows, "
+    is_valid = validate_grid_structure(rows)
+    logger.info(f"[Table Detection] Grid validation: {is_valid}")
+    if not is_valid:
+        logger.info(
+            f"[Table Detection] Grid validation failed: {len(rows)} rows, "
             f"min {min(len(row) for row in rows)} cols"
         )
         return []
 
     # Compute confidence
     confidence = compute_table_confidence(rows)
+    logger.info(f"[Table Detection] Computed confidence: {confidence:.2f}, threshold: {threshold}")
 
     if confidence < threshold:
-        logger.debug(f"Confidence {confidence:.2f} below threshold {threshold}")
+        logger.info(f"[Table Detection] Confidence {confidence:.2f} below threshold {threshold}")
         return []
 
     # Build table result

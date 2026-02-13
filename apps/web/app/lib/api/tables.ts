@@ -45,6 +45,20 @@ export interface FullTableResponse {
     columnMappings: ColumnMapping[];
 }
 
+export interface TableSuggestion {
+    id: string;
+    attachmentId: string;
+    regionId: string;
+    rowCount: number;
+    columnCount: number;
+    confidence: number;
+    boundingBox: any;
+    cellMapping: any;
+    suggestedLabel: string | null;
+    status: 'pending' | 'ignored' | 'converted';
+    suggestedAt: string;
+}
+
 export interface CreateTablePayload {
     rowCount: number;
     columnCount: number;
@@ -120,6 +134,32 @@ export async function assignColumn(
 
 export async function confirmTable(tableId: string): Promise<Table> {
     return apiFetchJson(`/tables/${tableId}/confirm`, {
+        method: 'POST',
+    });
+}
+
+export async function detectTableSuggestions(attachmentId: string): Promise<{ tableCount: number }> {
+    return apiFetchJson(`/attachments/${attachmentId}/table-suggestions/detect`, {
+        method: 'POST',
+    });
+}
+
+export async function fetchTableSuggestions(attachmentId: string): Promise<TableSuggestion[]> {
+    const response: any = await apiFetchJson(`/attachments/${attachmentId}/table-suggestions`, {
+        method: 'GET',
+    });
+    // Backend returns { suggestions: [...] }, unwrap it
+    return response.suggestions || [];
+}
+
+export async function ignoreTableSuggestion(suggestionId: string): Promise<void> {
+    await apiFetchJson(`/table-suggestions/${suggestionId}/ignore`, {
+        method: 'POST',
+    });
+}
+
+export async function convertTableSuggestion(suggestionId: string): Promise<{ success: boolean; tableId: string; redirectUrl: string }> {
+    return apiFetchJson(`/table-suggestions/${suggestionId}/convert`, {
         method: 'POST',
     });
 }

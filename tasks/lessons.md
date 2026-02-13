@@ -47,3 +47,9 @@ This file captures patterns that caused issues and rules to prevent repeating mi
 - **Root Cause**: Verification status updated before all checkpoint steps were complete.
 - **Rule**: Only mark tasks verified when every checkpoint item is executed; otherwise set status to [UNVERIFIED] and document the missing test.
 - **Related Feature**: v8.8 ML-Assisted Field Suggestions
+
+### 2026-02-13 - Table Detection Lessons (E1 Revised)
+- **Problem**: Table detection initially failed due to tolerance/validation assumptions and duplicated OCR segments.
+- **Root Cause**: Assumed pixel-based coordinates for normalized data and strict grid validation; passed duplicate OCR segments to ML.
+- **Rule**: Validate coordinate scale before tuning tolerances, keep grid validation flexible for form-like layouts, and deduplicate OCR segments before ML processing.
+- **Related Feature**: v8.8 ML-Assisted Field Suggestions

@@ -18,7 +18,7 @@ import { UpdateFieldDto } from './dto/update-field.dto';
 @Controller('fields')
 @UseGuards(JwtAuthGuard, AdminGuard)
 export class FieldLibraryController {
-  constructor(private readonly fieldLibraryService: FieldLibraryService) { }
+  constructor(private readonly fieldLibraryService: FieldLibraryService) {}
 
   @Get()
   async listFields(@Query('status') status?: 'active' | 'hidden' | 'archived') {

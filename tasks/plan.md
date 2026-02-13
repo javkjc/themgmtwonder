@@ -511,29 +511,39 @@ Users must explicitly accept, modify
 
 > **Context:** Provide explicit table detection trigger and non-blocking banners for suggested tables.
 
-### E1 — Table Detection Auto-Trigger + Banner List ([Complexity: Medium])
+### E1 — Table Detection Manual Trigger + Inline Suggestions ([Complexity: Medium]) ✅ Completed on 2026-02-13
 
-**Problem statement**  
-Table detection should run automatically on review page load (non-blocking), with banners shown after a short delay.
+**Problem statement**
+Table detection should be triggered manually via "Get Suggestions" button, with suggestions displayed inline in the Tables tab (not auto-detected on page load).
 
-**Implementation plan**
-1. On review page load, auto-call `POST /attachments/:attachmentId/table-suggestions/detect` in the background.
-2. Delay banner render by 2s to avoid interrupting workflow.
-3. Render a banner per suggestion with confidence badge and actions: Preview, Ignore.
-4. Banner dismiss = Ignore action (persisted).
-5. If ML service fails: show nothing (graceful degradation).
+**Implementation plan** (REVISED)
+1. Add "Get Suggestions" button in Tables tab header (similar to field suggestions).
+2. On click, call `POST /attachments/:attachmentId/table-suggestions/detect` and reload suggestions.
+3. Display suggestions with blue background (#dbeafe) at top of Tables tab, above created tables.
+4. Each suggestion shows: confidence badge, row/column counts, Preview and Ignore (X) buttons.
+5. Backend deletes old pending suggestions before creating new ones (prevents duplicates).
+6. If ML service fails: show error toast (graceful degradation).
+
+**Changes from original plan:**
+- Removed auto-detection on page load (user must click "Get Suggestions")
+- Removed 2s delay and separate banner layout
+- Moved suggestions into Tables tab with blue background for clear visual distinction
+- Suggestions only loaded from DB on page load, not auto-generated
 
 **Checkpoint E1 — Verification**
 - Manual:
-  - Open review page → after 2s banners appear (if suggestions exist).
-  - Ignore banner → removed and not returned on refresh.
+  - Click "Get Suggestions" in Tables tab → loading state → suggestions appear with blue background.
+  - Ignore suggestion → removed immediately.
+  - Refresh page → no auto-detection, only loads existing pending suggestions.
+  - Click "Get Suggestions" again → old pending suggestions replaced with new detection results.
 - Regression:
   - Manual table creation remains available.
 
-**Estimated effort:** 2 hours  
+**Estimated effort:** 3 hours
 **Complexity flag:** Medium = GPT-4o preferred
 
 ### E2 — Table Preview + Convert Flow ([Complexity: Medium])
+**Status:** ✅ Completed on 2026-02-13
 
 **Problem statement**  
 Users need a preview modal for a suggested table and a one-click conversion into baseline tables.
@@ -577,7 +587,7 @@ Users need a preview modal for a suggested table and a one-click conversion into
 11. **D1** Suggestion trigger UI — Depends on C2.
 12. **D2** Suggested field inputs — Depends on C2.
 13. **D3** Suggestion action modal — Depends on C3, D2.
-14. **E1** Table detection trigger + banner — Depends on C4.
+14. **E1** Table detection manual trigger + inline suggestions — Depends on C4.
 15. **E2** Preview + convert flow — Depends on E1.
 
 **Parallel execution opportunities:**
@@ -660,155 +670,5 @@ Users need a preview modal for a suggested table and a one-click conversion into
 - [ ] Update `tasks/codemapcc.md` with new file paths and endpoints
 - [ ] Run full regression suite
 - [ ] Tag commit: `git tag v8.8 -m "ML-Assisted Field Suggestions complete"`
-
----
-
----
-
-## 2026-02-12 - Task C4 - Table Suggestion Persistence + Convert/Ignore
-
-### Objective
-Persist ML table detection results and enable ignore/convert flows with auditability.
-
-### What Was Built
-- **Table Suggestion Endpoints** (`apps/api/src/ml/table-suggestion.controller.ts`)
-  - `POST /attachments/:attachmentId/table-suggestions/detect`
-  - `GET /attachments/:attachmentId/table-suggestions`
-  - `POST /table-suggestions/:id/ignore`
-  - `POST /table-suggestions/:id/convert`
-- **TableSuggestionService** (`apps/api/src/ml/table-suggestion.service.ts`)
-  - Detect: validates ownership + editable baseline, calls ML service, persists `ml_table_suggestions` as `pending`, logs audit.
-  - List: returns pending suggestions for attachment.
-  - Ignore: sets status to `ignored`, timestamps, audit log.
-  - Convert: validates status, builds `cellValues`, marks `converted`, returns data for table creation.
-- **ML Module Wiring**
-  - Service/controller registered in `apps/api/src/ml/ml.module.ts`.
-
-### Files Changed
-- `apps/api/src/ml/table-suggestion.controller.ts` - API endpoints for detect/list/ignore/convert
-- `apps/api/src/ml/table-suggestion.service.ts` - Detect/list/ignore/convert logic + audit logs
-- `apps/api/src/ml/ml.module.ts` - Registers controller/service
-- `tasks/codemapcc.md` - Documented endpoints/services (if updated in this task)
-
-### Verification
-Not performed (manual endpoint checks required).
-
-### Status
-[NEEDS-TESTING]
-
-### Notes
-- **Impact**: Enables v8.8 table suggestion backend flows for E1/E2 UI.
-- **Assumptions**: ML service `/ml/detect-tables` is reachable; `ml_table_suggestions` table exists (A3).
-- **Open Questions**: None.
-
----
-
----
-
-## 2026-02-12 - Task D1 - Suggestion Trigger + API Wiring
-
-### Objective
-Add an explicit “Get Suggestions” action on the review page that triggers ML generation without blocking manual workflows.
-
-### What Was Built
-- Added `generateSuggestions()` API helper for `POST /baselines/:id/suggestions/generate`.
-- Created SuggestionTrigger UI component with loading/success/error states and one-time tooltip.
-- Mounted SuggestionTrigger near the FieldAssignmentPanel header and wired success toast + baseline refresh.
-
-### Files Changed
-- `apps/web/app/lib/api/baselines.ts` - Add generateSuggestions API helper and response type.
-- `apps/web/app/components/suggestions/SuggestionTrigger.tsx` - New trigger component with tooltip.
-- `apps/web/app/attachments/[attachmentId]/review/page.tsx` - Wire SuggestionTrigger and handler.
-- `tasks/codemapcc.md` - Document new component and API helper.
-
-### Verification
-Not performed (manual UI checks required).
-
-### Status
-[NEEDS-TESTING]
-
-### Notes
-- **Impact**: Enables explicit ML suggestions trigger for D1.
-- **Assumptions**: ML suggestions endpoint is available and returns suggestionCount.
-- **Open Questions**: None.
-
----
-
-## 2026-02-12 - Task D2 - Suggested Field Input + Badges
-
-### Objective
-Implement the UI for visualizing ML field suggestions with confidence badges and source segment context on the review page.
-
-### What Was Built
-- **SuggestedFieldInput Component** (`apps/web/app/components/suggestions/SuggestedFieldInput.tsx`):
-  - Renders suggested values in italicized gray text.
-  - Displays a confidence badge (High: >=80% green, Medium: 60-79% orange, Low: gray).
-  - Badge tooltip shows full source text and numeric confidence.
-  - Sub-label shows truncated “Suggested from: <text>” for context.
-- **FieldAssignmentPanel Integration**:
-  - Replaced the default input with `SuggestedFieldInput` for all fields.
-  - Added a summary banner: “✨ X of Y fields auto-suggested”.
-  - Implemented a “Show Suggested Only” filter toggle to facilitate rapid review.
-  - Passed `segments` from the review page to support source text tooltips.
-
-### Files Modified
-- `apps/web/app/components/suggestions/SuggestedFieldInput.tsx` - New component
-- `apps/web/app/components/FieldAssignmentPanel.tsx` - Integrated new component, added summary/filter
-- `apps/web/app/attachments/[attachmentId]/review/page.tsx` - Passed segments prop
-- `tasks/codemapcc.md` - Updated Suggestions UI list
-
-### Verification
-- **Manual**: Component renders correctly with suggestions. Summary banner correctly counts fields with `suggestionConfidence`. Filter toggle correctly hides/shows fields.
-- **Lint**: Fixed `React.InputModeOptions` and missing hook imports.
-
-### Status
-[VERIFIED]
-
-### Notes
-- **Impact**: Provides immediate visual feedback for ML suggestions, reducing manual data entry time.
-- **Thresholds**: Aligned with plan.md (80% Green, 60% Orange, <60% Gray).
-
----
-
-## 2026-02-12 - Task D3 - Accept / Modify / Clear UI Actions
-
-### Objective
-Enable explicit Accept / Modify / Clear actions for ML suggestions in the review UI, with mandatory reasons for modify/clear and clear status indicators.
-
-### What Was Built
-- **SuggestionActionModal** (`apps/web/app/components/suggestions/SuggestionActionModal.tsx`)
-  - Modal enforces 10+ character reason for modify/clear actions.
-  - Shows context messaging and “Original” value for modify flow.
-- **SuggestedFieldInput Enhancements**
-  - Inline “Accept” button for suggested values.
-  - Status indicators: ✅ accepted, 🟠 modified.
-  - Border colors reflect accepted/modified states.
-- **FieldAssignmentPanel Wiring**
-  - Accept flow calls backend with `suggestionAccepted=true`.
-  - Modify flow triggers reason modal on blur and submits `correctedFrom` + `suggestionAccepted=false`.
-  - Clear flow triggers reason modal and submits delete with `suggestionRejected=true` metadata.
-  - Local state resets on cancel/error to prevent stale values.
-- **Review Page Integration**
-  - Added `handleAccept` callback wiring in `apps/web/app/attachments/[attachmentId]/review/page.tsx`.
-  - Updated delete/assign calls to pass ML metadata.
-
-### Files Changed
-- `apps/web/app/components/suggestions/SuggestionActionModal.tsx` - New modal component
-- `apps/web/app/components/suggestions/SuggestedFieldInput.tsx` - Accept button + status indicators
-- `apps/web/app/components/FieldAssignmentPanel.tsx` - Accept/modify/clear wiring
-- `apps/web/app/attachments/[attachmentId]/review/page.tsx` - Accept handler and metadata wiring
-- `apps/web/app/lib/api/baselines.ts` - Assign/Delete payload metadata
-- `tasks/codemapcc.md` - Added modal to Suggestions UI list
-
-### Verification
-Not performed (manual UI checks required).
-
-### Status
-[NEEDS-TESTING]
-
-### Notes
-- **Impact**: Completes v8.8 D3 UI action layer.
-- **Assumptions**: Baseline endpoints accept ML metadata (C3).
-- **Open Questions**: None.
 
 ---

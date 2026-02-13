@@ -3,7 +3,15 @@
  * These types provide type safety for service methods and eliminate the need for 'any' types
  */
 
-import { todos, attachments, baselineTables, baselineTableCells, baselineTableColumnMappings, baselineFieldAssignments, extractedTextSegments } from '../db/schema';
+import {
+  todos,
+  attachments,
+  baselineTables,
+  baselineTableCells,
+  baselineTableColumnMappings,
+  baselineFieldAssignments,
+  extractedTextSegments,
+} from '../db/schema';
 import { extractionBaselines } from '../baseline/schema';
 
 // === Todo Types ===
@@ -28,7 +36,8 @@ export type CellInsert = typeof baselineTableCells.$inferInsert;
 
 // === Column Mapping Types ===
 export type ColumnMapping = typeof baselineTableColumnMappings.$inferSelect;
-export type ColumnMappingInsert = typeof baselineTableColumnMappings.$inferInsert;
+export type ColumnMappingInsert =
+  typeof baselineTableColumnMappings.$inferInsert;
 
 // === Field Assignment Types ===
 export type Assignment = typeof baselineFieldAssignments.$inferSelect;

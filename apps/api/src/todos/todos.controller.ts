@@ -30,7 +30,7 @@ export class TodosController {
   constructor(
     private readonly todos: TodosService,
     private readonly audit: AuditService,
-  ) { }
+  ) {}
 
   @Get()
   list(
@@ -192,7 +192,8 @@ export class TodosController {
     if (dto.category !== undefined) patch.category = dto.category;
     if (dto.durationMin !== undefined) patch.durationMin = dto.durationMin;
     if (dto.isPinned !== undefined) patch.isPinned = dto.isPinned;
-    if (dto.stageKey !== undefined && dto.stageKey !== null) patch.stageKey = dto.stageKey;
+    if (dto.stageKey !== undefined && dto.stageKey !== null)
+      patch.stageKey = dto.stageKey;
 
     // Fetch previous values for delta capture
     const previous = await this.todos.getById(req.user.userId, id);

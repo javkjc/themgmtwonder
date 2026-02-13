@@ -31,7 +31,7 @@ export class BaselineController {
     private readonly dbs: DbService,
     private readonly assignmentsService: BaselineAssignmentsService,
     private readonly authService: AuthorizationService,
-  ) { }
+  ) {}
 
   /**
    * Get the current baseline for an attachment.
@@ -42,7 +42,10 @@ export class BaselineController {
     @Req() req: RequestWithUser,
     @Param('attachmentId') attachmentId: string,
   ) {
-    const payload = await this.assignmentsService.getAggregatedBaseline(attachmentId, req.user.userId);
+    const payload = await this.assignmentsService.getAggregatedBaseline(
+      attachmentId,
+      req.user.userId,
+    );
     return payload || null;
   }
 
@@ -55,7 +58,10 @@ export class BaselineController {
     @Req() req: RequestWithUser,
     @Param('attachmentId') attachmentId: string,
   ) {
-    await this.authService.ensureUserOwnsAttachment(req.user.userId, attachmentId);
+    await this.authService.ensureUserOwnsAttachment(
+      req.user.userId,
+      attachmentId,
+    );
 
     const [existing] = await this.dbs.db
       .select()
@@ -63,7 +69,11 @@ export class BaselineController {
       .where(
         and(
           eq(extractionBaselines.attachmentId, attachmentId),
-          inArray(extractionBaselines.status, ['draft', 'reviewed', 'confirmed']),
+          inArray(extractionBaselines.status, [
+            'draft',
+            'reviewed',
+            'confirmed',
+          ]),
         ),
       )
       .orderBy(desc(extractionBaselines.createdAt))
@@ -88,12 +98,12 @@ export class BaselineController {
     @Param('baselineId') baselineId: string,
   ) {
     const baseline = await this.getBaselineOrThrow(baselineId);
-    await this.authService.ensureUserOwnsAttachment(req.user.userId, baseline.attachmentId);
-
-    return await this.baselineService.markReviewed(
-      baselineId,
+    await this.authService.ensureUserOwnsAttachment(
       req.user.userId,
+      baseline.attachmentId,
     );
+
+    return await this.baselineService.markReviewed(baselineId, req.user.userId);
   }
 
   /**
@@ -105,7 +115,10 @@ export class BaselineController {
     @Param('baselineId') baselineId: string,
   ) {
     const baseline = await this.getBaselineOrThrow(baselineId);
-    await this.authService.ensureUserOwnsAttachment(req.user.userId, baseline.attachmentId);
+    await this.authService.ensureUserOwnsAttachment(
+      req.user.userId,
+      baseline.attachmentId,
+    );
 
     // Guard: Service will check for and block unconfirmed tables (A3)
     return await this.baselineService.confirmBaseline(
@@ -124,7 +137,10 @@ export class BaselineController {
     @Body() body: { reason: string },
   ) {
     const baseline = await this.getBaselineOrThrow(baselineId);
-    await this.authService.ensureUserOwnsAttachment(req.user.userId, baseline.attachmentId);
+    await this.authService.ensureUserOwnsAttachment(
+      req.user.userId,
+      baseline.attachmentId,
+    );
 
     return await this.baselineService.archiveBaseline(
       baselineId,
@@ -176,10 +192,7 @@ export class BaselineController {
     @Req() req: RequestWithUser,
     @Param('baselineId') baselineId: string,
   ) {
-    return this.assignmentsService.listAssignments(
-      baselineId,
-      req.user.userId,
-    );
+    return this.assignmentsService.listAssignments(baselineId, req.user.userId);
   }
 
   /**
@@ -196,7 +209,10 @@ export class BaselineController {
     const rows = await this.dbs.db
       .select()
       .from(extractionBaselines)
-      .innerJoin(attachments, eq(extractionBaselines.attachmentId, attachments.id))
+      .innerJoin(
+        attachments,
+        eq(extractionBaselines.attachmentId, attachments.id),
+      )
       .where(eq(attachments.todoId, todoId))
       .orderBy(desc(extractionBaselines.createdAt));
 
@@ -229,5 +245,4 @@ export class BaselineController {
     }
     return baseline;
   }
-
 }

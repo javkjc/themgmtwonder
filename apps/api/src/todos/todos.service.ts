@@ -25,7 +25,7 @@ import { TaskStageKey } from '../common/constants';
 
 @Injectable()
 export class TodosService {
-  constructor(private readonly dbs: DbService) { }
+  constructor(private readonly dbs: DbService) {}
 
   /**
    * Check if a task is a parent (has children)

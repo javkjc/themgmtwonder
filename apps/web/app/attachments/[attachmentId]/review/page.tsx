@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
@@ -35,6 +35,8 @@ import {
   type Baseline,
   type Segment,
   type Assignment,
+  type AssignPayload,
+  type DeleteAssignmentPayload,
 } from '@/app/lib/api/baselines';
 import type { Me } from '@/app/types';
 
@@ -47,8 +49,22 @@ import ConfirmationModal from '@/app/components/ConfirmationModal';
 import TableCreationModal from '@/app/components/tables/TableCreationModal';
 import TableEditorPanel from '@/app/components/tables/TableEditorPanel';
 
-import { createTable, fetchTable, deleteTable, type CreateTablePayload, type FullTableResponse, type Table } from '@/app/lib/api/tables';
+import {
+  createTable,
+  fetchTable,
+  deleteTable,
+  detectTableSuggestions,
+  fetchTableSuggestions,
+  ignoreTableSuggestion,
+  convertTableSuggestion,
+  type CreateTablePayload,
+  type FullTableResponse,
+  type Table,
+  type TableSuggestion,
+} from '@/app/lib/api/tables';
+import TableSuggestionPreviewModal from '@/app/components/suggestions/TableSuggestionPreviewModal';
 import TableListPanel from '@/app/components/tables/TableListPanel';
+import TableSuggestionBannerList from '@/app/components/suggestions/TableSuggestionBannerList';
 
 
 type ResetLocalField = {
@@ -162,6 +178,11 @@ export default function AttachmentOcrReviewPage() {
     target?: { fieldKey: string };
   }>>([]);
   const [highlightFieldKey, setHighlightFieldKey] = useState<string | null>(null);
+  const [tableSuggestions, setTableSuggestions] = useState<TableSuggestion[]>([]);
+  const [detectingTables, setDetectingTables] = useState(false);
+  const [isTablePreviewOpen, setIsTablePreviewOpen] = useState(false);
+  const [previewSuggestion, setPreviewSuggestion] = useState<TableSuggestion | null>(null);
+  const [convertingSuggestionId, setConvertingSuggestionId] = useState<string | null>(null);
 
 
   const addNotification = useCallback((notification: Notification) => {
@@ -214,11 +235,11 @@ export default function AttachmentOcrReviewPage() {
             label = labelName ? `Field "${labelName}" cleared` : 'Field cleared';
             detail = details.correctionReason ? `Reason: ${details.correctionReason}` : '';
           } else if (action === 'baseline.assignment.upsert') {
-            detail = details.correctedFrom ? `"${details.correctedFrom}" → updated` : '';
+            detail = details.correctedFrom ? `"${details.correctedFrom}" -> updated` : '';
           }
 
           if (item.userEmail) {
-            detail = detail ? `${detail} · ${item.userEmail}` : `${item.userEmail}`;
+            detail = detail ? `${detail}  -  ${item.userEmail}` : `${item.userEmail}`;
           }
 
           return {
@@ -324,7 +345,7 @@ export default function AttachmentOcrReviewPage() {
         const label = fieldLabelMap[fieldKey] || fieldKey;
         addFieldChangeLogEntry({
           label: `Field "${label}" updated`,
-          detail: `"${oldValue}" → "${newValue}"`,
+          detail: `"${oldValue}" -> "${newValue}"`,
           target: { fieldKey },
         });
       }
@@ -445,7 +466,7 @@ export default function AttachmentOcrReviewPage() {
         if (oldValue !== newValue) {
           addFieldChangeLogEntry({
             label: `Field "${label}" updated`,
-            detail: `"${oldValue}" → "${newValue}"`,
+            detail: `"${oldValue}" -> "${newValue}"`,
             target: { fieldKey },
           });
         }
@@ -502,7 +523,7 @@ export default function AttachmentOcrReviewPage() {
         const label = fieldLabelMap[fieldKey] || fieldKey;
         addFieldChangeLogEntry({
           label: `Field "${label}" updated`,
-          detail: `"${oldValue}" → "${newValue}"`,
+          detail: `"${oldValue}" -> "${newValue}"`,
           target: { fieldKey },
         });
       }
@@ -542,7 +563,7 @@ export default function AttachmentOcrReviewPage() {
         const label = fieldLabelMap[fieldKey] || fieldKey;
         addFieldChangeLogEntry({
           label: `Field "${label}" updated`,
-          detail: `"${oldValue}" → "${suggestedCorrection}"`,
+          detail: `"${oldValue}" -> "${suggestedCorrection}"`,
           target: { fieldKey },
         });
       }
@@ -639,6 +660,73 @@ export default function AttachmentOcrReviewPage() {
     if (authLoading || !me) return;
     loadBaseline();
   }, [authLoading, loadBaseline, me]);
+
+  const loadSuggestions = useCallback(async () => {
+    if (!attachmentId || !me) return;
+    try {
+      const suggestions = await fetchTableSuggestions(attachmentId);
+      setTableSuggestions(suggestions.filter(s => s.status === 'pending'));
+    } catch (err) {
+      console.error('Failed to fetch table suggestions:', err);
+    }
+  }, [attachmentId, me]);
+
+  // Load existing table suggestions (no auto-detection)
+  useEffect(() => {
+    if (!attachmentId || !me) return;
+    loadSuggestions();
+  }, [attachmentId, me, loadSuggestions]);
+
+  const handleIgnoreTableSuggestion = useCallback(async (suggestion: TableSuggestion) => {
+    try {
+      await ignoreTableSuggestion(suggestion.id);
+      setTableSuggestions(prev => prev.filter(s => s.id !== suggestion.id));
+      addNotification({
+        id: Date.now().toString(),
+        type: 'success',
+        title: 'Suggestion ignored',
+        message: 'Table suggestion has been removed.',
+      });
+    } catch (err: any) {
+      addNotification({
+        id: Date.now().toString(),
+        type: 'error',
+        title: 'Action failed',
+        message: err.message,
+      });
+    }
+  }, [addNotification]);
+
+  const handleDetectTables = useCallback(async () => {
+    if (!attachmentId || detectingTables) return;
+
+    setDetectingTables(true);
+    try {
+      await detectTableSuggestions(attachmentId);
+      await loadSuggestions();
+      addNotification({
+        id: Date.now().toString(),
+        type: 'success',
+        title: 'Detection Complete',
+        message: 'Table detection completed successfully.',
+      });
+    } catch (err: any) {
+      addNotification({
+        id: Date.now().toString(),
+        type: 'error',
+        title: 'Detection Failed',
+        message: err.message || 'Failed to detect tables',
+      });
+    } finally {
+      setDetectingTables(false);
+    }
+  }, [attachmentId, detectingTables, loadSuggestions, addNotification]);
+
+  const handlePreviewTableSuggestion = useCallback((suggestion: TableSuggestion) => {
+    setPreviewSuggestion(suggestion);
+    setIsTablePreviewOpen(true);
+  }, []);
+
 
   const selectedField = useMemo(() => {
     return ocrData?.parsedFields.find((field) => field.id === selectedFieldId) ?? null;
@@ -1066,6 +1154,38 @@ export default function AttachmentOcrReviewPage() {
     }
   }, [addNotification]);
 
+  const handleConvertTableSuggestion = useCallback(async (suggestion: TableSuggestion) => {
+    if (convertingSuggestionId) return;
+    setConvertingSuggestionId(suggestion.id);
+    try {
+      const result = await convertTableSuggestion(suggestion.id);
+      if (result.success && result.tableId) {
+        addNotification({
+          id: Date.now().toString(),
+          type: 'success',
+          title: 'Table Converted',
+          message: 'Suggested table has been successfully created.',
+        });
+        setIsTablePreviewOpen(false);
+        setPreviewSuggestion(null);
+          await loadBaseline();
+          await loadSuggestions();
+          // The table creation creates baseline_tables row. loadBaseline will include it.
+          // Then we load the specific table details to open in editor.
+          await loadTableDetail(result.tableId);
+      }
+    } catch (err: any) {
+      addNotification({
+        id: Date.now().toString(),
+        type: 'error',
+        title: 'Conversion Failed',
+        message: err.message || 'Failed to convert table suggestion',
+      });
+    } finally {
+      setConvertingSuggestionId(null);
+    }
+    }, [addNotification, loadBaseline, loadSuggestions, loadTableDetail, convertingSuggestionId]);
+
   const handleDeleteTable = useCallback((table: Table) => {
     setDeleteTableModal(table);
   }, []);
@@ -1152,14 +1272,14 @@ export default function AttachmentOcrReviewPage() {
           />
         ) : isExcel ? (
           <div style={{ height: 400, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 24 }}>
-            <span style={{ fontSize: 48, marginBottom: 16 }}>📊</span>
+            <span style={{ fontSize: 48, marginBottom: 16 }}>Table</span>
             <p style={{ margin: 0, fontWeight: 600, color: '#1e293b' }}>
               Excel files have no preview. <a href={documentUrl} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>Download to view.</a>
             </p>
           </div>
         ) : isWord ? (
           <div style={{ height: 400, background: '#fee2e2', border: '1px solid #fecaca', borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 24 }}>
-            <span style={{ fontSize: 48, marginBottom: 16 }}>⚠️</span>
+            <span style={{ fontSize: 48, marginBottom: 16 }}>!</span>
             <p style={{ margin: 0, fontWeight: 600, color: '#b91c1c' }}>Word documents not supported. Please convert to PDF.</p>
             <a href={documentUrl} target="_blank" rel="noreferrer" style={{ marginTop: 12, color: '#991b1b', fontWeight: 600 }}>Download file</a>
           </div>
@@ -1239,6 +1359,25 @@ export default function AttachmentOcrReviewPage() {
             onGenerate={handleGenerateSuggestions}
           />
         )}
+        {sidebarTab === 'tables' && (
+          <button
+            onClick={handleDetectTables}
+            disabled={detectingTables || !baseline?.id || isFieldBuilderReadOnly}
+            style={{
+              padding: '6px 12px',
+              borderRadius: 8,
+              border: '1px solid #cbd5e1',
+              background: '#ffffff',
+              color: '#475569',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: detectingTables || !baseline?.id || isFieldBuilderReadOnly ? 'not-allowed' : 'pointer',
+              opacity: detectingTables || !baseline?.id || isFieldBuilderReadOnly ? 0.6 : 1,
+            }}
+          >
+            {detectingTables ? 'Detecting...' : 'Get Suggestions'}
+          </button>
+        )}
       </div>
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 0, position: 'relative' }}>
@@ -1281,7 +1420,7 @@ export default function AttachmentOcrReviewPage() {
                       fontWeight: 700,
                     }}
                   >
-                    ›
+                    {'>'}
                   </button>
                 ) : (
                   <div
@@ -1322,7 +1461,7 @@ export default function AttachmentOcrReviewPage() {
                           justifyContent: 'center',
                         }}
                       >
-                        ×
+                        x
                       </button>
                     </div>
                     <div style={{ padding: 12, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minHeight: 0, direction: 'rtl' }}>
@@ -1375,15 +1514,95 @@ export default function AttachmentOcrReviewPage() {
             )}
           </>
         ) : (
-          <div style={{ flex: 1, overflowY: 'auto', maxHeight: isMobile ? 'auto' : 'calc(100vh - 350px)', paddingRight: 4 }}>
-            <TableListPanel
-              tables={baseline?.tables || []}
-              activeTableId={activeTable?.table.id || null}
-              onSelectTable={loadTableDetail}
-              onDeleteTable={handleDeleteTable}
-              onCreateTable={() => setIsTableCreationOpen(true)}
-              isReadOnly={isFieldBuilderReadOnly}
-            />
+          <div style={{ flex: 1, overflowY: 'auto', maxHeight: isMobile ? 'auto' : 'calc(100vh - 350px)', paddingRight: 4, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {/* Table Suggestions */}
+            {tableSuggestions.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>
+                  Suggested Tables ({tableSuggestions.length})
+                </div>
+                {tableSuggestions.map((suggestion) => (
+                  <div
+                    key={suggestion.id}
+                    style={{
+                      padding: '12px 14px',
+                      borderRadius: 10,
+                      background: '#dbeafe',
+                      border: '1px solid #93c5fd',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                    }}
+                  >
+                    <span style={{ fontSize: 20 }}>Table</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b', marginBottom: 2 }}>
+                        {suggestion.suggestedLabel || `Table ${suggestion.rowCount}x${suggestion.columnCount}`}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>
+                        {suggestion.rowCount} rows x {suggestion.columnCount} columns
+                        <span style={{ marginLeft: 8, color: '#2563eb', fontWeight: 600 }}>
+                          {Math.round(suggestion.confidence * 100)}% confidence
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        onClick={() => handlePreviewTableSuggestion(suggestion)}
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: 6,
+                          border: '1px solid #2563eb',
+                          background: '#ffffff',
+                          color: '#2563eb',
+                          fontSize: 11,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        Preview
+                      </button>
+                      <button
+                        onClick={() => handleIgnoreTableSuggestion(suggestion)}
+                        style={{
+                          padding: '6px',
+                          borderRadius: 6,
+                          border: '1px solid #cbd5e1',
+                          background: '#ffffff',
+                          color: '#64748b',
+                          fontSize: 14,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: 28,
+                          height: 28,
+                        }}
+                        title="Ignore suggestion"
+                      >
+                        x
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Existing Tables */}
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 8 }}>
+                Created Tables ({baseline?.tables?.length || 0})
+              </div>
+              <TableListPanel
+                tables={baseline?.tables || []}
+                activeTableId={activeTable?.table.id || null}
+                onSelectTable={loadTableDetail}
+                onDeleteTable={handleDeleteTable}
+                onCreateTable={() => setIsTableCreationOpen(true)}
+                isReadOnly={isFieldBuilderReadOnly}
+              />
+            </div>
           </div>
         )}
       </div>
@@ -1393,160 +1612,147 @@ export default function AttachmentOcrReviewPage() {
   return (
     <Layout currentPage="home" userEmail={me.email} userRole={me.role} isAdmin={me.isAdmin} onLogout={logout}>
       {ocrData?.attachment && (
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4, flexWrap: 'wrap' }}>
-            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#0f172a' }}>
-              Baseline Review
-            </h1>
-            {baseline && <BaselineStatusBadge status={baseline.status} />}
-            {!baseline && baselineLoading && (
-              <span style={{ fontSize: 12, color: '#64748b' }}>Loading baseline...</span>
-            )}
-          </div>
-          <p style={{ margin: 0, fontSize: 14, color: '#64748b' }}>
-            Reviewing extraction for: <strong>{ocrData.attachment.filename}</strong>
-          </p>
-          <div style={{ display: 'flex', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
-            {baseline?.status === 'draft' && (
-              <button
-                onClick={handleMarkReviewed}
-                disabled={baselineLoading || reviewingBaseline}
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: 10,
-                  border: '1px solid #bfdbfe',
-                  cursor: baselineLoading || reviewingBaseline ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {reviewingBaseline ? 'Marking...' : 'Mark as Reviewed'}
-              </button>
-            )}
+        <div style={{ marginBottom: 16 }}>
+          {/* Compact Header Bar */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
+              <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#0f172a' }}>
+                Baseline Review
+              </h1>
+              {baseline && <BaselineStatusBadge status={baseline.status} />}
+              {!baseline && baselineLoading && (
+                <span style={{ fontSize: 12, color: '#64748b' }}>Loading baseline...</span>
+              )}
+              <span style={{ fontSize: 14, color: '#64748b', marginLeft: 8 }}>
+                <strong>{ocrData.attachment.filename}</strong>
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              {taskId && (
+                <button
+                  onClick={() => window.location.href = `/task/${taskId}`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '8px 14px',
+                    borderRadius: 8,
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    color: '#475569',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.background = '#f8fafc';
+                    e.currentTarget.style.borderColor = '#cbd5e1';
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.background = '#ffffff';
+                    e.currentTarget.style.borderColor = '#e2e8f0';
+                  }}
+                >
+                  <span>{'<-'}</span> Back to Task
+                </button>
+              )}
+              {baseline?.status === 'draft' && (
+                <button
+                  onClick={handleMarkReviewed}
+                  disabled={baselineLoading || reviewingBaseline}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: 10,
+                    border: '1px solid #bfdbfe',
+                    cursor: baselineLoading || reviewingBaseline ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {reviewingBaseline ? 'Marking...' : 'Mark as Reviewed'}
+                </button>
+              )}
 
 
-            {baseline?.status === 'reviewed' && (
-              <button
-                onClick={() => setIsConfirmModalOpen(true)}
-                disabled={hasDraftTables || baselineLoading || confirmingBaseline}
-                title={hasDraftTables ? 'All tables must be confirmed first' : 'Confirm baseline'}
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: 10,
-                  border: '1px solid #4ade80',
-                  background: baselineLoading || confirmingBaseline ? '#dcfce7' : '#bbf7d0',
-                  color: '#166534',
-                  fontSize: 14,
-                  fontWeight: 700,
-                  cursor: hasDraftTables || baselineLoading || confirmingBaseline ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {confirmingBaseline ? 'Confirming...' : 'Confirm Baseline'}
-              </button>
-            )}
-            {baseline?.status === 'confirmed' && (
-              <button
-                disabled
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: 10,
-                  border: '1px solid #bbf7d0',
-                  background: '#dcfce7',
-                  color: '#166534',
-                  fontSize: 14,
-                  fontWeight: 700,
-                  cursor: 'not-allowed',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                <span>✓</span> Confirmed
-              </button>
-            )}
-            {baseline?.status === 'archived' && (
-              <button
-                disabled
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: 10,
-                  border: '1px solid #e2e8f0',
-                  background: '#f8fafc',
-                  color: '#475569',
-                  fontSize: 14,
-                  fontWeight: 700,
-                  cursor: 'not-allowed',
-                }}
-              >
-                Archived
-              </button>
-            )}
+              {baseline?.status === 'reviewed' && (
+                <button
+                  onClick={() => setIsConfirmModalOpen(true)}
+                  disabled={hasDraftTables || baselineLoading || confirmingBaseline}
+                  title={hasDraftTables ? 'All tables must be confirmed first' : 'Confirm baseline'}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: 10,
+                    border: '1px solid #4ade80',
+                    background: baselineLoading || confirmingBaseline ? '#dcfce7' : '#bbf7d0',
+                    color: '#166534',
+                    fontSize: 14,
+                    fontWeight: 700,
+                    cursor: hasDraftTables || baselineLoading || confirmingBaseline ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {confirmingBaseline ? 'Confirming...' : 'Confirm Baseline'}
+                </button>
+              )}
+              {baseline?.status === 'confirmed' && (
+                <button
+                  disabled
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: 10,
+                    border: '1px solid #bbf7d0',
+                    background: '#dcfce7',
+                    color: '#166534',
+                    fontSize: 14,
+                    fontWeight: 700,
+                    cursor: 'not-allowed',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <span>OK</span> Confirmed
+                </button>
+              )}
+              {baseline?.status === 'archived' && (
+                <button
+                  disabled
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: 10,
+                    border: '1px solid #e2e8f0',
+                    background: '#f8fafc',
+                    color: '#475569',
+                    fontSize: 14,
+                    fontWeight: 700,
+                    cursor: 'not-allowed',
+                  }}
+                >
+                  Archived
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      {taskId && (
-        <div style={{ marginBottom: 24 }}>
-          <button
-            onClick={() => window.location.href = `/task/${taskId}`}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '8px 16px',
-              borderRadius: 8,
-              background: '#ffffff',
-              border: '1px solid #e2e8f0',
-              color: '#475569',
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.background = '#f8fafc';
-              e.currentTarget.style.borderColor = '#cbd5e1';
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.background = '#ffffff';
-              e.currentTarget.style.borderColor = '#e2e8f0';
-            }}
-          >
-            <span>←</span> Back to Task
-          </button>
-        </div>
-      )}
-
-      {/* Extraction State Banner */}
-      {baseline && (
+      {/* Extraction State Banner - Compact */}
+      {baseline && baseline.status === 'draft' && (
         <div
           style={{
-            marginBottom: 24,
-            padding: '12px 16px',
-            borderRadius: 12,
+            marginBottom: 12,
+            padding: '8px 12px',
+            borderRadius: 8,
             background: badgeStylesValue.bg,
             border: `1px solid ${badgeStylesValue.border}`,
             color: badgeStylesValue.color,
-            fontSize: 14,
+            fontSize: 13,
             display: 'flex',
             alignItems: 'center',
-            gap: 12,
+            gap: 8,
             fontWeight: 500,
           }}
         >
-          <span style={{ fontSize: 18 }}>
-            {baseline.status === 'confirmed'
-              ? '✅'
-              : baseline.status === 'archived'
-                ? '📁'
-                : baseline.status === 'reviewed'
-                  ? '🧾'
-                  : '🧩'}
-          </span>
-          <span>
-            {baseline.status === 'draft' && 'Draft baseline. Mark as reviewed before confirming.'}
-            {baseline.status === 'reviewed' && 'Reviewed baseline. Confirm to lock and make it system-usable.'}
-            {baseline.status === 'confirmed' && 'Confirmed baseline. The previously confirmed baseline is archived.'}
-            {baseline.status === 'archived' && 'Archived baseline (view only).'}
-          </span>
+          <span style={{ fontSize: 16 }}>Info</span>
+          <span>Draft baseline. Mark as reviewed before confirming.</span>
         </div>
       )}
 
@@ -1565,7 +1771,7 @@ export default function AttachmentOcrReviewPage() {
             gap: 12,
           }}
         >
-          <span style={{ fontSize: 18 }}>⚠️</span>
+          <span style={{ fontSize: 18 }}>!</span>
           <span>Baseline status unavailable. {baselineError}</span>
         </div>
       )}
@@ -1585,7 +1791,7 @@ export default function AttachmentOcrReviewPage() {
             gap: 12
           }}
         >
-          <span style={{ fontSize: 18 }}>⚠️</span>
+          <span style={{ fontSize: 18 }}>!</span>
           <span>Failed to load extraction review data. {error}</span>
         </div>
       )}
@@ -1593,37 +1799,38 @@ export default function AttachmentOcrReviewPage() {
       {isLowConfidence && (
         <div
           style={{
-            marginBottom: 24,
-            padding: '12px 16px',
-            borderRadius: 12,
+            marginBottom: 12,
+            padding: '8px 12px',
+            borderRadius: 8,
             background: '#fffbeb',
             border: '1px solid #fde68a',
             color: '#92400e',
-            fontSize: 14,
+            fontSize: 13,
             display: 'flex',
             alignItems: 'center',
-            gap: 12
+            gap: 8
           }}
         >
-          <span style={{ fontSize: 18 }}>⚠️</span>
-          <span style={{ fontWeight: 600 }}>Low confidence extraction — please verify carefully.</span>
+          <span style={{ fontSize: 16 }}>!</span>
+          <span style={{ fontWeight: 600 }}>Low confidence extraction - please verify carefully.</span>
         </div>
       )}
 
+      {/* Info Banner */}
       <div style={{
         marginBottom: 24,
-        padding: '16px 20px',
+        padding: '12px 16px',
         borderRadius: 12,
         background: '#f8fafc',
         border: '1px solid #e2e8f0',
         color: '#475569',
-        fontSize: 14,
-        lineHeight: 1.6
+        fontSize: 13,
+        lineHeight: 1.5
       }}>
-        <div style={{ display: 'flex', gap: 12 }}>
-          <span style={{ fontSize: 18 }}>ℹ️</span>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <span style={{ fontSize: 16 }}>i</span>
           <div>
-            <p style={{ margin: 0, fontWeight: 600, color: '#1e293b' }}>About this review</p>
+            <p style={{ margin: 0, fontWeight: 600, color: '#1e293b', fontSize: 14 }}>About this review</p>
             <p style={{ margin: '4px 0 0' }}>
               This page summarizes <strong>extracted data</strong> from the document. The original file remains unchanged.
               Corrections submitted here only affect the extracted values used by the system.
@@ -1664,7 +1871,7 @@ export default function AttachmentOcrReviewPage() {
           {activeTab === 'text' && renderPanel2()}
           {activeTab === 'fields' && activeTable ? (
             <div style={{ height: 'calc(100vh - 200px)', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-              <button onClick={() => setActiveTable(null)} style={{ padding: 12, background: '#f8fafc', border: 'none', borderBottom: '1px solid #e2e8f0', fontWeight: 600, color: '#475569', textAlign: 'left' }}>← Back to List</button>
+              <button onClick={() => setActiveTable(null)} style={{ padding: 12, background: '#f8fafc', border: 'none', borderBottom: '1px solid #e2e8f0', fontWeight: 600, color: '#475569', textAlign: 'left' }}>{'<-'} Back to List</button>
               <TableEditorPanel
                 table={activeTable.table}
                 cells={activeTable.cells}
@@ -1714,6 +1921,7 @@ export default function AttachmentOcrReviewPage() {
           {renderPanel3()}
         </div>
       )}
+
       <OcrFieldEditModal
         field={editField}
         isOpen={isEditOpen}
@@ -1791,7 +1999,7 @@ export default function AttachmentOcrReviewPage() {
                   gap: 8,
                 }}
               >
-                <span>⚠️</span>
+                <span>!</span>
                 <span>Warning: This will lock the baseline and make it system-usable.</span>
               </div>
               <div
@@ -1899,6 +2107,13 @@ export default function AttachmentOcrReviewPage() {
       <NotificationToast
         notifications={notifications}
         onDismiss={(id) => setNotifications((prev) => prev.filter((item) => item.id !== id))}
+      />
+      <TableSuggestionPreviewModal
+        isOpen={isTablePreviewOpen}
+        onClose={() => setIsTablePreviewOpen(false)}
+        onConvert={handleConvertTableSuggestion}
+        suggestion={previewSuggestion}
+        isConverting={!!convertingSuggestionId}
       />
     </Layout >
   );

@@ -2452,11 +2452,11 @@ E2E Tests:
 
 ---
 
-## v8.8 — ML-Assisted Field Suggestions 📋 (Planned)
+## v8.8 — ML-Assisted Field Suggestions ✅ (Complete)
 
 **What this is**
 - ML-based field-to-text matching suggestions using Sentence-BERT
-- ML-assisted table detection (suggests structured grids, user decides)
+- Rule-based table detection suggestions (explicit user trigger)
 - Confidence scoring (High/Medium/Low)
 - Explicit accept/modify/clear workflows
 - No auto-application (suggestions only)
@@ -2468,7 +2468,7 @@ E2E Tests:
 - ❌ Not training/learning (that's v8.9)
 
 **Design Intent**
-Provide ML assistance to speed up field and table workflows, while preserving explicit user control and auditability.
+Provide ML assistance to speed up field and table workflows while preserving explicit user control, auditability, and graceful degradation.
 
 **Dependencies**
 - **REQUIRES:** v8.6 (baseline_field_assignments table must exist)
@@ -2477,9 +2477,9 @@ Provide ML assistance to speed up field and table workflows, while preserving ex
 
 **Key Principles**
 - **Suggestions, not automation** - ML suggests, user decides
-- **Non-blocking UI** - Suggestions appear as banners, don't interrupt workflow
+- **Non-blocking UI** - Suggestions appear inline in review UI
 - **Graceful degradation** - System works without ML (if ml-service down)
-- **Audit trail** - Track suggestion acceptance, modification, rejection
+- **Audit trail** - Track suggestion generation and user actions
 
 **Architecture**
 
@@ -2487,63 +2487,46 @@ Provide ML assistance to speed up field and table workflows, while preserving ex
 - NEW microservice: `apps/ml-service/` (FastAPI + Sentence-BERT)
 - Model: `all-MiniLM-L6-v2` (open source, Apache 2.0 license)
 - Backend network only (not exposed to internet)
-- Resource limits: 1GB memory, 1 CPU core
+- Deterministic, request/response inference (no background automation)
 
 **Database Schema:**
 - `ml_model_versions`: id, modelName, version, filePath, metrics (JSON), trainedAt, isActive, createdBy
-  - Tracks ML model versions for A/B testing and rollback
-
+  - Tracks ML model versions for auditability
 - Extend `baseline_field_assignments`:
-  - Add `suggestionConfidence` DECIMAL(3,2) (0.00-1.00)
-  - Add `suggestionAccepted` BOOLEAN (true=accepted, false=modified/rejected, null=manual)
-  - Add `modelVersionId` FK to ml_model_versions
-
+  - `suggestionConfidence` DECIMAL(3,2) (0.00-1.00)
+  - `suggestionAccepted` BOOLEAN (true=accepted, false=modified/rejected, null=manual)
+  - `modelVersionId` FK to ml_model_versions
 - `ml_table_suggestions`: id, attachmentId, regionId, rowCount, columnCount, confidence, boundingBox (JSON), cellMapping (JSON), status (pending/ignored/converted), suggestedAt, ignoredAt, convertedAt
-  - Tracks ML-detected table regions
+  - Tracks table detection suggestions
 
 **Capability A: Field Suggestion Workflow**
-
 1. User opens review page
-2. User clicks "Get Suggestions" button (explicit action)
+2. User clicks **Get Suggestions** (explicit action)
 3. ML service:
-   - Embeds all extracted text segments using Sentence-BERT
-   - Embeds all active field labels from Field Library
-   - Computes cosine similarity between segments and fields
-   - Returns top match per segment with confidence score (>= 0.5)
-4. System creates field assignments with `suggestionConfidence` populated
-5. UI shows suggested values with confidence badges:
-   - **High (>= 0.80)**: Green badge
-   - **Medium (0.60-0.79)**: Yellow badge
-   - **Low (< 0.60)**: Red badge
+   - Embeds extracted text segments and field labels
+   - Computes cosine similarity and token-overlap boost
+   - Returns top matches with confidence (threshold default 0.50)
+4. Backend writes assignments with suggestion metadata (no overwrite of manual values)
+5. UI renders suggested values with badges:
+   - **High (>= 0.80)**: Green
+   - **Medium (0.60-0.79)**: Orange
+   - **Low (0.50-0.59)**: Gray
 6. User actions:
-   - **Accept**: Confirms suggestion as-is (sets `suggestionAccepted = true`)
-   - **Modify**: Edits value, requires correction reason (sets `suggestionAccepted = false`, `correctedFrom` = original suggestion)
-   - **Clear**: Deletes assignment, requires reason (logs `suggestionAccepted = false` before delete)
+   - **Accept**: `suggestionAccepted = true`
+   - **Modify**: requires correction reason when baseline is reviewed, sets `suggestionAccepted = false` + `correctedFrom`
+   - **Clear**: requires reason when baseline is reviewed, deletes assignment and logs rejection metadata
 
 **Capability B: Table Detection Workflow**
-
-1. User opens review page
-2. System auto-triggers table detection (background, non-blocking)
-3. ML service analyzes extracted text segments:
-   - Grid pattern detection (aligned rows/columns)
-   - Spacing consistency analysis
-   - Header row detection
-   - Cell boundary detection
-4. If table detected (confidence >= 0.60):
-   - Non-blocking banner appears: "Detected a structured grid (Loan/Return - 5 rows × 3 columns). Convert to Table review?"
-   - Actions: **Preview** | **Ignore**
-5. User clicks "Preview":
-   - Modal shows grid preview with detected cells
-   - Confidence badge (High/Medium/Low)
-   - Dimensions displayed
-6. User clicks "Convert to Table":
-   - Creates draft table in `baseline_tables` (v8.7 workflow)
-   - Marks suggestion as `converted`
-   - Redirects to Table Editor
-7. User clicks "Ignore":
-   - Marks suggestion as `ignored`
-   - Banner disappears
-8. Multiple tables: Each table gets its own suggestion banner
+1. User opens review page → Tables tab
+2. User clicks **Get Suggestions** (explicit action; no auto-trigger)
+3. ML service (rule-based heuristics) analyzes OCR segments:
+   - Row grouping + column alignment
+   - Spacing consistency + grid validation
+4. Suggestions show inline at top of Tables tab (blue background)
+5. Actions:
+   - **Preview**: modal grid with confidence + row/column counts
+   - **Convert to Table**: creates draft table, opens editor, marks suggestion `converted`
+   - **Ignore**: marks suggestion `ignored`
 
 **What ML Suggests:**
 - Field-to-text matches (which segment matches which field)
@@ -2999,7 +2982,7 @@ E2E Tests:
 4. Table detected → Ignore → Banner disappears → Manual field assignment
 
 **Status**
-📋 Planned (not started)
+✅ Complete
 
 ---
 

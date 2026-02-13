@@ -99,7 +99,7 @@ export interface DeleteAssignmentResponse {
 }
 
 export interface DeleteAssignmentPayload {
-  correctionReason?: string;
+  reason?: string;
   suggestionRejected?: boolean;
   suggestionConfidence?: number;
   modelVersionId?: string;
@@ -111,7 +111,7 @@ export async function deleteAssignment(
   payload?: DeleteAssignmentPayload | string | null,
 ): Promise<DeleteAssignmentResponse> {
   const body = typeof payload === 'string'
-    ? { correctionReason: payload }
+    ? { reason: payload }
     : payload || {};
 
   return apiFetchJson(`/baselines/${baselineId}/assign/${fieldKey}`, {

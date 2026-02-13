@@ -1,4 +1,8 @@
-import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { DbService } from '../db/db.service';
 import { todos, attachments } from '../db/schema';
 import { extractionBaselines } from '../baseline/schema';
@@ -21,7 +25,7 @@ export class AuthorizationService {
    */
   async ensureUserOwnsTodo(
     userId: string,
-    todoId: string
+    todoId: string,
   ): Promise<typeof todos.$inferSelect> {
     const [todo] = await this.dbs.db
       .select()
@@ -43,7 +47,7 @@ export class AuthorizationService {
    */
   async ensureUserOwnsAttachment(
     userId: string,
-    attachmentId: string
+    attachmentId: string,
   ): Promise<{
     attachment: typeof attachments.$inferSelect;
     todo: typeof todos.$inferSelect;
@@ -80,7 +84,7 @@ export class AuthorizationService {
    */
   async ensureUserOwnsBaseline(
     userId: string,
-    baselineId: string
+    baselineId: string,
   ): Promise<{
     id: string;
     attachmentId: string;
@@ -99,7 +103,10 @@ export class AuthorizationService {
         ownerId: todos.userId,
       })
       .from(extractionBaselines)
-      .innerJoin(attachments, eq(attachments.id, extractionBaselines.attachmentId))
+      .innerJoin(
+        attachments,
+        eq(attachments.id, extractionBaselines.attachmentId),
+      )
       .innerJoin(todos, eq(todos.id, attachments.todoId))
       .where(eq(extractionBaselines.id, baselineId))
       .limit(1);
@@ -122,7 +129,7 @@ export class AuthorizationService {
    */
   async ensureUserOwnsTable(
     userId: string,
-    tableId: string
+    tableId: string,
   ): Promise<{
     tableId: string;
     tableBaselineId: string;
@@ -155,8 +162,14 @@ export class AuthorizationService {
         todoUserId: todos.userId,
       })
       .from(baselineTables)
-      .innerJoin(extractionBaselines, eq(extractionBaselines.id, baselineTables.baselineId))
-      .innerJoin(attachments, eq(attachments.id, extractionBaselines.attachmentId))
+      .innerJoin(
+        extractionBaselines,
+        eq(extractionBaselines.id, baselineTables.baselineId),
+      )
+      .innerJoin(
+        attachments,
+        eq(attachments.id, extractionBaselines.attachmentId),
+      )
       .innerJoin(todos, eq(todos.id, attachments.todoId))
       .where(eq(baselineTables.id, tableId))
       .limit(1);

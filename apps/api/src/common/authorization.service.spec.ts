@@ -115,7 +115,7 @@ describe('AuthorizationService', () => {
       jest.spyOn(dbService.db, 'limit').mockResolvedValueOnce([]);
 
       await expect(
-        service.ensureUserOwnsTodo(mockOtherUserId, mockTodoId)
+        service.ensureUserOwnsTodo(mockOtherUserId, mockTodoId),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -123,7 +123,7 @@ describe('AuthorizationService', () => {
       jest.spyOn(dbService.db, 'limit').mockResolvedValueOnce([]);
 
       await expect(
-        service.ensureUserOwnsTodo(mockOtherUserId, mockTodoId)
+        service.ensureUserOwnsTodo(mockOtherUserId, mockTodoId),
       ).rejects.toThrow('Access denied for todo');
     });
   });
@@ -137,7 +137,7 @@ describe('AuthorizationService', () => {
 
       const result = await service.ensureUserOwnsAttachment(
         mockUserId,
-        mockAttachmentId
+        mockAttachmentId,
       );
 
       expect(result).toEqual({
@@ -150,7 +150,7 @@ describe('AuthorizationService', () => {
       jest.spyOn(dbService.db, 'limit').mockResolvedValueOnce([]);
 
       await expect(
-        service.ensureUserOwnsAttachment(mockUserId, mockAttachmentId)
+        service.ensureUserOwnsAttachment(mockUserId, mockAttachmentId),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -158,7 +158,7 @@ describe('AuthorizationService', () => {
       jest.spyOn(dbService.db, 'limit').mockResolvedValueOnce([]);
 
       await expect(
-        service.ensureUserOwnsAttachment(mockUserId, mockAttachmentId)
+        service.ensureUserOwnsAttachment(mockUserId, mockAttachmentId),
       ).rejects.toThrow('Attachment not found');
     });
 
@@ -169,7 +169,7 @@ describe('AuthorizationService', () => {
         .mockResolvedValueOnce([]); // Todo not found or wrong owner
 
       await expect(
-        service.ensureUserOwnsAttachment(mockOtherUserId, mockAttachmentId)
+        service.ensureUserOwnsAttachment(mockOtherUserId, mockAttachmentId),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -180,7 +180,7 @@ describe('AuthorizationService', () => {
         .mockResolvedValueOnce([]);
 
       await expect(
-        service.ensureUserOwnsAttachment(mockOtherUserId, mockAttachmentId)
+        service.ensureUserOwnsAttachment(mockOtherUserId, mockAttachmentId),
       ).rejects.toThrow('Access denied for attachment');
     });
 
@@ -195,7 +195,7 @@ describe('AuthorizationService', () => {
         .mockResolvedValueOnce([]);
 
       await expect(
-        service.ensureUserOwnsAttachment(mockUserId, mockAttachmentId)
+        service.ensureUserOwnsAttachment(mockUserId, mockAttachmentId),
       ).rejects.toThrow(ForbiddenException);
     });
   });
@@ -211,9 +211,14 @@ describe('AuthorizationService', () => {
         ownerId: mockUserId,
       };
 
-      jest.spyOn(dbService.db, 'limit').mockResolvedValueOnce([mockBaselineRecord]);
+      jest
+        .spyOn(dbService.db, 'limit')
+        .mockResolvedValueOnce([mockBaselineRecord]);
 
-      const result = await service.ensureUserOwnsBaseline(mockUserId, mockBaselineId);
+      const result = await service.ensureUserOwnsBaseline(
+        mockUserId,
+        mockBaselineId,
+      );
 
       expect(result).toEqual(mockBaselineRecord);
     });
@@ -222,7 +227,7 @@ describe('AuthorizationService', () => {
       jest.spyOn(dbService.db, 'limit').mockResolvedValueOnce([]);
 
       await expect(
-        service.ensureUserOwnsBaseline(mockUserId, mockBaselineId)
+        service.ensureUserOwnsBaseline(mockUserId, mockBaselineId),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -230,7 +235,7 @@ describe('AuthorizationService', () => {
       jest.spyOn(dbService.db, 'limit').mockResolvedValueOnce([]);
 
       await expect(
-        service.ensureUserOwnsBaseline(mockUserId, mockBaselineId)
+        service.ensureUserOwnsBaseline(mockUserId, mockBaselineId),
       ).rejects.toThrow('Baseline not found');
     });
 
@@ -244,10 +249,12 @@ describe('AuthorizationService', () => {
         ownerId: mockOtherUserId,
       };
 
-      jest.spyOn(dbService.db, 'limit').mockResolvedValueOnce([mockBaselineRecord]);
+      jest
+        .spyOn(dbService.db, 'limit')
+        .mockResolvedValueOnce([mockBaselineRecord]);
 
       await expect(
-        service.ensureUserOwnsBaseline(mockUserId, mockBaselineId)
+        service.ensureUserOwnsBaseline(mockUserId, mockBaselineId),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -261,10 +268,12 @@ describe('AuthorizationService', () => {
         ownerId: mockOtherUserId,
       };
 
-      jest.spyOn(dbService.db, 'limit').mockResolvedValueOnce([mockBaselineRecord]);
+      jest
+        .spyOn(dbService.db, 'limit')
+        .mockResolvedValueOnce([mockBaselineRecord]);
 
       await expect(
-        service.ensureUserOwnsBaseline(mockUserId, mockBaselineId)
+        service.ensureUserOwnsBaseline(mockUserId, mockBaselineId),
       ).rejects.toThrow('Access denied for baseline');
     });
 
@@ -278,9 +287,14 @@ describe('AuthorizationService', () => {
         ownerId: mockUserId,
       };
 
-      jest.spyOn(dbService.db, 'limit').mockResolvedValueOnce([mockBaselineRecord]);
+      jest
+        .spyOn(dbService.db, 'limit')
+        .mockResolvedValueOnce([mockBaselineRecord]);
 
-      const result = await service.ensureUserOwnsBaseline(mockUserId, mockBaselineId);
+      const result = await service.ensureUserOwnsBaseline(
+        mockUserId,
+        mockBaselineId,
+      );
 
       expect(result.ownerId).toBe(mockUserId);
     });
@@ -304,7 +318,9 @@ describe('AuthorizationService', () => {
         todoUserId: mockUserId,
       };
 
-      jest.spyOn(dbService.db, 'limit').mockResolvedValueOnce([mockTableRecord]);
+      jest
+        .spyOn(dbService.db, 'limit')
+        .mockResolvedValueOnce([mockTableRecord]);
 
       const result = await service.ensureUserOwnsTable(mockUserId, mockTableId);
 
@@ -316,7 +332,7 @@ describe('AuthorizationService', () => {
       jest.spyOn(dbService.db, 'limit').mockResolvedValueOnce([]);
 
       await expect(
-        service.ensureUserOwnsTable(mockUserId, mockTableId)
+        service.ensureUserOwnsTable(mockUserId, mockTableId),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -324,7 +340,7 @@ describe('AuthorizationService', () => {
       jest.spyOn(dbService.db, 'limit').mockResolvedValueOnce([]);
 
       await expect(
-        service.ensureUserOwnsTable(mockUserId, mockTableId)
+        service.ensureUserOwnsTable(mockUserId, mockTableId),
       ).rejects.toThrow('Table not found');
     });
 
@@ -345,10 +361,12 @@ describe('AuthorizationService', () => {
         todoUserId: mockOtherUserId,
       };
 
-      jest.spyOn(dbService.db, 'limit').mockResolvedValueOnce([mockTableRecord]);
+      jest
+        .spyOn(dbService.db, 'limit')
+        .mockResolvedValueOnce([mockTableRecord]);
 
       await expect(
-        service.ensureUserOwnsTable(mockUserId, mockTableId)
+        service.ensureUserOwnsTable(mockUserId, mockTableId),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -369,10 +387,12 @@ describe('AuthorizationService', () => {
         todoUserId: mockOtherUserId,
       };
 
-      jest.spyOn(dbService.db, 'limit').mockResolvedValueOnce([mockTableRecord]);
+      jest
+        .spyOn(dbService.db, 'limit')
+        .mockResolvedValueOnce([mockTableRecord]);
 
       await expect(
-        service.ensureUserOwnsTable(mockUserId, mockTableId)
+        service.ensureUserOwnsTable(mockUserId, mockTableId),
       ).rejects.toThrow('Access denied for table');
     });
 
@@ -393,7 +413,9 @@ describe('AuthorizationService', () => {
         todoUserId: mockUserId,
       };
 
-      jest.spyOn(dbService.db, 'limit').mockResolvedValueOnce([mockTableRecord]);
+      jest
+        .spyOn(dbService.db, 'limit')
+        .mockResolvedValueOnce([mockTableRecord]);
 
       const result = await service.ensureUserOwnsTable(mockUserId, mockTableId);
 

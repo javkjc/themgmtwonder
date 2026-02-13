@@ -88,9 +88,7 @@ const createMockDbService = (
     db: {
       query: {
         attachments: {
-          findFirst: jest
-            .fn()
-            .mockResolvedValue(attachmentResult[0] ?? null),
+          findFirst: jest.fn().mockResolvedValue(attachmentResult[0] ?? null),
         },
         todos: {
           findFirst: jest.fn().mockResolvedValue(todoResult[0] ?? null),
