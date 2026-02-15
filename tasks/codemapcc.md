@@ -62,6 +62,13 @@
   - Uses: Layout, ForcePasswordChange, useToast (ToastProvider), apiFetchJson
   - Mutations at: admin/page.tsx loadUsers(), handleResetPassword(), logout(), forceChangePassword()
   - Toast calls at: admin/page.tsx showToast (load/reset errors)
+- ROUTE: /admin/ml
+  - Path: apps/web/app/admin/ml/page.tsx
+  - Purpose: ML performance evaluation dashboard
+  - Uses: Layout, fetchMlMetrics, KPI cards, Confusion table
+  - Auto-refresh: Loads on mount and refreshes every 15 seconds for admins
+  - Default date range: Last 14 days (from today - 14 days to today)
+  - Mutations at: loadMetrics() via manual Refresh button or auto-refresh interval
 - ROUTE: /customizations
   - Path: apps/web/app/customizations/page.tsx
   - Purpose: Working hours, duration settings, categories CRUD
@@ -103,9 +110,11 @@
   - Auth/session entry points: apps/web/app/hooks/useAuth.ts (login/register/logout/changePassword/refreshMe hitting /auth endpoints), apps/web/app/components/ForcePasswordChange.tsx
   - Calendar v2 anchors: renderer DraggableEvent inside apps/web/app/calendar/page.tsx; DndContext provider + onDragEnd in apps/web/app/components/DragContext.tsx (DragProvider.handleDragEnd); drop-time calc in apps/web/app/calendar/page.tsx getDropTime(); DnD overlay via DragOverlay in DragContext
   - Calendar availability helpers: useScheduledEvents (apps/web/app/hooks/useScheduledEvents.ts), useDurationSettings (apps/web/app/hooks/useDurationSettings.ts), useCategories color map (apps/web/app/hooks/useCategories.ts)
-  - Extracted text pool: apps/web/app/components/ocr/ExtractedTextPool.tsx renders truncated segments with confidence badges and bounding-box hover highlighting for review; supports checkboxes for multi-select and select-all.
-  - Field assignment panel: apps/web/app/components/FieldAssignmentPanel.tsx renders active field library fields with type-specific inputs (text/number/decimal/date/currency), validation status indicators, user-friendly labels, example tooltips, drag-drop zones, and read-only mode for confirmed/utilized baselines.
+  - Extracted text pool: apps/web/app/components/ocr/ExtractedTextPool.tsx renders truncated segments with confidence badges and bounding-box hover highlighting for review; supports checkboxes for multi-select and select-all; includes client-side pairing derivation logic (detectBoundingBoxScale, isNumericOrDate, isLabelLike, isValueLike, calculatePairConfidence, derivePairedSegments) to identify label/value pairs using bounding box proximity and text heuristics, logging paired segments to console for verification; supports batch selection for paired segments (toggling both label and value).
+  - Paired segment card: apps/web/app/components/extracted-text/PairedSegmentCard.tsx renders label/value paired OCR segment cards with confidence badge and drag/hover behaviors for the review page; supports batch selection (toggling both label and value) and drag-to-field using only the value segment.
+  - Field assignment panel: apps/web/app/components/FieldAssignmentPanel.tsx renders active field library fields with type-specific inputs (text/number/decimal/date/currency), validation status indicators, user-friendly labels, example tooltips, drag-drop zones, and read-only mode for confirmed/utilized baselines; defaults to Top-N (20) suggested fields plus assigned fields view with a toggle to show all.
   - Validation modals: apps/web/app/components/ValidationConfirmationModal.tsx (invalid value confirmation with "Save As-Is" / "Use Suggestion" / "Cancel" actions), apps/web/app/components/CorrectionReasonModal.tsx (requires 10+ char reason for overwrite/delete on reviewed baselines).
+  - Admin API client: apps/web/app/lib/api/admin.ts (fetchMlMetrics).
   - Baseline API client: apps/web/app/lib/api/baselines.ts (fetchBaselineForAttachment, upsertAssignment with confirmInvalid flag, deleteAssignment, markBaselineReviewed, confirmBaseline, generateSuggestions).
   - Suggestions UI: apps/web/app/components/suggestions/SuggestionTrigger.tsx (trigger ML field suggestions with tooltip), apps/web/app/components/suggestions/SuggestedFieldInput.tsx (visualizing field suggestions with confidence badges), apps/web/app/components/suggestions/SuggestionActionModal.tsx (modal for accepting/modifying/clearing ML suggestions), apps/web/app/components/suggestions/TableSuggestionBannerList.tsx (table suggestion banner list), apps/web/app/components/suggestions/TableSuggestionBanner.tsx (table suggestion banner item), apps/web/app/components/suggestions/TableSuggestionPreviewModal.tsx (preview modal for suggested tables).
   - Table API client: apps/web/app/lib/api/tables.ts (createTable, fetchTablesForBaseline, fetchTable, updateCell, deleteRow, assignColumn, confirmTable).
@@ -116,13 +125,16 @@
   - Base route: /
   - Endpoints:
     - POST /ml/suggest-fields
-      - Request: { baselineId: string, segments: [{ id: string, text: string, boundingBox?: {x, y, width, height}, pageNumber?: number }], fields: [{ fieldKey: string, label: string, characterType?: string }], threshold?: number }
-      - Response: { ok: boolean, modelVersion: string, threshold: number, suggestions: [{ segmentId: string, fieldKey: string, confidence: number }], error?: { code: string, message: string } }
+      - Request: { baselineId: string, segments: [{ id: string, text: string, boundingBox?: {x, y, width, height}, pageNumber?: number }], fields: [{ fieldKey: string, label: string, characterType?: string }], threshold?: number, pairCandidates?: [{ labelSegmentId, valueSegmentId, pairConfidence, relation, pageNumber }], segmentContext?: [{ segmentId, contextText, contextSegmentIds: string[] }] }
+      - Response: { ok: boolean, modelVersion: string, threshold: number, suggestions: [{ segmentId: string, fieldKey: string, confidence: number, labelSegmentId?: string, contextSegmentIds?: string[], pairConfidence?: number, pairStrategy?: string }], error?: { code: string, message: string } }
       - Model: all-MiniLM-L6-v2 (sentence-transformers)
-      - Algorithm: Three-pass strategy combining spatial layout, token matching, and semantic embeddings
+      - Algorithm: Three-pass strategy combining spatial layout, token matching, semantic embeddings, and pairing/context enrichment
         1. Token overlap boost: Adds 0.0-0.30 to similarity scores for exact label token matches (distinctive tokens weighted higher)
-        2. Label-to-value proximity (first pass): For numeric/date fields, finds label segments, then locates nearby value segments using bounding boxes
-        3. Semantic matching (fallback): Uses ML embeddings for remaining segments
+        2. Pairing confidence boost: Adds up to 0.15 to similarity scores for segments with high-confidence pairing candidates
+        3. Context enrichment: Embeds "segment text + contextText" when segmentContext is provided for richer semantic matching
+        4. Label-to-value proximity (first pass): For numeric/date fields, finds label segments, then locates nearby value segments using bounding boxes
+        5. Semantic matching (fallback): Uses ML embeddings for remaining segments
+      - Provenance: Each suggestion includes labelSegmentId, contextSegmentIds, pairConfidence, and pairStrategy (api_pairing/proximity/semantic)
       - Key Functions:
         - is_numeric_value(text): Detects numeric values; recognizes currency symbols, strips parenthetical content, 40% digit threshold
         - is_date_value(text): Detects date values via month names or date patterns
@@ -132,7 +144,9 @@
     - POST /ml/detect-tables
       - Request: { attachmentId: string, segments: [{ id: string, text: string, boundingBox: {x, y, width, height}, pageNumber?: number, confidence?: number }], threshold?: number }
       - Response: { ok: boolean, attachmentId: string, threshold: number, tables: [{ regionId: string, rowCount: number, columnCount: number, confidence: number, boundingBox: {x, y, width, height}, cells: [{ rowIndex, columnIndex, text, segmentId }], suggestedLabel: string }], processingTimeMs: number, error?: {code, message} }
-      - Heuristics: row grouping, column alignment, spacing consistency
+      - Heuristics: row grouping, column alignment, spacing consistency; threshold bumped to 0.60 for precision
+      - Filtering: API filters new detections overlapping ignored suggestions by >50% IoU for "ignore-forever" behavior
+      - Audit: logs `ignoredOverlapFiltered` count in `ml.table.detect` details
   - Utilities:
     - apps/ml-service/table_detect.py - Rule-based table detection heuristics
     - apps/ml-service/model.py - Sentence transformer model loading and embedding generation
@@ -211,10 +225,10 @@
   - Guards/errors: JwtAuthGuard + AdminGuard class-wide; NotFoundException on unknown user; AuditService.log called after reset
 - Module: MlModule
   - Path: apps/api/src/ml/ml.module.ts
-  - Purpose: ML service client module for field suggestions and table detection
+  - Purpose: ML service client module for field suggestions, table detection, and admin metrics
   - Imports: DbModule, AuditModule, CommonModule, BaselineModule
-  - Controllers: FieldSuggestionController, TableSuggestionController
-  - Exports: MlService, FieldSuggestionService, TableSuggestionService
+  - Controllers: FieldSuggestionController, TableSuggestionController, MlMetricsController
+  - Providers: MlService, FieldSuggestionService, TableSuggestionService, FieldAssignmentValidatorService, MlMetricsService
 - Service: MlService
   - Path: apps/api/src/ml/ml.service.ts
   - Purpose: HTTP client wrapper for ML service with timeouts, error handling, and graceful degradation
@@ -240,7 +254,6 @@
   - Endpoints:
     - POST /baselines/:baselineId/suggestions/generate → generateSuggestions() → FieldSuggestionService.generateSuggestions()
   - Guards/errors: JwtAuthGuard; 400 for archived/utilized baselines; 429 for rate limit (10/hour); 404 for missing baseline/OCR
-  - Response: { suggestedAssignments: [{fieldKey, assignedValue, confidence, sourceSegmentId}], modelVersionId, suggestionCount }
 - Controller: TableSuggestionController
   - Path: apps/api/src/ml/table-suggestion.controller.ts
   - Base route: none (declares paths on methods)
@@ -251,6 +264,16 @@
     - POST /table-suggestions/:id/convert → convertSuggestion() → TableSuggestionService.convertSuggestion() + TableManagementService.createTable()
   - Guards/errors: JwtAuthGuard; 403 for ownership violations; 400 for non-editable baselines; 404 for missing resources
   - Response (convert): { success: boolean, tableId: string, redirectUrl: string }
+- Controller: MlMetricsController
+  - Path: apps/api/src/ml/ml-metrics.controller.ts
+  - Base route: /admin/ml
+  - Purpose: Admin-only metrics endpoint for ML suggestion performance
+  - Endpoints:
+    - GET /admin/ml/metrics → MlMetricsService.getMetrics()
+  - Guards/errors: JwtAuthGuard + CsrfGuard + AdminGuard
+- Service: MlMetricsService
+  - Path: apps/api/src/ml/ml-metrics.service.ts
+  - Purpose: Computes acceptance/modify/clear rates, top-1 accuracy, and field confusion from assignments/audit logs
 - Service: FieldSuggestionService
   - Path: apps/api/src/ml/field-suggestion.service.ts
   - Purpose: Orchestrates ML field suggestion generation and persistence for baselines
@@ -334,7 +357,7 @@
     - POST /baselines/:baselineId/review ? markReviewed() ? BaselineManagementService.markReviewed()
     - POST /baselines/:baselineId/confirm ? confirmBaseline() ? BaselineManagementService.confirmBaseline()
     - GET /baselines/:baselineId/assignments ? listAssignments() ? BaselineAssignmentsService.listAssignments()
-    - POST /baselines/:baselineId/assign ? assignField() ? BaselineAssignmentsService.upsertAssignment() (accepts AssignBaselineFieldDto with ML metadata: suggestionAccepted, suggestionConfidence, modelVersionId, correctedFrom)
+    - POST /baselines/:baselineId/assign ? assignField() ? BaselineAssignmentsService.upsertAssignment() (accepts AssignBaselineFieldDto with ML metadata: suggestionAccepted, suggestionConfidence, modelVersionId, correctedFrom, suggestionContext)
     - DELETE /baselines/:baselineId/assign/:fieldKey ? deleteAssignment() ? BaselineAssignmentsService.deleteAssignment() (accepts DeleteAssignmentDto with reason and ML rejection metadata: suggestionRejected, suggestionConfidence, modelVersionId)
   - DTOs: apps/api/src/baseline/dto/{assign-baseline-field.dto.ts,delete-assignment.dto.ts}
   - Guards/errors: JwtAuthGuard; attachment ownership enforced; lifecycle transitions validated (400 on invalid state)
@@ -372,12 +395,12 @@
     - Validation rules: varchar (length), int (no decimals/commas), decimal (numeric with normalization), date (ISO 8601), currency (ISO 4217 3-letter codes)
 - Service: BaselineAssignmentsService
   - Path: apps/api/src/baseline/baseline-assignments.service.ts
-  - Responsibilities: enforce ownership + not-archived/not-utilized guards, validate via FieldAssignmentValidatorService, upsert/delete/list baseline_field_assignments, require correctionReason on overwrite/delete (only for reviewed baselines), emit baseline.assignment.upsert/delete audits with correctedFrom/correctionReason details
+  - Responsibilities: enforce ownership + not-archived/not-utilized guards, validate via FieldAssignmentValidatorService, upsert/delete/list baseline_field_assignments (including suggestionContext), require correctionReason on overwrite/delete (only for reviewed baselines), emit baseline.assignment.upsert/delete audits with correctedFrom/correctionReason details
   - Methods:
     - getAggregatedBaseline(attachmentId, userId): Returns baseline with assignments + segments in single payload (excludes archived baselines, returns latest non-archived)
     - upsertAssignment(baselineId, fieldKey, value, userId, confirmInvalid, correctionReason): Validates value, requires correctionReason for overwrite on reviewed baselines, stores correctedFrom/sourceSegmentId
     - deleteAssignment(baselineId, fieldKey, userId, correctionReason): Requires correctionReason for reviewed baselines, emits audit log
-    - listAssignments(baselineId, userId): Returns all assignments for a baseline with ownership check
+    - listAssignments(baselineId, userId): Returns all assignments for a baseline with ownership check (includes suggestionContext)
 - Controller: App bootstrap modules
   - Path: apps/api/src/bootstrap/bootstrap.service.ts (OnModuleInit)
   - Purpose: ensure systemSettings row exists, ensure admin user exists/promoted
@@ -389,45 +412,42 @@ Overlap logic:
 ## 4) Data Model Map (Drizzle)
 - Schema files: apps/api/src/db/schema.ts; migrations apps/api/drizzle/*.sql, apps/api/src/db/migrations/*.sql
 - Tables:
-  - users ? id (uuid pk), email unique, passwordHash, mustChangePassword (bool), role (text), createdAt
-  - todos ? id (uuid pk), userId fk users.id, title, description, done, createdAt, updatedAt, startAt (nullable), durationMin (int), category (text nullable), unscheduledAt
-  - user_settings ? id (uuid pk), userId unique fk users.id, workingHours (json string), workingDays (json array), createdAt, updatedAt
-  - categories ? id (uuid pk), userId fk users.id, name, color, sortOrder, createdAt
-  - attachments ? id (uuid pk), todoId fk todos.id, userId fk users.id, filename, storedFilename, mimeType, size, createdAt
-  - attachment_ocr_outputs ? id (uuid pk), attachmentId fk attachments.id cascade, extractedText (text), metadata (text, JSON string), processing_status (text), status (enum: draft/confirmed/archived), confirmed_at/confirmed_by (timestamp/uuid fk users), utilized_at/utilization_type/utilization_metadata (utilization tracking), archived_at/archived_by/archive_reason (archive tracking), createdAt; defined in apps/api/src/db/schema.ts; migrations apps/api/drizzle/0018_attachment_ocr_outputs.sql + apps/api/src/db/migrations/20260202142000-v3.5-ocr-states.sql (forward) and apps/api/src/db/migrations/20260202142000-v3.5-ocr-states-rollback.sql
-  - extracted_text_segments ? id (uuid pk), attachmentOcrOutputId fk attachment_ocr_outputs.id cascade, text (text), confidence (float), boundingBox (jsonb nullable), pageNumber (int nullable), createdAt; index on attachmentOcrOutputId; defined in apps/api/src/db/schema.ts
-  - Indexes: idx_ocr_status, idx_ocr_attachment_status, idx_ocr_utilization (partial WHERE utilization_type IS NOT NULL), plus attachment_ocr_outputs_attachment_id_idx, idx_extracted_text_segments_output_id, and idx_ml_table_suggestions_attachment_status
-  - ocr_results ? id (uuid pk), attachmentOcrOutputId fk attachment_ocr_outputs.id, fieldName, fieldType (text|number|date|currency, defaults to text), value, confidence (float), boundingBox (json nullable), pageNumber (int nullable), createdAt; indexes on attachmentOcrOutputId and fieldName; populated by OcrParsingService.parseOcrOutput() only when parent output is confirmed
-  - ocr_corrections ? id (uuid pk), ocrResultId fk ocr_results.id, correctedValue, correctionReason, correctedBy fk users.id, createdAt; append-only (corrections never deleted); loaded via OcrCorrectionsService.getCorrectionHistory()
-  - field_library ? id (uuid pk), fieldKey (text unique), label, characterType (enum: varchar/int/decimal/date/boolean), characterLimit (int nullable, varchar only), status (enum: active/hidden/archived), version (int, increments on characterType change), createdAt, updatedAt; admin-managed via FieldLibraryController
-  - extraction_baselines ? id (uuid pk), attachmentId fk attachments.id (cascade), status (enum: draft/reviewed/confirmed/archived), confirmedAt, confirmedBy fk users.id, utilizedAt, utilizationType (enum: record_created/workflow_committed/data_exported nullable), archivedAt, archivedBy fk users.id, createdAt; partial unique index on (attachmentId) WHERE status='confirmed' enforces one confirmed baseline per attachment
-  - baseline_field_assignments — id (uuid pk), baselineId fk extraction_baselines.id (cascade), fieldKey fk field_library.fieldKey, assignedValue, sourceSegmentId (uuid fk extracted_text_segments.id, set null), correctedFrom, correctionReason, assignedBy fk users.id, assignedAt, suggestionConfidence (decimal 3,2), suggestionAccepted (boolean nullable), modelVersionId (uuid fk ml_model_versions.id nullable); unique(baselineId, fieldKey); indexes on baselineId, fieldKey, sourceSegmentId, modelVersionId; defined in apps/api/src/db/schema.ts
-  - baseline_tables ? id (uuid pk), baselineId fk extraction_baselines.id (cascade), tableIndex, tableLabel, status (draft/confirmed), rowCount, columnCount, confirmedAt, confirmedBy, createdAt, updatedAt; unique(baselineId, tableIndex); defined in apps/api/src/db/schema.ts
-  - baseline_table_cells ? id (uuid pk), tableId fk baseline_tables.id (cascade), rowIndex, columnIndex, cellValue, validationStatus, errorText, correctionFrom, correctionReason, updatedAt; unique(tableId, rowIndex, columnIndex); index on (tableId, validationStatus); defined in apps/api/src/db/schema.ts
-  - baseline_table_column_mappings ? id (uuid pk), tableId fk baseline_tables.id (cascade), columnIndex, fieldKey fk field_library.fieldKey; unique(tableId, columnIndex); index on (tableId); defined in apps/api/src/db/schema.ts
-  - remarks ? id (uuid pk), todoId fk todos.id, userId fk users.id, content (text max 150 chars), createdAt
-  - audit_logs ? id (uuid pk), userId fk users.id nullable, action, resourceType, resourceId, details json string, ipAddress, userAgent, createdAt
-  - system_settings ? id int pk default 1, minDurationMin, maxDurationMin, defaultDurationMin, createdAt, updatedAt
-  - ml_model_versions — id (uuid pk), modelName (text), version (text), filePath (text), metrics (jsonb), trainedAt (timestamp), isActive (boolean), createdBy (text); unique(modelName, version); index on isActive; defined in apps/api/src/db/schema.ts
-  - ml_table_suggestions (id (uuid pk), attachmentId fk attachments.id cascade, regionId uuid, rowCount int, columnCount int, confidence numeric(5,4), boundingBox jsonb, cellMapping jsonb, suggestedLabel text, status (enum: pending/ignored/converted), suggestedAt, ignoredAt, convertedAt); defined in apps/api/src/db/schema.ts; index on (attachmentId, status)
-- Relations:
-  - todos.userId ? users.id (cascade)
-  - categories.userId ? users.id
-  - attachments.todoId ? todos.id; attachments.userId ? users.id
-  - attachment_ocr_outputs.attachmentId ? attachments.id (cascade)
-  - remarks.todoId ? todos.id (cascade); remarks.userId ? users.id (cascade)
-  - user_settings.userId ? users.id unique
-  - audit_logs.userId ? users.id (set null on delete)
-  - extracted_text_segments.attachmentOcrOutputId ? attachment_ocr_outputs.id (cascade)
-  - ocr_results.attachmentOcrOutputId ? attachment_ocr_outputs.id
-  - ocr_corrections.ocrResultId ? ocr_results.id; ocr_corrections.correctedBy ? users.id
-  - extraction_baselines.attachmentId ? attachments.id (cascade); extraction_baselines.confirmedBy/archivedBy ? users.id
-  - baseline_field_assignments.baselineId ? extraction_baselines.id (cascade); baseline_field_assignments.fieldKey ? field_library.fieldKey; baseline_field_assignments.sourceSegmentId ? extracted_text_segments.id (set null); baseline_field_assignments.assignedBy ? users.id
-- Duration constraints enforcement: apps/api/src/common/constants.ts (MIN/MAX/DEFAULT guards); apps/api/src/bootstrap/bootstrap.service.ts (validates system settings row on startup); apps/api/src/settings/settings.service.ts updateDurationSettings() guard default between min/max; frontend mirrors in apps/web/app/lib/constants.ts and apps/web/app/hooks/useDurationSettings.ts
-- Validation schemas: class-validator DTOs at apps/api/src/auth/dto/*.ts, apps/api/src/todos/dto/*.ts, apps/api/src/categories/dto/*.ts, apps/api/src/settings/dto/*.ts; global ValidationPipe in apps/api/src/main.ts (whitelist, transform, forbidNonWhitelisted)
+  - users — id (uuid pk), email unique, passwordHash, mustChangePassword (bool), role (text), createdAt
+  - todos — id (uuid pk), userId fk users.id, title, description, done, createdAt, updatedAt, startAt (nullable), durationMin (int), category (text nullable), unscheduledAt
+  - user_settings — id (uuid pk), userId unique fk users.id, workingHours (json string), workingDays (json array), createdAt, updatedAt
+  - categories — id (uuid pk), userId fk users.id, name, color, sortOrder, createdAt
+  - attachments — id (uuid pk), todoId fk todos.id, userId fk users.id, filename, storedFilename, mimeType, size, createdAt
+  - attachment_ocr_outputs — id (uuid pk), attachmentId fk attachments.id cascade, extractedText (text), metadata (text, JSON string), processing_status (text), status (enum: draft/confirmed/archived), confirmed_at/confirmed_by (timestamp/uuid fk users), utilized_at/utilization_type/utilization_metadata (utilization tracking), archived_at/archived_by/archive_reason (archive tracking), createdAt; defined in apps/api/src/db/schema.ts
+  - extracted_text_segments — id (uuid pk), attachmentOcrOutputId fk attachment_ocr_outputs.id cascade, text (text), confidence (float), boundingBox (jsonb nullable), pageNumber (int nullable), createdAt; index on attachmentOcrOutputId
+  - ocr_results — id (uuid pk), attachmentOcrOutputId fk attachment_ocr_outputs.id, fieldName, fieldType (text|number|date|currency, defaults to text), value, confidence (float), boundingBox (json nullable), pageNumber (int nullable), createdAt
+  - ocr_corrections — id (uuid pk), ocrResultId fk ocr_results.id, correctedValue, correctionReason, correctedBy fk users.id, createdAt
+  - field_library — id (uuid pk), fieldKey (text unique), label, characterType (enum: varchar/int/decimal/date/boolean), characterLimit (int nullable, varchar only), status (enum: active/hidden/archived), version (int, increments on characterType change), createdAt, updatedAt
+  - extraction_baselines — id (uuid pk), attachmentId fk attachments.id (cascade), status (enum: draft/reviewed/confirmed/archived), confirmedAt, confirmedBy fk users.id, utilizedAt, utilizationType (enum: record_created/workflow_committed/data_exported nullable), archivedAt, archivedBy fk users.id, createdAt
+  - baseline_field_assignments — id (uuid pk), baselineId fk extraction_baselines.id (cascade), fieldKey fk field_library.fieldKey, assignedValue, sourceSegmentId (uuid fk extracted_text_segments.id, set null), correctedFrom, correctionReason, assignedBy fk users.id, assignedAt, suggestionConfidence (decimal 3,2), suggestionAccepted (boolean nullable), modelVersionId (uuid fk ml_model_versions.id nullable), suggestionContext (jsonb nullable); unique(baselineId, fieldKey)
+  - baseline_tables — id (uuid pk), baselineId fk extraction_baselines.id (cascade), tableIndex, tableLabel, status (draft/confirmed), rowCount, columnCount, confirmedAt, confirmedBy, createdAt, updatedAt
+  - baseline_table_cells — id (uuid pk), tableId fk baseline_tables.id (cascade), rowIndex, columnIndex, cellValue, validationStatus, errorText, correctionFrom, correctionReason, updatedAt
+  - baseline_table_column_mappings — id (uuid pk), tableId fk baseline_tables.id (cascade), columnIndex, fieldKey fk field_library.fieldKey
+  - remarks — id (uuid pk), todoId fk todos.id, userId fk users.id, content (text max 150 chars), createdAt
+  - audit_logs — id (uuid pk), userId fk users.id nullable, action, resourceType, resourceId, details json string, ipAddress, userAgent, createdAt
+  - system_settings — id int pk default 1, minDurationMin, maxDurationMin, defaultDurationMin, createdAt, updatedAt
+  - ml_model_versions — id (uuid pk), modelName (text), version (text), filePath (text), metrics (jsonb), trainedAt (timestamp), isActive (boolean), createdBy (text); unique(modelName, version)
+  - ml_table_suggestions — (id (uuid pk), attachmentId fk attachments.id cascade, regionId uuid, rowCount int, columnCount int, confidence numeric(5,4), boundingBox jsonb, cellMapping jsonb, suggestedLabel text, status (enum: pending/ignored/converted), suggestedAt, ignoredAt, convertedAt); index on (attachmentId, status)
 
 ## 5) Cross-cutting Anchors
 - Auth controllers/services/guards: apps/api/src/auth/{auth.controller.ts,auth.service.ts,auth.guard.ts}, apps/api/src/users/users.service.ts
 - Validation pipes: apps/api/src/main.ts global ValidationPipe
-- Error handling filters/interceptors: UNKNOWN (no custom filters/interceptors defined)
 - Toast contract: NotificationToast props in apps/web/app/components/NotificationToast.tsx; showToast API in apps/web/app/components/ToastProvider.tsx
+- ML Provenance UI (v8.8 - B2): tooltips in SuggestedFieldInput.tsx displaying label segment, neighbors, and pairing confidence from suggestionContext.
+
+# v8.8.1 Milestone Map (COMPLETED)
+- [VERIFIED] A1: Suggestion Context Schema + API Surface
+- [VERIFIED] A2: Pairing + Context Pre-Processor in API
+- [VERIFIED] A3: ML Service Pairing/Context Reranking
+- [VERIFIED] E1: Client-Side Pairing Derivation
+- [VERIFIED] E2: Paired Card Rendering
+- [VERIFIED] E3: Paired Selection & Drag Behavior
+- [VERIFIED] B1: Top-N Field Selection Policy
+- [VERIFIED] B2: Pairing/Context Provenance in UI
+- [VERIFIED] C1: Ignore-Forever Filtering + Threshold Bump
+- [VERIFIED] D1: Admin Metrics API
+- [VERIFIED] D2: Admin Metrics UI

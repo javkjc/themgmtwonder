@@ -1,7 +1,7 @@
-﻿## v8.8 — ML-Assisted Field Suggestions
+﻿## v8.8.1 ? Adaptive Doc Intelligence (Pairing + Field Context + Selection + Table Enhancements + Eval)
 
-**Date:** 2026-02-11  
-**Scope:** Add opt-in ML-assisted field and table suggestions on the review page with explicit user actions, backend authority, auditability, and graceful degradation.  
+**Date:** 2026-02-13  
+**Scope:** Improve ML suggestion quality and reviewer throughput with pairing/context enrichment, smarter field selection, stricter table detection, and read-only evaluation metrics.  
 **Principles:** Minimal localized changes. Backend authoritative. No new dependencies. No background automation. Preserve auditability-first.
 
 ---
@@ -10,561 +10,409 @@
 
 **Prerequisites:**
 - [ ] v8.6 baseline review flow exists and is stable.  
-- Evidence: `tasks/executionnotes.md` entries for v8.6 milestones (2026-02-06 to 2026-02-11).
-- [ ] v8.7 table review flow exists (tables, editor, confirm, list).  
-- Evidence: `tasks/executionnotes.md` entries dated 2026-02-09 to 2026-02-11.
-- [ ] Core data tables exist in schema: `baseline_field_assignments`, `extracted_text_segments`, `baseline_tables`.  
-- Evidence: `tasks/codemapcc.md` Data Model Map.
-- [ ] Review page route exists: `/attachments/[attachmentId]/review`.  
-- Evidence: `tasks/codemapcc.md` Frontend Map.
-- [ ] Review `tasks/lessons.md` for v8.8 patterns before starting.
+  Evidence: `tasks/executionnotes.md` entries for v8.6 milestones (2026-02-06 to 2026-02-11).
+- [ ] v8.8 ML suggestions and table suggestion flows are complete.  
+  Evidence: `tasks/executionnotes.md` entries dated 2026-02-12 to 2026-02-13.
+- [ ] ML service and ML API module exist.  
+  Evidence: `tasks/codemapcc.md` Backend Map and Repo Index list `apps/ml-service` and `apps/api/src/ml/*`.
+- [ ] Review `tasks/lessons.md` for v8.8 patterns before starting.  
+  Evidence: 2026-02-13 entries on table detection.
 
 **Out of Scope:**
-- [ ] Automatic field assignment or table creation without explicit user action.
-- [ ] Training or fine-tuning (v8.9).
-- [ ] Background automation or auto-confirmation.
-- [ ] Workflow coupling or utilization rules beyond existing v8.6/v8.7 baselines.
-- [ ] Any AI features beyond v8.8 scope (v8.9+).
+- [ ] Learning or memory (v8.9+ training and fine-tuning).
+- [ ] Auto-assignment or auto-confirm behavior.
+- [ ] Background jobs or cron-based processing.
+- [ ] New dependencies outside existing package.json and requirements.txt.
 
 **STOP Events (Halt Execution & Request Clarification):**
-- **STOP - Missing Infrastructure:** If `baseline_field_assignments`, `extracted_text_segments`, or `baseline_tables` are missing from `apps/api/src/db/schema.ts` or not documented in `tasks/codemapcc.md`.
-- **STOP - Missing File/Codemap Entry:** If new paths (e.g., `apps/ml-service/` or new API modules) are not documented in `tasks/codemapcc.md` before implementation.
-- **STOP - New Dependency Request:** If any new dependencies are required outside `apps/ml-service/requirements.txt` or existing `apps/web/package.json` / `apps/api/package.json`.
-- **STOP - Ambiguous Requirement:** If language detection behavior is unspecified for future multilingual work (out of scope for v8.8).
-- **STOP - Scope Creep:** If work requires v8.9 training pipeline, auto-learning, or workflow integration.
+- **STOP - Missing Infrastructure:** If `extracted_text_segments` or `baseline_field_assignments` is not present in `apps/api/src/db/schema.ts` and `tasks/codemapcc.md`.
+- **STOP - Missing File/Codemap Entry:** If any new controller/service/page path is not added to `tasks/codemapcc.md` before implementation.
+- **STOP - New Dependency Request:** If implementation requires any new npm or pip dependencies.
+- **STOP - Ambiguous Requirement:** If pairing/context heuristic thresholds are unclear for a concrete example.
+- **STOP - Scope Creep:** If work requires v8.9 model training or cross-baseline memory.
 
 ---
 
-## 1) Data Model & Audit Tracking (P0)
+## 1) Pairing + Context Provenance (P0)
 
-> **Context:** Store ML model versions, suggestion metadata, and table suggestions with auditability and minimal schema changes.
+> **Context:** Provide derived label/value pairing and context for better matching, with full provenance stored alongside suggestions.
 
-### A1 — ML Model Version Table ([Complexity: Medium])
-**Status:** ✅ Completed on 2026-02-11
+### A1 ? Suggestion Context Schema + API Surface (Complexity: Medium) ? Status: ? Completed on 2026-02-13 (VERIFIED)
 
 **Problem statement**  
-We need a persistent model registry to track which ML model version generated suggestions for auditability and future A/B evaluation.
+We need to persist pairing provenance (label/value segment IDs and context segments) as derived metadata without changing authoritative data.
 
 **Files / Locations**
-- Backend: `apps/api/src/db/schema.ts` — add `ml_model_versions` table.
-- Backend: `apps/api/src/db/migrations/` — add forward/rollback migration.
-- Docs: `tasks/codemapcc.md` — update Data Model Map with new table.
+- Backend: `apps/api/src/db/schema.ts` ? add `suggestionContext` jsonb column to `baseline_field_assignments`.
+- Backend: `apps/api/src/db/migrations/` ? add forward and rollback migration for `suggestion_context`.
+- Backend: `apps/api/drizzle/` ? add Drizzle SQL migration for the same column.
+- Backend: `apps/api/src/baseline/baseline-assignments.service.ts` ? include `suggestionContext` in reads.
+- Backend: `apps/api/src/baseline/dto/assign-baseline-field.dto.ts` ? allow optional `suggestionContext`.
+- Frontend: `apps/web/app/types.ts` ? add `suggestionContext` to `Assignment`.
+- Docs: `tasks/codemapcc.md` ? update Data Model Map and type notes.
 
 **Implementation plan**
-1. Add `ml_model_versions` table with columns: `id`, `modelName`, `version`, `filePath`, `metrics` (JSON), `trainedAt`, `isActive`, `createdBy`.
-2. Add unique index on (`modelName`, `version`), and index on `isActive`.
-3. Add migration file and update Drizzle schema.
-4. Update `tasks/codemapcc.md` data model section.
+1. Add `suggestion_context` jsonb column (nullable) to `baseline_field_assignments`.
+2. Update Drizzle schema and add migrations (forward + rollback).
+3. Extend DTOs and assignment serialization to include `suggestionContext`.
+4. Update frontend types to accept `suggestionContext`.
+5. Update `tasks/codemapcc.md`.
 
-**Checkpoint A1 — Verification**
-- Manual:
-  - Confirm `ml_model_versions` exists in `apps/api/src/db/schema.ts` with expected columns.
+**Checkpoint A1 ? Verification**
+- Manual: Load `/attachments/<id>/review` and confirm assignment payload includes `suggestionContext` (even if null).
 - DB:
 ```sql
-SELECT column_name
+SELECT column_name, data_type
 FROM information_schema.columns
-WHERE table_name = 'ml_model_versions'
-ORDER BY ordinal_position;
+WHERE table_name = 'baseline_field_assignments'
+  AND column_name = 'suggestion_context';
 ```
-  Expected result: columns listed in step 1.
-- Logs:
-  - API boots without schema errors after migration.
-- Regression:
-  - Existing baseline endpoints still load.
+  Expected result: one row with `data_type = jsonb`.
+- Logs: API starts without schema errors after migration.
+- Regression: Existing assignment reads still work.
 
 **Estimated effort:** 2-3 hours  
 **Complexity flag:** Medium = GPT-4o preferred
 
-### A2 — Field Assignment Suggestion Metadata ([Complexity: Medium])
-**Status:** ✅ Completed on 2026-02-11
-
+### A2 ? Pairing + Context Pre-Processor in API (Complexity: Complex) ? Status: ? Completed on 2026-02-13 (VERIFIED)
 
 **Problem statement**  
-We need to record suggestion confidence, acceptance state, and model version on baseline field assignments without overwriting authoritative user intent.
+We need to derive label/value pairing candidates and context for segments before sending data to the ML service.
 
 **Files / Locations**
-- Backend: `apps/api/src/db/schema.ts` — extend `baseline_field_assignments`.
-- Backend: `apps/api/src/db/migrations/` — add forward/rollback migration.
-- Docs: `tasks/codemapcc.md` — update Data Model Map with new columns.
+- Backend: `apps/api/src/ml/field-suggestion.service.ts` ? build pairing/context derivations and enrich ML payload.
+- Backend: `apps/api/src/ml/ml.service.ts` ? update payload types to include context and pairing candidates.
+- Docs: `tasks/codemapcc.md` ? document new ML payload fields.
 
 **Implementation plan**
-1. Add columns to `baseline_field_assignments`:
-   - `suggestionConfidence` DECIMAL(3,2)
-   - `suggestionAccepted` BOOLEAN (true accepted, false modified/rejected, null manual)
-   - `modelVersionId` UUID FK to `ml_model_versions.id`
-2. Add index on `modelVersionId`.
-3. Update Drizzle schema and migrations.
-4. Update `tasks/codemapcc.md`.
+1. Build a pairing pre-processor using OCR segment bounding boxes and page numbers:
+   - Identify label-like segments (short text, non-numeric).
+   - For each label, find nearest value segment to the right or below.
+   - Emit `pairCandidates` with `labelSegmentId`, `valueSegmentId`, `pairConfidence`, `relation`, `pageNumber`.
+2. Build `segmentContext` for each segment:
+   - Neighbor text on same row (left and right).
+   - Nearest header above (same column).
+   - `contextSegmentIds` and `contextText` (concatenated, trimmed).
+3. Add `pairCandidates` and `segmentContext` to ML payload.
+4. Add audit log details for `pairCandidateCount` and `contextSegmentCount`.
 
-**Checkpoint A2 — Verification**
-- Manual:
-  - Confirm new columns exist in `apps/api/src/db/schema.ts`.
+**Checkpoint A2 ? Verification**
+- Manual: Click "Get Suggestions" and confirm request completes without errors.
 - DB:
 ```sql
-SELECT column_name
-FROM information_schema.columns
-WHERE table_name = 'baseline_field_assignments'
-  AND column_name IN ('suggestionconfidence','suggestionaccepted','modelversionid')
-ORDER BY column_name;
+SELECT details->>'pairCandidateCount' AS pair_candidates,
+       details->>'contextSegmentCount' AS context_segments
+FROM audit_logs
+WHERE action = 'ml.suggest.generate'
+ORDER BY created_at DESC
+LIMIT 1;
 ```
-  Expected result: three columns returned (case-insensitive DB naming).
-- Logs:
-  - Migration applies without errors.
-- Regression:
-  - Existing baseline assignment queries still return values.
+  Expected result: non-null counts.
+- Logs: API log includes `ml.suggest.generate` with `pairCandidateCount` and `contextSegmentCount`.
+- Regression: Suggestions still generate without pairing (fallback).
+
+**Estimated effort:** 3 hours  
+**Complexity flag:** Complex = GPT-4o required
+
+### A3 ? ML Service Pairing/Context Reranking (Complexity: Complex) ? Status: ? Completed on 2026-02-13 (VERIFIED)
+
+**Problem statement**  
+We need to incorporate pairing candidates and context into the ML service scoring while keeping deterministic behavior.
+
+**Files / Locations**
+- ML Service: `apps/ml-service/main.py` ? extend request model and suggestion logic.
+- ML Service: `apps/ml-service/model.py` ? no changes expected unless embedding strategy is adjusted.
+- Docs: `tasks/codemapcc.md` ? document request/response additions.
+
+**Implementation plan**
+1. Extend `/ml/suggest-fields` request model to accept:
+   - `pairCandidates` list with label/value IDs and confidence.
+   - `segmentContext` list with `segmentId`, `contextText`, `contextSegmentIds`.
+2. Use `pairCandidates` to prioritize label-to-value suggestions:
+   - If a candidate value segment matches a field label with high confidence, boost score.
+   - Ensure pairing is only a confidence boost, not an override.
+3. Use `contextText` by embedding "segment text + contextText" when available.
+4. Return `suggestions` with `provenance`:
+   - `labelSegmentId`, `contextSegmentIds`, `pairConfidence`, `pairStrategy`.
+5. Keep deterministic ordering and thresholds.
+
+**Checkpoint A3 ? Verification**
+- Manual: For a known attachment with label/value pairs, run "Get Suggestions" and see numeric/date fields pick nearby values.
+- Logs: ML logs include `pairCandidateCount` and `contextSegmentCount`.
+- Regression: Suggestions still return when pairing/context missing.
+
+**Estimated effort:** 3 hours  
+**Complexity flag:** Complex = GPT-4o required
+
+---
+
+## 2) Paired Label/Value Cards UI (P0)
+
+> **Context:** Add client-side label/value pairing in ExtractedTextPool and render paired cards (label + value) above the unpaired list. Dragging a paired card uses the value segment text.
+
+### E1 ? Client-Side Pairing Derivation (Complexity: Medium) ? Status: ? Completed on 2026-02-14
+
+**Problem statement**
+We need to mirror backend pairing heuristics on the client to generate paired label/value cards without backend changes.
+
+**Files / Locations**
+- Frontend: `apps/web/app/components/ocr/ExtractedTextPool.tsx` ? add pairing helpers and derivation logic.
+- Frontend: `apps/web/app/types.ts` ? add `PairCandidate` interface.
+- Docs: `tasks/codemapcc.md` ? document pairing logic.
+
+**Implementation plan**
+1. Add pairing helper functions mirroring backend heuristics:
+   - `detectBoundingBoxScale(segments)` ? determine if coordinates are normalized (0-1) or pixels.
+   - `isNumericOrDate(text)` ? detect value-like segments.
+   - `isLabelLike(text)` ? detect short, non-numeric label segments.
+   - `isValueLike(text)` ? complement to `isLabelLike`.
+   - `calculatePairConfidence(label, value, relation, distance)` ? scoring function.
+2. Group segments by `pageNumber` (default 1 if missing).
+3. For each label candidate, find nearest value to the right or below using bounding box proximity.
+4. Compute `PairCandidate` list with `labelSegment`, `valueSegment`, `pairConfidence`, `relation`, `pageNumber`.
+5. Sort candidates by `pairConfidence` desc and accept pairs if both segments are unused (avoid duplicates).
+6. Output `pairedSegments` and `unpairedSegments` (segments not in any accepted pair).
+
+**Checkpoint E1 ? Verification**
+- Manual: Load review page with OCR segments containing label/value pairs (e.g., "Invoice #:" + "12345").
+- Console: Log `pairedSegments` and verify label/value pairing is correct.
+- Regression: Unpaired segments still render correctly.
+
+**Estimated effort:** 2-3 hours
+**Complexity flag:** Medium = GPT-4o preferred
+
+### E2 ? Paired Card Rendering (Complexity: Medium) ? Status: ? Completed on 2026-02-15
+
+**Problem statement**
+We need to render paired cards above the unpaired segment list with label + value layout.
+
+**Files / Locations**
+- Frontend: `apps/web/app/components/ocr/ExtractedTextPool.tsx` ? add paired card section.
+- Frontend: `apps/web/app/components/extracted-text/PairedSegmentCard.tsx` ? new component for paired card.
+- Docs: `tasks/codemapcc.md` ? document new component.
+
+**Implementation plan**
+1. Add "Paired Segments" section above existing segment list.
+2. Create `PairedSegmentCard` component with:
+   - Top row: confidence badge + page number.
+   - Body: label text (smaller, muted) + value text (primary, larger).
+   - Hover highlights value segment in document viewer.
+   - Drag uses value segment (not label).
+3. Use existing card styles to keep UI consistent.
+4. Render unpaired segments in existing list (exclude any segment already in a pair).
+
+**Checkpoint E2 ? Verification**
+- Manual:
+  - Load review page with paired segments.
+  - Paired cards appear above unpaired list.
+  - Label and value text display correctly.
+- Hover: Hovering paired card highlights value segment in document viewer.
+- Regression: Unpaired segment cards render as before.
+
+**Estimated effort:** 2-3 hours
+**Complexity flag:** Medium = GPT-4o preferred
+
+### E3 - Paired Selection & Drag Behavior (Complexity: Medium) - Status: ✅ Completed on 2026-02-15
+
+**Problem statement**
+We need to support batch selection (both label + value) and drag-to-field using the value segment.
+
+**Files / Locations**
+- Frontend: `apps/web/app/components/ocr/ExtractedTextPool.tsx` ? add `onToggleSelectionBatch` handler.
+- Frontend: `apps/web/app/components/extracted-text/PairedSegmentCard.tsx` ? wire up selection checkbox and drag.
+- Frontend: `apps/web/app/attachments/[id]/review/page.tsx` ? implement batch selection logic.
+- Docs: `tasks/codemapcc.md` ? document selection behavior.
+
+**Implementation plan**
+1. [x] Add `onToggleSelectionBatch?: (ids: string[], selected: boolean) => void` prop to `ExtractedTextPool`.
+2. [x] Paired card shows single checkbox:
+   - `selected` means both label + value are selected.
+   - Clicking toggles both segments.
+3. [x] Implement `onToggleSelectionBatch` in `page.tsx`:
+   - If either segment is unselected -> add both.
+   - If both selected -> remove both.
+4. [x] Drag behavior: call `onDragStart(e, valueSegment)` so field drop logic inserts value text.
+5. [x] Preserve existing single-segment selection logic for unpaired segments.
+
+**Checkpoint E3 ? Verification**
+- Manual:
+  - Click paired card checkbox ? both label + value selected.
+  - Click again ? both deselected.
+  - Create table ? both segments included.
+- Drag: Drag paired card onto field ? value text inserted, `sourceSegmentId` is value segment ID.
+- Regression: Unpaired segment selection/drag unchanged.
+
+**Estimated effort:** 2-3 hours
+**Complexity flag:** Medium = GPT-4o preferred
+
+---
+
+## 3) Field Selection + Review UI (P1)
+
+> **Context:** Reduce UI noise by defaulting to top-N suggested fields while keeping explicit "Show all fields".
+
+### B1 ? Top-N Field Selection Policy (Complexity: Medium) ? Status: ✅ Completed on 2026-02-15
+
+**Problem statement**  
+We need to show a limited set of suggested fields by default, while preserving access to all fields.
+
+**Files / Locations**
+- Frontend: `apps/web/app/components/FieldAssignmentPanel.tsx` ? implement selection policy.
+- Frontend: `apps/web/app/types.ts` ? confirm assignment fields for confidence sorting.
+- Docs: `tasks/codemapcc.md` ? update component behavior notes.
+
+**Implementation plan**
+1. Default to showing:
+   - Top N suggested fields by confidence (N = 20).
+   - Any fields with existing assigned values (manual or suggested).
+2. Keep existing "Show all fields" toggle to reveal all fields.
+3. Ensure suggested count is accurate and does not include manual-only assignments.
+
+**Checkpoint B1 ? Verification**
+- Manual:
+  - Load review page with >20 suggested fields.
+  - Default view shows 20 suggested + all assigned fields.
+  - Click "Show all fields" and confirm full list appears.
+- Regression: "Show suggested only" behavior remains consistent.
 
 **Estimated effort:** 1-2 hours  
 **Complexity flag:** Medium = GPT-4o preferred
 
-### A3 — ML Table Suggestions Table ([Complexity: Medium])
-**Status:** ✅ Completed on 2026-02-11
+### B2 ? Pairing/Context Provenance in UI (Complexity: Medium) ? Status: ✅ Completed on 2026-02-14
 
 **Problem statement**  
-We need a persisted table for ML table-detection suggestions to support preview, ignore, and convert workflows with auditability.
+Reviewers need visibility into why a suggestion was made, using stored provenance.
 
 **Files / Locations**
-- Backend: `apps/api/src/db/schema.ts` — add `ml_table_suggestions`.
-- Backend: `apps/api/src/db/migrations/` — add forward/rollback migration.
-- Docs: `tasks/codemapcc.md` — update Data Model Map with new table.
+- Frontend: `apps/web/app/components/suggestions/SuggestedFieldInput.tsx` ? display context tooltip. [DONE]
+- Frontend: `apps/web/app/components/FieldAssignmentPanel.tsx` ? pass through `suggestionContext`. [DONE]
+- Docs: `tasks/codemapcc.md` ? note UI provenance display. [DONE]
 
 **Implementation plan**
-1. Add `ml_table_suggestions` table with columns:
-   - `id`, `attachmentId`, `regionId`, `rowCount`, `columnCount`, `confidence`, `boundingBox` (JSON), `cellMapping` (JSON), `suggestedLabel`, `status` (pending/ignored/converted), `suggestedAt`, `ignoredAt`, `convertedAt`.
-2. Add index on (`attachmentId`, `status`).
-3. Update Drizzle schema and migrations.
-4. Update `tasks/codemapcc.md`.
+1. Display a "Context" tooltip for suggested fields showing:
+   - Label segment text (if present).
+   - Neighbor text (left/right/above).
+   - Pairing confidence (if present).
+2. Keep tooltip hidden for manual assignments.
 
-**Checkpoint A3 — Verification**
+**Checkpoint B2 ? Verification**
 - Manual:
-  - Confirm `ml_table_suggestions` exists in `apps/api/src/db/schema.ts`.
-- DB:
-```sql
-SELECT column_name
-FROM information_schema.columns
-WHERE table_name = 'ml_table_suggestions'
-ORDER BY ordinal_position;
-```
-  Expected result: columns listed in step 1.
-- Logs:
-  - API boots without schema errors after migration.
-- Regression:
-  - Table APIs still function (`/tables/:id` returns).
+  - Hover a suggested field and confirm context tooltip shows label/value pairing.
+  - Manual fields show no context tooltip.
+- Regression: Existing confidence badges remain unchanged.
 
-**Estimated effort:** 2-3 hours  
+**Estimated effort:** 1-2 hours  
 **Complexity flag:** Medium = GPT-4o preferred
 
 ---
 
-## 2) ML Service Infrastructure (P0)
+## 4) Table Detection Enhancements (P1)
 
-> **Context:** Provide local, internal ML inference endpoints for field suggestions and table detection without external calls.
+> **Context:** Improve precision by raising thresholds and honoring ignore-forever for repeated detections.
 
-### B1 — ML Service Skeleton + Health Check ([Complexity: Medium])
-**Status:** ✅ Completed on 2026-02-12
-
-**Problem statement**  
-We need a FastAPI microservice container for local inference, reachable only on the internal network, with a health endpoint for readiness checks.
-
-**Files / Locations**
-- Backend: `docker-compose.yml` — add `ml-service` container wiring.
-- New service: `apps/ml-service/main.py` — FastAPI app entry.
-- New service: `apps/ml-service/requirements.txt` — Python deps.
-- New service: `apps/ml-service/ml.Dockerfile` — container build.
-- Docs: `tasks/codemapcc.md` — add ml-service to Repo Index.
-
-**Implementation plan**
-1. Create `apps/ml-service/` scaffold with `main.py` and `/health` endpoint.
-2. Add `requirements.txt` with FastAPI + Uvicorn + model dependencies.
-3. Add `ml.Dockerfile` with python base image and pinned deps.
-4. Wire `ml-service` in `docker-compose.yml` on backend network only.
-5. Update `tasks/codemapcc.md` with the new service path and purpose.
-
-**Checkpoint B1 — Verification**
-- Manual:
-  - Start docker compose and confirm `ml-service` container is running.
-- Logs:
-  - `GET /health` returns `{ status: 'ok' }`.
-- Regression:
-  - API and web services still start.
-
-**Estimated effort:** 2-3 hours  
-**Complexity flag:** Medium = GPT-4o preferred
-
-### B2 — Field Suggestion Endpoint ([Complexity: Complex])
-**Status:** ✅ Completed on 2026-02-12
+### C1 ? Ignore-Forever Filtering + Threshold Bump (Complexity: Medium) ? Status: ✅ Completed on 2026-02-15 (VERIFIED)
 
 **Problem statement**  
-We need a deterministic field-to-text suggestion endpoint that embeds segments and field labels, computes similarity, and returns top matches with confidence.
+Ignored table suggestions should not reappear for the same attachment, and thresholds should be stricter for precision.
 
 **Files / Locations**
-- New service: `apps/ml-service/main.py` — add `/ml/suggest-fields` endpoint.
-- New service: `apps/ml-service/model.py` — model loading and embedding helpers.
-- Docs: `tasks/codemapcc.md` — document endpoint contract.
+- Backend: `apps/api/src/ml/table-suggestion.service.ts` ? filter detections that overlap ignored suggestions.
+- ML Service: `apps/ml-service/main.py` ? raise default threshold for table detection (0.50 -> 0.60).
+- Docs: `tasks/codemapcc.md` ? update table detection notes.
 
 **Implementation plan**
-1. Load sentence embedding model at startup using `all-MiniLM-L6-v2` (English-only).
-2. Accept payload: `{ baselineId, segments: [{id,text}], fields: [{fieldKey,label}], threshold }`.
-3. Compute embeddings for fields and segments, cosine similarity, choose top match per segment.
-4. Return suggestions with confidence clamped to 0.0–1.0 and threshold default 0.50.
-5. If model load fails or times out, return empty suggestions with error payload.
+1. Load ignored suggestions for the attachment and build bounding box exclusion list.
+2. Filter new detections if bounding boxes overlap ignored regions by >50% IoU.
+3. Update ML service default threshold to 0.60.
+4. Log `ignoredOverlapFiltered` count in `ml.table.detect` audit details.
 
-**Checkpoint B2 — Verification**
+**Checkpoint C1 ? Verification**
 - Manual:
-  - POST sample segments and fields ? response contains `segmentId`, `fieldKey`, `confidence`.
-- Logs:
-  - ML service logs include `baselineId`, `modelVersion`, `suggestionCount` fields.
-- Regression:
-  - `/health` remains responsive under load.
-
-**Estimated effort:** 3 hours  
-**Complexity flag:** Complex = GPT-4o required
-
-### B3 — Table Detection Endpoint (Rule-Based) ([Complexity: Complex])
-
-**Status:** ✅ Completed on 2026-02-12
-
-**Problem statement**  
-We need a rule-based table detection endpoint that analyzes OCR segments and returns candidate grid structures with confidence scores.
-
-**Files / Locations**
-- New service: `apps/ml-service/main.py` — add `/ml/detect-tables` endpoint.
-- New service: `apps/ml-service/table_detect.py` — detection heuristics implementation.
-- Docs: `tasks/codemapcc.md` — document endpoint contract.
-
-**Implementation plan**
-1. Implement grid detection per v8.8 heuristics (row grouping, column alignment, spacing consistency).
-2. Compute confidence using the weighted formula and reject below threshold (default 0.60).
-3. Return list of table suggestions with `rowCount`, `columnCount`, `boundingBox`, `cells`, `suggestedLabel`.
-4. Clamp input limits: max 1000 segments, max 5000 chars per segment.
-5. Return empty array on failure without blocking.
-
-**Checkpoint B3 — Verification**
-- Manual:
-  - Submit a synthetic 3x3 grid of segments ? returns one table with rowCount=3, columnCount=3.
-- Logs:
-  - ML service logs include `attachmentId`, `tableCount`, `processingTimeMs`.
-- Regression:
-  - Field suggestions endpoint still responds correctly.
-
-**Estimated effort:** 3 hours  
-**Complexity flag:** Complex = GPT-4o required
-
----
-
-## 3) API Integration & Governance (P0)
-
-> **Context:** Wire ML service into the backend, enforce explicit intent, rate limits, validation, and audit logs.
-
-### C1 — ML Client Service + Config ([Complexity: Medium])
-**Status:** ✅ Completed on 2026-02-12
-
-**Problem statement**
-The API needs a safe client for ML service calls with timeouts, error handling, and graceful degradation.
-
-**Files / Locations**
-- Backend: `apps/api/src/ml/ml.module.ts` — new module.
-- Backend: `apps/api/src/ml/ml.service.ts` — HTTP client wrapper.
-- Backend: `apps/api/src/app.module.ts` — register module.
-- Docs: `tasks/codemapcc.md` — add ML module and service to Backend Map.
-
-**Implementation plan**
-1. Create `MlModule` and `MlService` with base URL from env `ML_SERVICE_URL`.
-2. Implement `suggestFields()` and `detectTables()` with 5s timeout.
-3. Normalize errors to a consistent response (`{ ok: false, error }`).
-4. Log failures with fields: `service`, `endpoint`, `statusCode`, `errorType`.
-
-**Checkpoint C1 — Verification**
-- Manual:
-  - Mock ML service down ? API returns empty suggestions, not 500.
-- Logs:
-  - API log includes `ml.error` with endpoint name.
-- Regression:
-  - Baseline review endpoints still work.
-
-**Estimated effort:** 2 hours  
-**Complexity flag:** Medium = GPT-4o preferred
-
-### C2 — Field Suggestion Generation Endpoint ([Complexity: Complex])
-**Status:** ✅ Completed on 2026-02-12
-
-**Problem statement**
-We need a POST endpoint to generate suggestions on-demand, persist suggestion metadata, and avoid overwriting user edits.
-
-**Files / Locations**
-- Backend: `apps/api/src/ml/field-suggestion.service.ts` — new service.
-- Backend: `apps/api/src/ml/field-suggestion.controller.ts` — new controller endpoint.
-- Backend: `apps/api/src/baseline/baseline-assignments.service.ts` — allow suggestion metadata in upsert.
-- Backend: `apps/api/src/field-library/field-library.service.ts` — list active fields for suggestions.
-- Docs: `tasks/codemapcc.md` — add endpoint and service to Backend Map.
-
-**Implementation plan**
-1. Add endpoint: `POST /baselines/:baselineId/suggestions/generate`.
-2. Load baseline, segments, and active fields; call `MlService.suggestFields()`.
-3. For each suggested field, create assignment only if fieldKey is unassigned or assignment has no manual value.
-4. Persist `suggestionConfidence`, `modelVersionId`, `suggestionAccepted = null` for suggestions.
-5. Return summary `{ suggestedAssignments, modelVersionId, suggestionCo
-unt }`.
-6. Rate limit by counting `audit_logs` entries for `ml.suggest.generate` in last hour; return 429 with retry minutes.
-7. Log audit event `ml.suggest.generate` with `baselineId`, `modelVersionId`, `count`.
-
-**Checkpoint C2 — Verification**
-- Manual:
-  - Click “Get Suggestions” ? API returns list of suggested assignments.
-  - Existing manual assignments remain unchanged.
+  - Detect tables, ignore one, run detection again.
+  - Ignored suggestion does not reappear.
 - DB:
 ```sql
-SELECT field_key, assigned_value, suggestionconfidence, suggestionaccepted
-FROM baseline_field_assignments
-WHERE baseline_id = '<BASELINE_ID>'
-ORDER BY field_key;
-```
-  Expected result: suggestion columns populated for suggested fields only.
-- Logs:
-  - Audit log has `action='ml.suggest.generate'` with `baselineId` and `modelVersionId`.
-- Regression:
-  - Manual assignment via `/baselines/:id/assign` still works.
-
-**Estimated effort:** 3 hours  
-**Complexity flag:** Complex = GPT-4o required
-
-### C3 — Accept / Modify / Clear Suggestion Actions ([Complexity: Medium])
-**Status:** ✅ Completed on 2026-02-12
-
-**Problem statement**
-We need consistent server-side tracking when users accept, modify, or clear ML suggestions.
-
-**Files / Locations**
-- Backend: `apps/api/src/baseline/baseline-assignments.service.ts` — accept suggestion metadata and correction reasons.
-- Backend: `apps/api/src/baseline/dto/assign-field.dto.ts` — include suggestion fields.
-- Backend: `apps/api/src/baseline/dto/delete-assignment.dto.ts` — accept suggestion rejection metadata.
-- Docs: `tasks/codemapcc.md` — update DTO docs.
-
-**Implementation plan**
-1. Accept action: allow `suggestionAccepted=true` without correction reason.
-2. Modify action: require `correctionReason`, set `suggestionAccepted=false`, store `correctedFrom`.
-3. Clear action: allow DELETE with body `{ reason, suggestionRejected, suggestionConfidence, modelVersionId }`.
-4. Ensure audit log includes `suggestionAccepted` and `modelVersionId` fields.
-
-**Checkpoint C3 — Verification**
-- Manual:
-  - Accept suggestion ? assignment shows `suggestionAccepted=true`.
-  - Modify suggestion ? requires reason and sets `suggestionAccepted=false` with `correctedFrom`.
-  - Clear suggestion ? assignment deleted and audit log recorded.
-- DB:
-```sql
-SELECT field_key, suggestionaccepted, correctedfrom, correctionreason
-FROM baseline_field_assignments
-WHERE baseline_id = '<BASELINE_ID>' AND field_key = '<FIELD_KEY>';
-```
-  Expected result: fields reflect accept/modify actions.
-- Logs:
-  - Audit log contains `action='baseline.assignment.upsert'` with suggestion fields.
-- Regression:
-  - Validation modal for invalid values still works.
-
-**Estimated effort:** 2 hours  
-**Complexity flag:** Medium = GPT-4o preferred
-
-### C4 — Table Suggestion Persistence + Convert/Ignore ([Complexity: Complex])
-**Status:** ✅ Completed on 2026-02-12
-
-**Problem statement**
-We need to persist table detection results and enable users to ignore or convert them into baseline tables.
-
-**Files / Locations**
-- Backend: `apps/api/src/ml/table-suggestion.service.ts` — new service.
-- Backend: `apps/api/src/ml/table-suggestion.controller.ts` — new endpoints.
-- Backend: `apps/api/src/baseline/table-management.service.ts` — convert suggestion to table.
-- Docs: `tasks/codemapcc.md` — add endpoints and services.
-
-**Implementation plan**
-1. Add endpoints:
-   - `POST /attachments/:attachmentId/table-suggestions/detect`
-   - `GET /attachments/:attachmentId/table-suggestions`
-   - `POST /table-suggestions/:id/ignore`
-   - `POST /table-suggestions/:id/convert`
-2. On detect: call ML service, persist `ml_table_suggestions` rows with status `pending`.
-3. On ignore: set status `ignored`, set `ignoredAt`, log audit `ml.table.ignore`.
-4. On convert: create `baseline_tables` + `baseline_table_cells`, set status `converted`, log audit `ml.table.convert`.
-5. Enforce baseline ownership and baseline status (draft/reviewed only).
-
-**Checkpoint C4 — Verification**
-- Manual:
-  - Detect tables ? response lists pending suggestions.
-  - Ignore suggestion ? status becomes `ignored`.
-  - Convert suggestion ? new table created and redirect URL returned.
-- DB:
-```sql
-SELECT status, row_count, column_count
+SELECT status, suggested_at
 FROM ml_table_suggestions
 WHERE attachment_id = '<ATTACHMENT_ID>'
 ORDER BY suggested_at DESC;
 ```
-  Expected result: statuses reflect actions.
+  Expected result: ignored rows remain, no new pending rows for ignored region.
 - Logs:
-  - Audit entries: `ml.table.detect`, `ml.table.ignore`, `ml.table.convert` with suggestionId.
-- Regression:
-  - Table creation from manual selection still works.
+  - Audit log includes `ignoredOverlapFiltered` in `ml.table.detect` details.
+- Regression: Convert and ignore actions still work.
 
-Internal ML call remains `/ml/detect-tables` (ml-service only); backend exposes the public paths above.
-
-**Estimated effort:** 3 hours  
-**Complexity flag:** Complex = GPT-4o required
+**Estimated effort:** 2-3 hours  
+**Complexity flag:** Medium = GPT-4o preferred
 
 ---
 
-## 4) Field Suggestion UI (P1)
+## 5) Evaluation / Monitoring (P1)
 
-> **Context:** Provide opt-in suggestion trigger, confidence badges, and explicit accept/modify/clear flows.
+> **Context:** Provide read-only metrics computed from audit logs and assignments without background jobs.
 
-### D1 — Suggestion Trigger + API Wiring ([Complexity: Medium])
-**Status:** ✅ Completed on 2026-02-12
+### D1 - [VERIFIED] Admin Metrics API (Calculates acceptance/modify/clear rates) (Complexity: Medium) ? Status: [VERIFIED]
+Status: ✅ Completed on 2026-02-15 (VERIFIED)
 
 **Problem statement**  
-Users need an explicit “Get Suggestions” action on the review page that triggers ML generation without blocking manual workflows.
+We need an admin-only endpoint that returns acceptance/modification/clear rates, top-1 accuracy, and per-field confusion.
 
 **Files / Locations**
-- Frontend: `apps/web/app/components/suggestions/SuggestionTrigger.tsx` — new component.
-- Frontend: `apps/web/app/attachments/[attachmentId]/review/page.tsx` — mount trigger near FieldAssignmentPanel header.
-- Frontend: `apps/web/app/lib/api/baselines.ts` — add `generateSuggestions()` helper.
-- Docs: `tasks/codemapcc.md` — add new component and API helper.
+- Backend: `apps/api/src/ml/ml.module.ts` ? register metrics controller.
+- Backend: `apps/api/src/ml/ml-metrics.controller.ts` ? new controller (admin-only).
+- Backend: `apps/api/src/ml/ml-metrics.service.ts` ? query logic.
+- Docs: `tasks/codemapcc.md` ? document admin endpoint.
 
 **Implementation plan**
-1. Add button “Get Suggestions” with loading, success, error states.
-2. Call `POST /baselines/:id/suggestions/generate` on click.
-3. Show toast: “X field suggestions generated.”
-4. On error, show “Suggestions unavailable. Continue with manual assignment.”
-5. Tooltip shown once per user with localStorage key `suggestions_tooltip_shown`.
+1. Add `GET /admin/ml/metrics` with optional `startDate` and `endDate`.
+2. Compute metrics from:
+   - `baseline_field_assignments` suggestion columns for accept/modify rates.
+   - `audit_logs` for clears and suggestion generation counts.
+3. Return JSON:
+   - `acceptRate`, `modifyRate`, `clearRate`, `top1Accuracy`, `fieldConfusion[]`.
+4. Ensure admin guard enforced.
 
-**Checkpoint D1 — Verification**
+**Checkpoint D1 ? Verification**
 - Manual:
-  - Click button ? loading state within 50ms, then success toast.
-  - Simulate ML down ? error state and retry button.
-- Logs:
-  - Browser console has no errors.
-- Regression:
-  - Manual field assignment still works without suggestions.
+  - Call endpoint as admin and confirm JSON response.
+  - Call as non-admin and confirm 403.
+- DB:
+```sql
+SELECT
+  COUNT(*) FILTER (WHERE suggestion_accepted = true) AS accepted,
+  COUNT(*) FILTER (WHERE suggestion_accepted = false) AS modified,
+  COUNT(*) FILTER (WHERE suggestion_accepted IS NULL AND suggestion_confidence IS NOT NULL) AS suggested
+FROM baseline_field_assignments;
+```
+  Expected result: counts align with API output.
+- Logs: API log includes `ml.metrics.fetch` with date range.
 
-**Estimated effort:** 2 hours  
+**Estimated effort:** 2-3 hours  
 **Complexity flag:** Medium = GPT-4o preferred
 
-### D2 — Suggested Field Input + Badges ([Complexity: Complex])
-**Status:** ✅ Completed on 2026-02-12
-**Problem statement**  
-Suggested values must be visually distinct with confidence badges and source segment context without blocking edits.
-
-**Files / Locations**
-- Frontend: `apps/web/app/components/suggestions/SuggestedFieldInput.tsx` — new component.
-- Frontend: `apps/web/app/components/FieldAssignmentPanel.tsx` — use SuggestedFieldInput for suggested fields.
-- Frontend: `apps/web/app/types.ts` — add suggestion fields to assignment types.
-- Docs: `tasks/codemapcc.md` — update component map.
-
-**Implementation plan**
-1. Render suggested values in lighter gray text with confidence pill.
-2. Confidence thresholds: High >= 0.80, Medium 0.60–0.79, Low 0.50–0.59.
-3. Show “Suggested from: <segment text>” truncated to 30 chars, tooltip with full text and confidence.
-4. Add panel summary: “X of Y fields auto-suggested” and filter toggle to show only suggested fields.
-
-**Checkpoint D2 — Verification**
-- Manual:
-  - Suggested field shows badge and gray text.
-  - Hover shows full segment text and numeric confidence.
-- Regression:
-  - Validation error styling still applies when value invalid.
-
-**Estimated effort:** 3 hours  
-**Complexity flag:** Complex = GPT-4o required
-
-### D3 — Accept / Modify / Clear UI Actions ([Complexity: Complex])
-**Status:** ✅ Completed on 2026-02-12
+### D2 ? Admin Metrics UI (Complexity: Medium) ? Status: ✅ Completed on 2026-02-15 (VERIFIED)
 
 **Problem statement**  
-Users must explicitly accept, modify
- with reason, or clear suggestions with reason, and UI must reflect each state.
+We need a simple admin UI view to display ML metrics without new dependencies.
 
 **Files / Locations**
-- Frontend: `apps/web/app/components/suggestions/SuggestionActionModal.tsx` — new modal.
-- Frontend: `apps/web/app/components/FieldAssignmentPanel.tsx` — wire actions.
-- Frontend: `apps/web/app/lib/api/baselines.ts` — add assign/delete payloads for suggestion metadata.
-- Docs: `tasks/codemapcc.md` — update component map.
+- Frontend: `apps/web/app/admin/ml/page.tsx` ? new admin page.
+- Frontend: `apps/web/app/lib/api/admin.ts` ? add `fetchMlMetrics` helper.
+- Docs: `tasks/codemapcc.md` ? add admin route.
 
 **Implementation plan**
-1. Accept: show inline “Accept” button on suggested fields, POST assign with `suggestionAccepted=true`.
-2. Modify: on edit blur, show modal requiring reason; POST assign with `correctedFrom` and `suggestionAccepted=false`.
-3. Clear: on clear, show modal requiring reason; call delete with `suggestionRejected=true` and metadata.
-4. Update UI badges: accepted (green check), modified (orange), cleared (removed).
+1. Build `/admin/ml` page with table view for:
+   - Acceptance, modification, clear rates.
+   - Top-1 accuracy.
+   - Confusion by field (top 10 by error rate).
+2. Add date range inputs and "Refresh" button (explicit action).
+3. Guard page for admin only.
 
-**Checkpoint D3 — Verification**
+**Checkpoint D2 ? Verification**
 - Manual:
-  - Accept suggestion ? green check appears, badge remains.
-  - Modify suggestion ? modal forces reason, badge changes to “Modified.”
-  - Clear suggestion ? modal forces reason, field clears.
-- Regression:
-  - Baseline review confirm still works.
-
-**Estimated effort:** 3 hours  
-**Complexity flag:** Complex = GPT-4o required
-
----
-
-## 5) Table Suggestion UI (P1)
-
-> **Context:** Provide explicit table detection trigger and non-blocking banners for suggested tables.
-
-### E1 — Table Detection Manual Trigger + Inline Suggestions ([Complexity: Medium]) ✅ Completed on 2026-02-13
-
-**Problem statement**
-Table detection should be triggered manually via "Get Suggestions" button, with suggestions displayed inline in the Tables tab (not auto-detected on page load).
-
-**Implementation plan** (REVISED)
-1. Add "Get Suggestions" button in Tables tab header (similar to field suggestions).
-2. On click, call `POST /attachments/:attachmentId/table-suggestions/detect` and reload suggestions.
-3. Display suggestions with blue background (#dbeafe) at top of Tables tab, above created tables.
-4. Each suggestion shows: confidence badge, row/column counts, Preview and Ignore (X) buttons.
-5. Backend deletes old pending suggestions before creating new ones (prevents duplicates).
-6. If ML service fails: show error toast (graceful degradation).
-
-**Changes from original plan:**
-- Removed auto-detection on page load (user must click "Get Suggestions")
-- Removed 2s delay and separate banner layout
-- Moved suggestions into Tables tab with blue background for clear visual distinction
-- Suggestions only loaded from DB on page load, not auto-generated
-
-**Checkpoint E1 — Verification**
-- Manual:
-  - Click "Get Suggestions" in Tables tab → loading state → suggestions appear with blue background.
-  - Ignore suggestion → removed immediately.
-  - Refresh page → no auto-detection, only loads existing pending suggestions.
-  - Click "Get Suggestions" again → old pending suggestions replaced with new detection results.
-- Regression:
-  - Manual table creation remains available.
-
-**Estimated effort:** 3 hours
-**Complexity flag:** Medium = GPT-4o preferred
-
-### E2 — Table Preview + Convert Flow ([Complexity: Medium])
-**Status:** ✅ Completed on 2026-02-13
-
-**Problem statement**  
-Users need a preview modal for a suggested table and a one-click conversion into baseline tables.
-
-**Files / Locations**
-- Frontend: `apps/web/app/components/suggestions/TableSuggestionPreviewModal.tsx` — new modal.
-- Frontend: `apps/web/app/attachments/[attachmentId]/review/page.tsx` — wire preview and convert.
-- Frontend: `apps/web/app/lib/api/tables.ts` — add convert/ignore helpers.
-- Docs: `tasks/codemapcc.md` — update component map.
-
-**Implementation plan**
-1. Preview modal shows grid and confidence badge, row/column counts.
-2. “Convert to Table” button calls `POST /table-suggestions/:id/convert`.
-3. On success, refresh tables list and open the new table in editor.
-
-**Checkpoint E2 — Verification**
-- Manual:
-  - Preview ? grid renders, counts match suggestion.
-  - Convert ? table appears in list, editor opens.
-- Regression:
-  - Table editor works for manually created tables.
+  - Navigate to `/admin/ml` as admin and see metrics table.
+  - Non-admin is redirected or denied.
+- Regression: Existing `/admin` page remains functional.
 
 **Estimated effort:** 2-3 hours  
 **Complexity flag:** Medium = GPT-4o preferred
@@ -574,88 +422,121 @@ Users need a preview modal for a suggested table and a one-click conversion into
 ## 6) Execution Order (Do Not Skip)
 
 **Critical path dependencies:**
-1. **A1** ML model version table — No dependencies.
-2. **A2** Assignment suggestion metadata — Depends on A1 (modelVersionId).
-3. **A3** Table suggestions table — No dependencies.
-4. **B1** ML service skeleton — Depends on decision to allow new service in repo.
-5. **B2** Field suggestion endpoint — Depends on B1.
-6. **B3** Table detection endpoint — Depends on B1.
-7. **C1** ML client service — Depends on B1.
-8. **C2** Suggestion generation endpoint — Depends on A2, B2, C1.
-9. **C3** Accept/modify/clear actions — Depends on C2.
-10. **C4** Table suggestions persistence + convert/ignore — Depends on A3, B3, C1.
-11. **D1** Suggestion trigger UI — Depends on C2.
-12. **D2** Suggested field inputs — Depends on C2.
-13. **D3** Suggestion action modal — Depends on C3, D2.
-14. **E1** Table detection manual trigger + inline suggestions — Depends on C4.
-15. **E2** Preview + convert flow — Depends on E1.
+1. **A1** Suggestion context schema ? No dependencies.
+2. **A2** API pairing/context pre-processor ? Depends on A1.
+3. **A3** ML service pairing/context reranking ? Depends on A2 (payload contract).
+4. **E1** Client-side pairing derivation ? No dependencies (client-side only).
+5. **E2** Paired card rendering ? Depends on E1 (pairing logic).
+6. **E3** Paired selection & drag behavior ? Depends on E2 (paired cards exist).
+7. **B1** Top-N field selection ? Depends on A2 (suggestion data available).
+8. **B2** Context provenance UI ? Depends on A1 and A3.
+9. **C1** Table enhancement ? No dependency on A-series.
+10. **D1** Admin metrics API ? Depends on existing v8.8 audit logs (no new dependency).
+11. **D2** Admin metrics UI ? Depends on D1.
 
 **Parallel execution opportunities:**
-- A1, A3 can run in parallel.
-- B2 and B3 can run in parallel after B1.
-- D1 and D2 can run in parallel after C2.
+- E1-E3 (paired cards UI) can run in parallel with A1-A3 (backend pairing/context).
+- C1 can run in parallel with A1-A3 and E1-E3.
+- D1 can run in parallel with A2-A3 and E1-E3.
 
 **Blocking relationships:**
-- Frontend suggestion UI (D-series) BLOCKED until backend suggestion endpoints (C2/C3) exist.
-- Table suggestion UI (E-series) BLOCKED until table suggestion persistence (C4) exists.
-- Any ML usage BLOCKED until ml-service (B1) is running and reachable.
+- Paired card rendering (E2) is BLOCKED until pairing derivation (E1).
+- Paired drag/selection (E3) is BLOCKED until paired cards render (E2).
+- UI provenance display (B2) is BLOCKED until API provides `suggestionContext` (A1/A3).
+- Metrics UI (D2) is BLOCKED until metrics API (D1).
 
 ---
 
 ## 7) Definition of Done
 
 **Feature Completeness:**
-- Field suggestions can be generated via explicit user action and do not overwrite manual assignments.
-- Confidence badges display for suggested fields and retain audit metadata.
-- Accept/modify/clear actions are logged with model version and reasons.
-- Table suggestions can be detected, previewed, ignored, and converted into baseline tables.
-- ML service failures degrade gracefully without blocking workflows.
+- Pairing and context data are derived and stored per suggestion.
+- Client-side paired label/value cards render above unpaired segments.
+- Dragging paired cards uses value segment text.
+- Paired card selection toggles both label + value segments.
+- Suggested fields default to top-N view with explicit "Show all fields".
+- Table detection respects ignore-forever and uses stricter threshold.
+- Admin metrics endpoint and UI show acceptance/modify/clear rates and top-1 accuracy.
 
 **Data Integrity:**
-- Unique constraints and indexes in ML tables prevent duplicates and ensure fast lookup.
-- Suggestion metadata stored on `baseline_field_assignments` without mutating original OCR data.
-- Audit logs capture suggestion generation and user actions with modelVersionId.
+- Suggestion provenance stored as derived metadata only.
+- No authoritative data is overwritten by suggestion logic.
+- Audit logs include pairing/context counts and table filtering metrics.
 
 **No Regressions:**
 - API builds without errors (`npm run build` in `apps/api`).
 - Web builds without errors (`npm run build` in `apps/web`).
-- Review page loads and manual assignment remains functional without ML.
+- Review page still supports manual assignment and table creation.
 
 **Documentation:**
-- `tasks/codemapcc.md` updated with new tables, services, endpoints, and components.
-- `tasks/executionnotes.md` updated with completion evidence for v8.8 tasks.
+- `tasks/codemapcc.md` updated with new schema fields, endpoints, and routes.
+- `tasks/executionnotes.md` updated with completion evidence.
 
 ---
 
 ## 8) Manual Test Checklist (Run After Each Checkpoint)
 
 **Smoke Tests (Run After Every Task):**
-- [ ] API builds: `cd apps/api && npm run build` ? no errors.
-- [ ] Web builds: `cd apps/web && npm run build` ? exit code 0.
-- [ ] Login flow works: Navigate to `/login` ? enter credentials ? redirects to `/`.
+- [ ] API builds: `cd apps/api && npm run build` -> no errors.
+- [ ] Web builds: `cd apps/web && npm run build` -> exit code 0.
+- [ ] Login flow works: Navigate to `/login` -> enter credentials -> redirects to `/`.
 
-**Task Group C — Field Suggestions:**
-- [ ] Generate suggestions
-  - Steps: Open `/attachments/<id>/review` ? click “Get Suggestions” ? see “X field suggestions generated”.
-- [ ] Accept suggestion
-  - Steps: Click “Accept” on a suggested field ? see green check and value unchanged.
-- [ ] Modify suggestion
-  - Steps: Edit suggested field ? modal asks reason ? save ? badge shows “Modified”.
-- [ ] Clear suggestion
-  - Steps: Clear value ? modal asks reason ? field clears.
+**Task Group A ? Pairing/Context:**
+- [ ] Generate suggestions and verify context stored
+  - Steps: Open `/attachments/<id>/review` -> click "Get Suggestions".
+  - Expected: Audit log includes pairing counts and suggestions appear.
+- [ ] Provenance stored
+  - DB query:
+```sql
+SELECT field_key, suggestion_context
+FROM baseline_field_assignments
+WHERE baseline_id = '<BASELINE_ID>'
+  AND suggestion_confidence IS NOT NULL
+LIMIT 5;
+```
+  - Expected: `suggestion_context` contains label/value segment IDs.
 
-**Task Group E — Table Suggestions:**
-- [ ] Detect tables
-  - Steps: Open `/attachments/<id>/review` → wait ~2s → banner appears with row/column counts (if suggestions exist).
-- [ ] Preview and convert
-  - Steps: Click “Preview” ? modal grid shows ? click “Convert” ? table opens in editor.
+**Task Group E ? Paired Cards UI:**
+- [ ] Paired cards render
+  - Steps: Load review page with label/value OCR segments.
+  - Expected: Paired cards appear above unpaired list with label + value text.
+- [ ] Paired card hover
+  - Steps: Hover paired card.
+  - Expected: Value segment highlights in document viewer.
+- [ ] Paired card drag
+  - Steps: Drag paired card onto field.
+  - Expected: Value text inserted, `sourceSegmentId` is value segment ID.
+- [ ] Paired selection
+  - Steps: Click paired card checkbox.
+  - Expected: Both label + value selected; clicking again deselects both.
+- [ ] Table creation with paired segments
+  - Steps: Select paired cards and create table.
+  - Expected: Both label + value segments included in table.
+
+**Task Group B ? Field Selection:**
+- [ ] Default top-N display
+  - Steps: Load review page with many suggestions -> only top 20 shown by default.
+  - Expected: "Show all fields" reveals full list.
+- [ ] Context tooltip
+  - Steps: Hover suggested field -> tooltip shows label segment text and pairing confidence.
+
+**Task Group C ? Table Enhancements:**
+- [ ] Ignore-forever behavior
+  - Steps: Detect tables -> ignore one -> detect again.
+  - Expected: Ignored suggestion does not reappear.
+
+**Task Group D ? Evaluation:**
+- [ ] Admin metrics endpoint
+  - Steps: `GET /admin/ml/metrics?startDate=2026-02-01&endDate=2026-02-13`
+  - Expected: JSON includes rates and `fieldConfusion` array.
+- [ ] Admin metrics UI
+  - Steps: Visit `/admin/ml` -> metrics table renders.
 
 **Integration Tests (Run After All Tasks Complete):**
-- [ ] Generate suggestions ? accept two, modify one, clear one ? verify audit logs and DB columns.
-- [ ] Detect table ? ignore one, convert one ? verify table created and banner gone.
+- [ ] Run suggestions -> accept 1, modify 1, clear 1 -> verify metrics reflect these actions.
 
 **Regression Tests:**
-- [ ] Manual field assignment still works without triggering suggestions.
+- [ ] Manual field assignment still works without suggestions.
 - [ ] Manual table creation still works in TableCreationModal.
 
 ---
@@ -669,6 +550,7 @@ Users need a preview modal for a suggested table and a one-click conversion into
   - [ ] Lessons learned (add to `tasks/lessons.md` if applicable)
 - [ ] Update `tasks/codemapcc.md` with new file paths and endpoints
 - [ ] Run full regression suite
-- [ ] Tag commit: `git tag v8.8 -m "ML-Assisted Field Suggestions complete"`
+- [ ] Tag commit: `git tag v8.8.1 -m "Adaptive Doc Intelligence complete"`
 
 ---
+

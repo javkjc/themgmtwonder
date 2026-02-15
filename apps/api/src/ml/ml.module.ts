@@ -4,6 +4,8 @@ import { FieldSuggestionService } from './field-suggestion.service';
 import { FieldSuggestionController } from './field-suggestion.controller';
 import { TableSuggestionService } from './table-suggestion.service';
 import { TableSuggestionController } from './table-suggestion.controller';
+import { MlMetricsService } from './ml-metrics.service';
+import { MlMetricsController } from './ml-metrics.controller';
 import { AuditModule } from '../audit/audit.module';
 import { CommonModule } from '../common/common.module';
 import { DbModule } from '../db/db.module';
@@ -12,13 +14,23 @@ import { FieldAssignmentValidatorService } from '../baseline/field-assignment-va
 
 @Module({
   imports: [DbModule, AuditModule, CommonModule, BaselineModule],
-  controllers: [FieldSuggestionController, TableSuggestionController],
+  controllers: [
+    FieldSuggestionController,
+    TableSuggestionController,
+    MlMetricsController,
+  ],
   providers: [
     MlService,
     FieldSuggestionService,
     TableSuggestionService,
     FieldAssignmentValidatorService,
+    MlMetricsService,
   ],
-  exports: [MlService, FieldSuggestionService, TableSuggestionService],
+  exports: [
+    MlService,
+    FieldSuggestionService,
+    TableSuggestionService,
+    MlMetricsService,
+  ],
 })
-export class MlModule {}
+export class MlModule { }

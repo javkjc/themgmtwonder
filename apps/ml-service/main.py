@@ -544,12 +544,17 @@ def suggest_fields(payload: SuggestFieldsRequest) -> SuggestFieldsResponse:
                 processed_segments.add(segment.id)
                 suggested_field_keys.add(matched_field.fieldKey)
 
+        pair_candidate_count = len(payload.pairCandidates) if payload.pairCandidates else 0
+        context_segment_count = len(payload.segmentContext) if payload.segmentContext else 0
+
         logging.info(
             "ml_suggest_fields",
             extra={
                 "baselineId": payload.baselineId,
                 "modelVersion": MODEL_VERSION,
                 "suggestionCount": len(suggestions),
+                "pairCandidateCount": pair_candidate_count,
+                "contextSegmentCount": context_segment_count,
             },
         )
 
