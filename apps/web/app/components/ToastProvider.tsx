@@ -59,7 +59,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       case 'error':
         return { ...base, background: '#dc2626', color: 'white' };
       default:
-        return { ...base, background: '#1e293b', color: 'white' };
+        return { ...base, background: '#141414', color: 'white' };
     }
   };
 

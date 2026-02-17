@@ -4,6 +4,117 @@ import { ReactNode, useState } from 'react';
 import Link from 'next/link';
 import GlobalSearch from './GlobalSearch';
 import OcrQueuePanel from './ocr/OcrQueuePanel';
+import { useTheme } from '../contexts/ThemeContext';
+
+const Icon = ({ children }: { children: ReactNode }) => (
+  <span style={{ display: 'inline-flex', width: 18, height: 18, alignItems: 'center', justifyContent: 'center' }}>
+    <svg
+      width={18}
+      height={18}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {children}
+    </svg>
+  </span>
+);
+
+const IconHome = () => (
+  <Icon>
+    <path d="M3 11l9-8 9 8" />
+    <path d="M5 10v10h14V10" />
+  </Icon>
+);
+
+const IconCalendar = () => (
+  <Icon>
+    <rect x="3" y="4" width="18" height="18" rx="2" />
+    <path d="M8 2v4M16 2v4M3 10h18" />
+  </Icon>
+);
+
+const IconSliders = () => (
+  <Icon>
+    <path d="M4 7h16M4 17h16" />
+    <circle cx="9" cy="7" r="2" />
+    <circle cx="15" cy="17" r="2" />
+  </Icon>
+);
+
+const IconActivity = () => (
+  <Icon>
+    <path d="M3 12h5l2-4 4 8 2-4h5" />
+  </Icon>
+);
+
+const IconUsers = () => (
+  <Icon>
+    <circle cx="9" cy="8" r="3" />
+    <circle cx="17" cy="9" r="2" />
+    <path d="M4 20c0-3 3-5 6-5s6 2 6 5" />
+    <path d="M14 20c0-2 2-3 4-3 1 0 2 .2 3 .7" />
+  </Icon>
+);
+
+const IconTag = () => (
+  <Icon>
+    <path d="M3 12l9 9 9-9-9-9H5a2 2 0 00-2 2z" />
+    <circle cx="7.5" cy="7.5" r="1.5" />
+  </Icon>
+);
+
+const IconChart = () => (
+  <Icon>
+    <path d="M4 19V5" />
+    <path d="M9 19v-6" />
+    <path d="M14 19v-9" />
+    <path d="M19 19v-12" />
+  </Icon>
+);
+
+const IconUser = () => (
+  <Icon>
+    <circle cx="12" cy="8" r="3.5" />
+    <path d="M4 20c0-3.5 3.5-6 8-6s8 2.5 8 6" />
+  </Icon>
+);
+
+const IconLogout = () => (
+  <Icon>
+    <path d="M10 17l5-5-5-5" />
+    <path d="M15 12H4" />
+    <path d="M20 4v16" />
+  </Icon>
+);
+
+const IconChevronLeft = () => (
+  <Icon>
+    <path d="M15 18l-6-6 6-6" />
+  </Icon>
+);
+
+const IconChevronRight = () => (
+  <Icon>
+    <path d="M9 18l6-6-6-6" />
+  </Icon>
+);
+
+const IconSun = () => (
+  <Icon>
+    <circle cx="12" cy="12" r="3.5" />
+    <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+  </Icon>
+);
+
+const IconMoon = () => (
+  <Icon>
+    <path d="M21 14.5A8 8 0 019.5 3a7 7 0 1011.5 11.5z" />
+  </Icon>
+);
 
 type LayoutProps = {
   children: ReactNode;
@@ -24,10 +135,11 @@ type LayoutProps = {
 
 export default function Layout({ children, currentPage, userEmail, userRole, isAdmin, onLogout }: LayoutProps) {
   const [isCollapsed, setIsCollapsed] = useState(true);
+  const { theme, toggleTheme } = useTheme();
   const sidebarWidth = isCollapsed ? 60 : 250;
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#f5f7fa' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--page-background)' }}>
       <aside
         style={{
           width: sidebarWidth,
@@ -42,6 +154,7 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
           overflowX: 'hidden',
           zIndex: 100,
           transition: 'width 0.2s ease',
+          borderRight: '1px solid var(--sidebar-border)',
         }}
       >
         <div style={{
@@ -51,7 +164,7 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
           alignItems: 'center',
           justifyContent: isCollapsed ? 'center' : 'space-between',
         }}>
-          {!isCollapsed && <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>TaskFlow</h1>}
+          {!isCollapsed && <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, fontFamily: 'var(--font-heading)', letterSpacing: '-0.025em' }}>TaskFlow</h1>}
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
             style={{
@@ -69,7 +182,7 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
             }}
             title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            {isCollapsed ? '?' : '?'}
+            {isCollapsed ? <IconChevronRight /> : <IconChevronLeft />}
           </button>
         </div>
 
@@ -96,7 +209,7 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
             }}
             title="My Tasks"
           >
-            <span style={{ fontSize: 18 }}>??</span>
+            <IconHome />
             {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>My Tasks</span>}
           </Link>
 
@@ -116,7 +229,7 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
             }}
             title="Calendar"
           >
-            <span style={{ fontSize: 18 }}>??</span>
+            <IconCalendar />
             {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>Calendar</span>}
           </Link>
 
@@ -144,7 +257,7 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
                 }}
                 title="Customizations"
               >
-                <span style={{ fontSize: 18 }}>??</span>
+                <IconSliders />
                 {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>Customizations</span>}
               </Link>
 
@@ -164,7 +277,7 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
                 }}
                 title="Activity Log"
               >
-                <span style={{ fontSize: 18 }}>??</span>
+                <IconActivity />
                 {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>Activity Log</span>}
               </Link>
 
@@ -185,7 +298,7 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
                 }}
                 title="User Management"
               >
-                <span style={{ fontSize: 18 }}>??</span>
+                <IconUsers />
                 {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>User Management</span>}
               </Link>
 
@@ -205,7 +318,7 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
                 }}
                 title="Field Library"
               >
-                <span style={{ fontSize: 18 }}>??</span>
+                <IconTag />
                 {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>Fields</span>}
               </Link>
 
@@ -225,12 +338,70 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
                 }}
                 title="ML Metrics"
               >
-                <span style={{ fontSize: 18 }}>??</span>
+                <IconChart />
                 {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>ML Metrics</span>}
               </Link>
             </>
           )}
         </nav>
+
+        {/* Theme Toggle */}
+        <div
+          style={{
+            padding: isCollapsed ? '12px 8px' : 20,
+            borderTop: '1px solid var(--sidebar-border)',
+          }}
+        >
+          <button
+            onClick={toggleTheme}
+            style={{
+              width: '100%',
+              padding: isCollapsed ? 6 : 8,
+              borderRadius: 999,
+              border: '1px solid var(--sidebar-border)',
+              background: 'var(--sidebar-toggle-bg)',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+          >
+            <div
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: '50%',
+                background: theme === 'dark' ? 'var(--surface)' : 'var(--surface-secondary)',
+                border: '1px solid var(--border)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxSizing: 'border-box',
+                transition: 'transform 0.35s ease',
+                transform: theme === 'dark' ? 'rotateY(180deg)' : 'rotateY(0deg)',
+              }}
+            >
+              <div
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: '50%',
+                  background: theme === 'dark' ? 'var(--surface-hover)' : 'var(--accent)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: theme === 'dark' ? 'var(--text-primary)' : '#ffffff',
+                  transition: 'transform 0.35s ease',
+                  transform: theme === 'dark' ? 'rotateY(180deg)' : 'rotateY(0deg)',
+                }}
+              >
+                {theme === 'dark' ? <IconMoon /> : <IconSun />}
+              </div>
+            </div>
+          </button>
+        </div>
 
         {userEmail && (
           <div
@@ -265,7 +436,7 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
                 }}
                 title="Profile"
               >
-                {isCollapsed ? '??' : 'Profile'}
+                {isCollapsed ? <IconUser /> : 'Profile'}
               </Link>
               {onLogout && (
                 <button
@@ -289,7 +460,7 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
                   }}
                   title="Logout"
                 >
-                  {isCollapsed ? '??' : 'Logout'}
+                  {isCollapsed ? <IconLogout /> : 'Logout'}
                 </button>
               )}
             </div>

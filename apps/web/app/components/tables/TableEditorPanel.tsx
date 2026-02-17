@@ -78,8 +78,8 @@ function FieldMappingDropdown({ columnIndex, currentFieldKey, fields, disabled, 
                     padding: compact ? '6px 10px' : '8px 10px',
                     fontSize: compact ? 12 : 13,
                     borderRadius: 6,
-                    border: '1px solid #e2e8f0',
-                    background: disabled ? '#f8fafc' : 'white',
+                    border: '1px solid var(--border)',
+                    background: disabled ? '#fafafa' : 'white',
                     outline: 'none',
                 }}
             />
@@ -92,8 +92,8 @@ function FieldMappingDropdown({ columnIndex, currentFieldKey, fields, disabled, 
                     padding: compact ? '6px 10px' : '8px 10px',
                     fontSize: compact ? 12 : 13,
                     borderRadius: 6,
-                    border: '1px solid #e2e8f0',
-                    background: disabled ? '#f8fafc' : 'white',
+                    border: '1px solid var(--border)',
+                    background: disabled ? '#fafafa' : 'white',
                     outline: 'none',
                 }}
             >
@@ -392,7 +392,7 @@ export default function TableEditorPanel({
                     id: `col-${i}`,
                     header: () => (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 150 }}>
-                            <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>COLUMN {i + 1}</div>
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>COLUMN {i + 1}</div>
                             <FieldMappingDropdown
                                 columnIndex={i}
                                 currentFieldKey={fieldKey}
@@ -401,7 +401,7 @@ export default function TableEditorPanel({
                                 onSelect={value => handleMapColumn(i, value)}
                             />
                             {field && (
-                                <div style={{ fontSize: 10, color: '#3b82f6', fontWeight: 500 }}>
+                                <div style={{ fontSize: 10, color: '#F43F5E', fontWeight: 500 }}>
                                     TYPE: {field.characterType.toUpperCase()}
                                 </div>
                             )}
@@ -432,7 +432,7 @@ export default function TableEditorPanel({
                                             width: '100%',
                                             padding: '4px 8px',
                                             fontSize: 13,
-                                            border: '2px solid #3b82f6',
+                                            border: '2px solid #F43F5E',
                                             borderRadius: 4,
                                             outline: 'none',
                                         }}
@@ -465,7 +465,7 @@ export default function TableEditorPanel({
                         }
 
                         if (isFocused) {
-                                borderColor = '2px solid #3b82f6';
+                                borderColor = '2px solid #F43F5E';
                                 boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.2)';
                         }
 
@@ -498,7 +498,7 @@ export default function TableEditorPanel({
                                     transition: 'all 0.3s ease',
                                 }}
                             >
-                                <span style={{ color: cell.cellValue ? '#1e293b' : '#94a3b8' }}>
+                                <span style={{ color: cell.cellValue ? '#141414' : '#a3a3a3' }}>
                                     {cell.cellValue || (isReadOnly ? '' : 'Empty')}
                                 </span>
                                 {cell.validationStatus === 'invalid' && (
@@ -802,9 +802,9 @@ export default function TableEditorPanel({
     }, [pendingFindKey, visibleRange]);
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'white' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--surface)' }}>
             {/* Header / Toolbar */}
-            <div style={{ padding: '16px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc' }}>
+            <div style={{ padding: '16px 24px', borderBottom: '1px solid #e5e5e5', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--surface-secondary)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                     <button
                         onClick={onClose}
@@ -812,10 +812,10 @@ export default function TableEditorPanel({
                         style={{
                             padding: '8px 12px',
                             borderRadius: 8,
-                            border: '1px solid #cbd5e1',
-                            background: 'white',
+                            border: '1px solid #d4d4d4',
+                            background: 'var(--surface)',
                             cursor: 'pointer',
-                            color: '#475569',
+                            color: 'var(--text-secondary)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -825,21 +825,21 @@ export default function TableEditorPanel({
                             boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
                         }}
                         onMouseOver={e => {
-                            e.currentTarget.style.background = '#f1f5f9';
-                            e.currentTarget.style.borderColor = '#94a3b8';
+                            e.currentTarget.style.background = '#f5f5f5';
+                            e.currentTarget.style.borderColor = '#a3a3a3';
                         }}
                         onMouseOut={e => {
                             e.currentTarget.style.background = 'white';
-                            e.currentTarget.style.borderColor = '#cbd5e1';
+                            e.currentTarget.style.borderColor = '#d4d4d4';
                         }}
                     >
                         ← <span style={{ fontSize: 13 }}>Back</span>
                     </button>
                     <div>
-                        <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: '#0f172a' }}>
+                        <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
                             {table.tableLabel || `Table #${table.tableIndex + 1}`}
                         </h2>
-                        <div style={{ fontSize: 12, color: '#64748b' }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                             {table.rowCount} rows × {table.columnCount} columns
                         </div>
                         {isUtilized ? (
@@ -899,9 +899,9 @@ export default function TableEditorPanel({
                                 fontSize: 13,
                                 fontWeight: 600,
                                 borderRadius: 8,
-                                border: '1px solid #e2e8f0',
-                                background: 'white',
-                                color: '#475569',
+                                border: '1px solid var(--border)',
+                                background: 'var(--surface)',
+                                color: 'var(--text-secondary)',
                                 cursor: 'pointer',
                             }}
                         >
@@ -919,7 +919,7 @@ export default function TableEditorPanel({
                                 fontWeight: 700,
                                 borderRadius: 8,
                                 border: 'none',
-                                background: errorCount > 0 ? '#94a3b8' : '#3b82f6',
+                                background: errorCount > 0 ? '#a3a3a3' : '#F43F5E',
                                 color: 'white',
                                 cursor: errorCount > 0 ? 'not-allowed' : 'pointer',
                                 boxShadow: errorCount > 0 ? 'none' : '0 4px 6px -1px rgba(59, 130, 246, 0.2)',
@@ -951,7 +951,7 @@ export default function TableEditorPanel({
                 <div style={{
                     padding: '8px 24px',
                     background: errorCount > 0 ? '#fff1f2' : '#f0fdf4',
-                    borderBottom: '1px solid #e2e8f0',
+                    borderBottom: '1px solid #e5e5e5',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
@@ -972,7 +972,7 @@ export default function TableEditorPanel({
                             {errorCount > 0 ? 'Table has validation errors that must be resolved before confirmation.' : 'All cells valid. Table ready for confirmation.'}
                         </span>
                     </div>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', color: '#475569', fontWeight: 500 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', color: 'var(--text-secondary)', fontWeight: 500 }}>
                         <input
                             type="checkbox"
                             checked={showErrorsOnly}
@@ -986,13 +986,13 @@ export default function TableEditorPanel({
             {/* Grid + Change Log */}
             <div style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative' }}>
                 <div
-                    style={{ flex: 1, overflow: 'auto', padding: 24, background: '#f1f5f9' }}
+                    style={{ flex: 1, overflow: 'auto', padding: 24, background: '#f5f5f5' }}
                     onKeyDown={handleKeyDown}
                     onScroll={handleScroll}
                     ref={scrollRef}
                 >
                     <div style={{
-                        background: 'white',
+                        background: 'var(--surface)',
                         borderRadius: 12,
                         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
                         overflow: 'hidden',
@@ -1007,9 +1007,9 @@ export default function TableEditorPanel({
                                                 key={header.id}
                                                 style={{
                                                     padding: '12px 16px',
-                                                    background: '#f8fafc',
-                                                    borderBottom: '2px solid #e2e8f0',
-                                                    borderRight: '1px solid #e2e8f0',
+                                                    background: 'var(--surface-secondary)',
+                                                    borderBottom: '2px solid #e5e5e5',
+                                                    borderRight: '1px solid #e5e5e5',
                                                     textAlign: 'left',
                                                     verticalAlign: 'top',
                                                 }}
@@ -1037,7 +1037,7 @@ export default function TableEditorPanel({
                                         data-row-index={row.index}
                                         style={{
                                             height: ROW_HEIGHT,
-                                            borderBottom: '1px solid #f1f5f9',
+                                            borderBottom: '1px solid #f5f5f5',
                                             background: findHighlightRowIndex === row.index
                                                 ? '#fff7ed'
                                                 : row.getIsSelected()
@@ -1050,7 +1050,7 @@ export default function TableEditorPanel({
                                                 key={cell.id}
                                                 style={{
                                                     padding: '4px 8px',
-                                                    borderRight: '1px solid #f1f5f9',
+                                                    borderRight: '1px solid #f5f5f5',
                                                 }}
                                             >
                                                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -1076,10 +1076,10 @@ export default function TableEditorPanel({
                                 width: 44,
                                 height: 44,
                                 borderRadius: 10,
-                                border: '1px solid #e2e8f0',
+                                border: '1px solid var(--border)',
                                 background: '#ffffff',
                                 cursor: 'pointer',
-                                color: '#475569',
+                                color: 'var(--text-secondary)',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -1095,8 +1095,8 @@ export default function TableEditorPanel({
                             style={{
                                 width: 292,
                                 height: '100%',
-                                border: '1px solid #e2e8f0',
-                                background: '#f8fafc',
+                                border: '1px solid var(--border)',
+                                background: 'var(--surface-secondary)',
                                 display: 'flex',
                                 flexDirection: 'column',
                                 borderRadius: 12,
@@ -1106,13 +1106,13 @@ export default function TableEditorPanel({
                         >
                             <div style={{
                                 padding: '10px 12px',
-                                borderBottom: '1px solid #e2e8f0',
+                                borderBottom: '1px solid #e5e5e5',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'space-between',
                                 gap: 8,
                             }}>
-                                <strong style={{ fontSize: 12, color: '#334155' }}>Change Log</strong>
+                                <strong style={{ fontSize: 12, color: '#262626' }}>Change Log</strong>
                                 <button
                                     onClick={() => setChangeLogCollapsed(true)}
                                     title="Collapse"
@@ -1120,10 +1120,10 @@ export default function TableEditorPanel({
                                         width: 24,
                                         height: 24,
                                         borderRadius: 999,
-                                        border: '1px solid #e2e8f0',
-                                        background: 'white',
+                                        border: '1px solid var(--border)',
+                                        background: 'var(--surface)',
                                         cursor: 'pointer',
-                                        color: '#64748b',
+                                        color: 'var(--text-muted)',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
@@ -1146,12 +1146,12 @@ export default function TableEditorPanel({
                             >
                                 <div style={{ direction: 'ltr', display: 'flex', flexDirection: 'column', gap: 10 }}>
                                 {sortedChangeLog.length === 0 ? (
-                                    <div style={{ fontSize: 12, color: '#94a3b8' }}>No changes yet.</div>
+                                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No changes yet.</div>
                                 ) : (
                                     sortedChangeLog.map(entry => (
-                                        <div key={entry.id} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}>
+                                        <div key={entry.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: 10 }}>
                                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                                                <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>{entry.label}</div>
+                                                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{entry.label}</div>
                                                 {entry.target && (
                                                     <button
                                                     onClick={() => {
@@ -1187,7 +1187,7 @@ export default function TableEditorPanel({
                                                         style={{
                                                             border: '1px solid #dbeafe',
                                                             background: '#eff6ff',
-                                                            color: '#2563eb',
+                                                            color: '#E11D48',
                                                             fontSize: 11,
                                                             fontWeight: 600,
                                                             padding: '2px 6px',
@@ -1200,9 +1200,9 @@ export default function TableEditorPanel({
                                                 )}
                                             </div>
                                             {entry.detail && (
-                                                <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>{entry.detail}</div>
+                                                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>{entry.detail}</div>
                                             )}
-                                            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
+                                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
                                                 {new Date(entry.timestamp).toLocaleString()}
                                             </div>
                                         </div>

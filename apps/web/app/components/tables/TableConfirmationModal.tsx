@@ -33,7 +33,7 @@ export default function TableConfirmationModal({
             padding: 20,
         }}>
             <div style={{
-                background: 'white',
+                background: 'var(--surface)',
                 borderRadius: 24,
                 width: '100%',
                 maxWidth: 480,
@@ -56,29 +56,29 @@ export default function TableConfirmationModal({
                         📋
                     </div>
 
-                    <h2 style={{ fontSize: 24, fontWeight: 800, color: '#0f172a', margin: '0 0 12px 0', letterSpacing: '-0.02em' }}>
+                    <h2 style={{ fontSize: 24, fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 12px 0', letterSpacing: '-0.02em' }}>
                         Confirm Table Extraction
                     </h2>
 
-                    <p style={{ fontSize: 15, color: '#475569', lineHeight: 1.6, margin: '0 0 24px 0' }}>
+                    <p style={{ fontSize: 15, color: 'var(--text-secondary)', lineHeight: 1.6, margin: '0 0 24px 0' }}>
                         You are about to confirm the structure and data for <strong>{table.tableLabel || `Table #${table.tableIndex + 1}`}</strong>.
                         Once confirmed, the table will be locked and cannot be edited.
                     </p>
 
                     <div style={{
-                        background: '#f8fafc',
+                        background: 'var(--surface-secondary)',
                         borderRadius: 16,
                         padding: 16,
                         marginBottom: 24,
-                        border: '1px solid #e2e8f0',
+                        border: '1px solid var(--border)',
                     }}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                             <div>
-                                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 4 }}>Structure</div>
-                                <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>{table.rowCount} rows × {table.columnCount} columns</div>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Structure</div>
+                                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{table.rowCount} rows × {table.columnCount} columns</div>
                             </div>
                             <div>
-                                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 4 }}>Errors</div>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Errors</div>
                                 <div style={{ fontSize: 14, fontWeight: 600, color: errorCount > 0 ? '#dc2626' : '#16a34a' }}>
                                     {errorCount === 0 ? 'Zero Errors' : `${errorCount} Errors Remaining`}
                                 </div>
@@ -90,8 +90,8 @@ export default function TableConfirmationModal({
                         display: 'flex',
                         gap: 12,
                         padding: '12px 16px',
-                        background: agreed ? '#f0fdf4' : '#f8fafc',
-                        border: `1px solid ${agreed ? '#bbf7d0' : '#e2e8f0'}`,
+                        background: agreed ? '#f0fdf4' : '#fafafa',
+                        border: `1px solid ${agreed ? '#bbf7d0' : '#e5e5e5'}`,
                         borderRadius: 12,
                         cursor: 'pointer',
                         transition: 'all 0.2s ease',
@@ -102,7 +102,7 @@ export default function TableConfirmationModal({
                             onChange={(e) => setAgreed(e.target.checked)}
                             style={{ marginTop: 2 }}
                         />
-                        <span style={{ fontSize: 14, color: '#1e293b', fontWeight: 500, lineHeight: 1.4 }}>
+                        <span style={{ fontSize: 14, color: 'var(--text-primary)', fontWeight: 500, lineHeight: 1.4 }}>
                             I have reviewed the table data and confirm that the field mappings and cell values are correct. I understand this action locks the table.
                         </span>
                     </label>
@@ -110,8 +110,8 @@ export default function TableConfirmationModal({
 
                 <div style={{
                     padding: '24px 32px 32px',
-                    background: '#f8fafc',
-                    borderTop: '1px solid #e2e8f0',
+                    background: 'var(--surface-secondary)',
+                    borderTop: '1px solid #e5e5e5',
                     display: 'flex',
                     gap: 12,
                 }}>
@@ -122,15 +122,15 @@ export default function TableConfirmationModal({
                             padding: '12px',
                             fontSize: 15,
                             fontWeight: 600,
-                            color: '#475569',
-                            background: 'white',
-                            border: '1px solid #e2e8f0',
+                            color: 'var(--text-secondary)',
+                            background: 'var(--surface)',
+                            border: '1px solid var(--border)',
                             borderRadius: 12,
                             cursor: 'pointer',
                             transition: 'all 0.2s ease',
                         }}
-                        onMouseOver={e => e.currentTarget.style.borderColor = '#cbd5e1'}
-                        onMouseOut={e => e.currentTarget.style.borderColor = '#e2e8f0'}
+                        onMouseOver={e => e.currentTarget.style.borderColor = '#d4d4d4'}
+                        onMouseOut={e => e.currentTarget.style.borderColor = '#e5e5e5'}
                     >
                         Go Back
                     </button>
@@ -143,7 +143,7 @@ export default function TableConfirmationModal({
                             fontSize: 15,
                             fontWeight: 700,
                             color: 'white',
-                            background: (!agreed || errorCount > 0) ? '#cbd5e1' : '#3b82f6',
+                            background: (!agreed || errorCount > 0) ? '#d4d4d4' : '#F43F5E',
                             border: 'none',
                             borderRadius: 12,
                             cursor: (!agreed || errorCount > 0) ? 'not-allowed' : 'pointer',

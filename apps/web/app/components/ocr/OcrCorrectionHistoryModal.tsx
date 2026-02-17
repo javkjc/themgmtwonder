@@ -45,7 +45,7 @@ export default function OcrCorrectionHistoryModal({
           width: '100%',
           maxWidth: 520,
           borderRadius: 16,
-          background: 'white',
+          background: 'var(--surface)',
           padding: 24,
           boxShadow: '0 20px 80px rgba(15,23,42,0.25)',
           maxHeight: '80vh',
@@ -71,14 +71,14 @@ export default function OcrCorrectionHistoryModal({
             ×
           </button>
         </div>
-        {loading && <p style={{ color: '#0f172a' }}>Loading history...</p>}
+        {loading && <p style={{ color: 'var(--text-primary)' }}>Loading history...</p>}
         {error && (
           <p style={{ color: '#dc2626', marginBottom: 8 }}>
             {error}
           </p>
         )}
         {!loading && !history?.length && (
-          <p style={{ color: '#64748b' }}>No corrections recorded yet.</p>
+          <p style={{ color: 'var(--text-muted)' }}>No corrections recorded yet.</p>
         )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {(history ?? field.correctionHistory)?.map((entry) => (
@@ -86,16 +86,16 @@ export default function OcrCorrectionHistoryModal({
               key={entry.id}
               style={{
                 borderRadius: 12,
-                border: '1px solid #e2e8f0',
+                border: '1px solid var(--border)',
                 padding: 12,
-                background: '#f8fafc',
+                background: 'var(--surface-secondary)',
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#475569' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-secondary)' }}>
                 <span>By {entry.correctedBy}</span>
                 <span>{formatDateTime(entry.createdAt)}</span>
               </div>
-              <div style={{ marginTop: 8, fontSize: 14, color: '#0f172a' }}>
+              <div style={{ marginTop: 8, fontSize: 14, color: 'var(--text-primary)' }}>
                 <div>
                   <span style={{ fontWeight: 600 }}>From:</span>{' '}
                   <span style={{ color: '#dc2626' }}>{entry.originalValue || 'Empty'}</span>
@@ -106,7 +106,7 @@ export default function OcrCorrectionHistoryModal({
                 </div>
               </div>
               {entry.correctionReason && (
-                <p style={{ marginTop: 8, fontSize: 13, color: '#475569' }}>Reason: {entry.correctionReason}</p>
+                <p style={{ marginTop: 8, fontSize: 13, color: 'var(--text-secondary)' }}>Reason: {entry.correctionReason}</p>
               )}
             </div>
           ))}
@@ -118,9 +118,9 @@ export default function OcrCorrectionHistoryModal({
             style={{
               padding: '8px 18px',
               borderRadius: 8,
-              border: '1px solid #e2e8f0',
-              background: 'white',
-              color: '#475569',
+              border: '1px solid var(--border)',
+              background: 'var(--surface)',
+              color: 'var(--text-secondary)',
               cursor: 'pointer',
             }}
           >

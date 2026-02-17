@@ -20,7 +20,7 @@ interface SuggestedFieldInputProps {
 const getConfidenceColor = (confidence: number) => {
     if (confidence >= 0.80) return '#16a34a'; // Green
     if (confidence >= 0.60) return '#ea580c'; // Orange
-    return '#64748b'; // Gray for Low
+    return '#737373'; // Gray for Low
 };
 
 const getConfidenceLabel = (confidence: number) => {
@@ -68,11 +68,11 @@ export default function SuggestedFieldInput({
                         style={{
                             width: '100%',
                             borderRadius: 10,
-                            border: isAccepted ? '1px solid #16a34a' : isModified ? '1px solid #ea580c' : '1px solid #cbd5e1',
+                            border: isAccepted ? '1px solid #16a34a' : isModified ? '1px solid #ea580c' : '1px solid #d4d4d4',
                             padding: '10px 12px',
                             fontSize: 14,
-                            color: isSuggested ? '#64748b' : '#0f172a',
-                            background: isReadOnly ? '#f8fafc' : '#ffffff',
+                            color: isSuggested ? '#737373' : '#111111',
+                            background: isReadOnly ? '#fafafa' : '#ffffff',
                             outline: 'none',
                             transition: 'all 0.2s ease',
                             fontStyle: isSuggested ? 'italic' : 'normal',
@@ -152,7 +152,7 @@ export default function SuggestedFieldInput({
                 <div
                     style={{
                         fontSize: 11,
-                        color: '#94a3b8',
+                        color: 'var(--text-muted)',
                         display: 'flex',
                         alignItems: 'center',
                         gap: 4,

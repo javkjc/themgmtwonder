@@ -111,7 +111,7 @@ export default function OcrFieldCreateModal({
             <div
                 onClick={(e) => e.stopPropagation()}
                 style={{
-                    background: 'white',
+                    background: 'var(--surface)',
                     borderRadius: 16,
                     width: '100%',
                     maxHeight: '90vh',
@@ -123,11 +123,11 @@ export default function OcrFieldCreateModal({
                 }}
             >
                 {/* Header */}
-                <div style={{ padding: '24px 24px 20px', borderBottom: '1px solid #f1f5f9' }}>
-                    <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#0f172a' }}>
+                <div style={{ padding: '24px 24px 20px', borderBottom: '1px solid #f5f5f5' }}>
+                    <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>
                         Add Manual Field
                     </h2>
-                    <p style={{ margin: '4px 0 0', fontSize: 14, color: '#64748b' }}>
+                    <p style={{ margin: '4px 0 0', fontSize: 14, color: 'var(--text-muted)' }}>
                         Manually define a data point missed by extraction.
                     </p>
                 </div>
@@ -141,7 +141,7 @@ export default function OcrFieldCreateModal({
                     )}
 
                     <div>
-                        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>
                             Field Name
                         </label>
                         <input
@@ -154,7 +154,7 @@ export default function OcrFieldCreateModal({
                                 width: '100%',
                                 padding: '10px 12px',
                                 borderRadius: 8,
-                                border: `1px solid ${fieldNameError ? '#ef4444' : '#e2e8f0'}`,
+                                border: `1px solid ${fieldNameError ? '#ef4444' : '#e5e5e5'}`,
                                 fontSize: 14,
                                 boxSizing: 'border-box',
                             }}
@@ -169,7 +169,7 @@ export default function OcrFieldCreateModal({
                     </div>
 
                     <div>
-                        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>
                             Value
                         </label>
                         <input
@@ -185,7 +185,7 @@ export default function OcrFieldCreateModal({
                                 width: '100%',
                                 padding: '10px 12px',
                                 borderRadius: 8,
-                                border: `1px solid ${fieldValueError ? '#ef4444' : '#e2e8f0'}`,
+                                border: `1px solid ${fieldValueError ? '#ef4444' : '#e5e5e5'}`,
                                 fontSize: 14,
                                 boxSizing: 'border-box',
                                 marginBottom: 8,
@@ -203,18 +203,18 @@ export default function OcrFieldCreateModal({
                                     fontSize: 11,
                                     padding: '4px 10px',
                                     borderRadius: 6,
-                                    border: '1px solid #e2e8f0',
-                                    background: '#f8fafc',
-                                    color: '#64748b',
+                                    border: '1px solid var(--border)',
+                                    background: 'var(--surface-secondary)',
+                                    color: 'var(--text-muted)',
                                     fontWeight: 600,
                                     cursor: isSaving || !fieldValue ? 'not-allowed' : 'pointer',
                                     transition: 'all 0.15s',
                                 }}
                                 onMouseOver={(e) => {
-                                    if (!isSaving && fieldValue) e.currentTarget.style.borderColor = '#cbd5e1';
+                                    if (!isSaving && fieldValue) e.currentTarget.style.borderColor = '#d4d4d4';
                                 }}
                                 onMouseOut={(e) => {
-                                    if (!isSaving && fieldValue) e.currentTarget.style.borderColor = '#e2e8f0';
+                                    if (!isSaving && fieldValue) e.currentTarget.style.borderColor = '#e5e5e5';
                                 }}
                             >
                                 Trim
@@ -227,18 +227,18 @@ export default function OcrFieldCreateModal({
                                     fontSize: 11,
                                     padding: '4px 10px',
                                     borderRadius: 6,
-                                    border: '1px solid #e2e8f0',
-                                    background: '#f8fafc',
-                                    color: '#64748b',
+                                    border: '1px solid var(--border)',
+                                    background: 'var(--surface-secondary)',
+                                    color: 'var(--text-muted)',
                                     fontWeight: 600,
                                     cursor: isSaving || !fieldValue ? 'not-allowed' : 'pointer',
                                     transition: 'all 0.15s',
                                 }}
                                 onMouseOver={(e) => {
-                                    if (!isSaving && fieldValue) e.currentTarget.style.borderColor = '#cbd5e1';
+                                    if (!isSaving && fieldValue) e.currentTarget.style.borderColor = '#d4d4d4';
                                 }}
                                 onMouseOut={(e) => {
-                                    if (!isSaving && fieldValue) e.currentTarget.style.borderColor = '#e2e8f0';
+                                    if (!isSaving && fieldValue) e.currentTarget.style.borderColor = '#e5e5e5';
                                 }}
                             >
                                 Normalize Currency
@@ -258,18 +258,18 @@ export default function OcrFieldCreateModal({
                                     fontSize: 11,
                                     padding: '4px 10px',
                                     borderRadius: 6,
-                                    border: '1px solid #e2e8f0',
-                                    background: '#f8fafc',
-                                    color: '#64748b',
+                                    border: '1px solid var(--border)',
+                                    background: 'var(--surface-secondary)',
+                                    color: 'var(--text-muted)',
                                     fontWeight: 600,
                                     cursor: isSaving || !fieldValue ? 'not-allowed' : 'pointer',
                                     transition: 'all 0.15s',
                                 }}
                                 onMouseOver={(e) => {
-                                    if (!isSaving && fieldValue) e.currentTarget.style.borderColor = '#cbd5e1';
+                                    if (!isSaving && fieldValue) e.currentTarget.style.borderColor = '#d4d4d4';
                                 }}
                                 onMouseOut={(e) => {
-                                    if (!isSaving && fieldValue) e.currentTarget.style.borderColor = '#e2e8f0';
+                                    if (!isSaving && fieldValue) e.currentTarget.style.borderColor = '#e5e5e5';
                                 }}
                             >
                                 Parse Date
@@ -301,7 +301,7 @@ export default function OcrFieldCreateModal({
                                             borderRadius: 6,
                                             border: 'none',
                                             background: 'transparent',
-                                            color: '#64748b',
+                                            color: 'var(--text-muted)',
                                             fontSize: 11,
                                             fontWeight: 600,
                                             cursor: 'pointer',
@@ -322,7 +322,7 @@ export default function OcrFieldCreateModal({
                                             padding: '4px 12px',
                                             borderRadius: 6,
                                             border: 'none',
-                                            background: previewValue === 'Invalid Date' ? '#94a3b8' : '#0284c7',
+                                            background: previewValue === 'Invalid Date' ? '#a3a3a3' : '#0284c7',
                                             color: 'white',
                                             fontSize: 11,
                                             fontWeight: 700,
@@ -341,7 +341,7 @@ export default function OcrFieldCreateModal({
                     </div>
 
                     <div>
-                        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>
                             Field Type
                         </label>
                         <select
@@ -352,10 +352,10 @@ export default function OcrFieldCreateModal({
                                 width: '100%',
                                 padding: '10px 12px',
                                 borderRadius: 8,
-                                border: '1px solid #e2e8f0',
+                                border: '1px solid var(--border)',
                                 fontSize: 14,
                                 boxSizing: 'border-box',
-                                background: isSaving ? '#f1f5f9' : '#ffffff',
+                                background: isSaving ? '#f5f5f5' : '#ffffff',
                             }}
                         >
                             <option value="text">Text</option>
@@ -363,13 +363,13 @@ export default function OcrFieldCreateModal({
                             <option value="date">Date</option>
                             <option value="currency">Currency</option>
                         </select>
-                        <p style={{ marginTop: 4, fontSize: 12, color: '#64748b' }}>
+                        <p style={{ marginTop: 4, fontSize: 12, color: 'var(--text-muted)' }}>
                             Choose a type so downstream workflows understand how this field should behave.
                         </p>
                     </div>
 
                     <div>
-                        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>
                             Reason for manual entry <span style={{ color: '#b91c1c' }}>*</span>
                         </label>
                         <textarea
@@ -381,7 +381,7 @@ export default function OcrFieldCreateModal({
                                 width: '100%',
                                 padding: '10px 12px',
                                 borderRadius: 8,
-                                border: `1px solid ${reasonError ? '#ef4444' : '#e2e8f0'}`,
+                                border: `1px solid ${reasonError ? '#ef4444' : '#e5e5e5'}`,
                                 fontSize: 14,
                                 minHeight: 80,
                                 resize: 'vertical',
@@ -405,9 +405,9 @@ export default function OcrFieldCreateModal({
                                 flex: 1,
                                 padding: '10px',
                                 borderRadius: 8,
-                                border: '1px solid #e2e8f0',
-                                background: 'white',
-                                color: '#475569',
+                                border: '1px solid var(--border)',
+                                background: 'var(--surface)',
+                                color: 'var(--text-secondary)',
                                 fontSize: 14,
                                 fontWeight: 600,
                                 cursor: 'pointer'
@@ -423,7 +423,7 @@ export default function OcrFieldCreateModal({
                                 padding: '10px',
                                 borderRadius: 8,
                                 border: 'none',
-                                background: isFormValid && !isSaving ? '#2563eb' : '#94a3b8',
+                                background: isFormValid && !isSaving ? '#E11D48' : '#a3a3a3',
                                 color: 'white',
                                 fontSize: 14,
                                 fontWeight: 600,

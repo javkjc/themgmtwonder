@@ -163,7 +163,7 @@ const DropTimeIndicator = memo(function DropTimeIndicator({
         width: dayColumnWidth,
         height: indicatorHeight,
         background: 'rgba(59, 130, 246, 0.3)',
-        border: '2px solid #3b82f6',
+        border: '2px solid #F43F5E',
         borderRadius: 4,
         pointerEvents: 'none',
         zIndex: 999,
@@ -175,7 +175,7 @@ const DropTimeIndicator = memo(function DropTimeIndicator({
     >
       <span
         style={{
-          background: '#3b82f6',
+          background: '#F43F5E',
           color: 'white',
           fontSize: 11,
           fontWeight: 600,
@@ -441,7 +441,7 @@ const UnscheduledTaskItem = memo(function UnscheduledTaskItem({
         onClick={handleClick}
         style={{
           padding: '10px 12px',
-          background: 'white',
+          background: 'var(--surface)',
           borderRadius: 6,
           borderLeft: `3px solid ${color}`,
           boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
@@ -456,13 +456,13 @@ const UnscheduledTaskItem = memo(function UnscheduledTaskItem({
           (e.currentTarget as HTMLElement).style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
         }}
       >
-        <div style={{ fontSize: 13, fontWeight: 500, color: '#1e293b' }}>{todo.title}</div>
+        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{todo.title}</div>
         <div style={{ display: 'flex', gap: 8, marginTop: 4, alignItems: 'center' }}>
           {todo.category && (
             <span style={{ fontSize: 11, color: color }}>{todo.category}</span>
           )}
           {todo.durationMin && (
-            <span style={{ fontSize: 11, color: '#94a3b8' }}>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
               {todo.durationMin} min
             </span>
           )}
@@ -1234,8 +1234,8 @@ export default function CalendarPage() {
       >
         {/* Header */}
         <div style={{ marginBottom: 24 }}>
-          <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, color: '#1e293b' }}>Calendar</h1>
-          <p style={{ color: '#64748b', margin: '8px 0 0' }}>
+          <h1 style={{ fontSize: 28, fontWeight: 700, fontFamily: 'var(--font-heading)', letterSpacing: '-0.025em', margin: 0, color: 'var(--text-primary)' }}>Calendar</h1>
+          <p style={{ color: 'var(--text-muted)', margin: '8px 0 0' }}>
             Drag tasks to schedule them
           </p>
         </div>
@@ -1247,7 +1247,7 @@ export default function CalendarPage() {
             ref={calendarRef}
             style={{
               flex: 1,
-              background: 'white',
+              background: 'var(--surface)',
               borderRadius: 12,
               boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
               padding: 20,
@@ -1302,7 +1302,7 @@ export default function CalendarPage() {
           <div
             style={{
               width: isPanelOpen ? 280 : 40,
-              background: 'white',
+              background: 'var(--surface)',
               borderRadius: 12,
               boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
               transition: 'width 0.2s ease',
@@ -1316,7 +1316,7 @@ export default function CalendarPage() {
             <div
               style={{
                 padding: 16,
-                borderBottom: '1px solid #e2e8f0',
+                borderBottom: '1px solid #e5e5e5',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
@@ -1351,9 +1351,9 @@ export default function CalendarPage() {
                       padding: '4px 10px',
                       fontSize: 11,
                       borderRadius: 4,
-                      border: unscheduledFilter === 'all' ? 'none' : '1px solid #e2e8f0',
-                      background: unscheduledFilter === 'all' ? '#3b82f6' : 'white',
-                      color: unscheduledFilter === 'all' ? 'white' : '#64748b',
+                      border: unscheduledFilter === 'all' ? 'none' : '1px solid #e5e5e5',
+                      background: unscheduledFilter === 'all' ? '#F43F5E' : 'white',
+                      color: unscheduledFilter === 'all' ? 'white' : '#737373',
                       cursor: 'pointer',
                       fontWeight: unscheduledFilter === 'all' ? 500 : 400,
                     }}
@@ -1366,9 +1366,9 @@ export default function CalendarPage() {
                       padding: '4px 10px',
                       fontSize: 11,
                       borderRadius: 4,
-                      border: unscheduledFilter === 'recent' ? 'none' : '1px solid #e2e8f0',
-                      background: unscheduledFilter === 'recent' ? '#3b82f6' : 'white',
-                      color: unscheduledFilter === 'recent' ? 'white' : '#64748b',
+                      border: unscheduledFilter === 'recent' ? 'none' : '1px solid #e5e5e5',
+                      background: unscheduledFilter === 'recent' ? '#F43F5E' : 'white',
+                      color: unscheduledFilter === 'recent' ? 'white' : '#737373',
                       cursor: 'pointer',
                       fontWeight: unscheduledFilter === 'recent' ? 500 : 400,
                     }}
@@ -1378,12 +1378,12 @@ export default function CalendarPage() {
                 </div>
 
                 {/* Helper text */}
-                <p style={{ color: '#94a3b8', fontSize: 12, margin: '0 0 12px', lineHeight: 1.4 }}>
+                <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '0 0 12px', lineHeight: 1.4 }}>
                   Drag to schedule or click to schedule
                 </p>
 
                 {unscheduledTodos.length === 0 ? (
-                  <p style={{ color: '#94a3b8', fontSize: 13, margin: 0 }}>
+                  <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: 0 }}>
                     No unscheduled tasks
                   </p>
                 ) : (

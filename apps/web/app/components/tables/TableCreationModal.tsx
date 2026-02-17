@@ -193,10 +193,10 @@ export default function TableCreationModal({
                 onClick={(e) => e.stopPropagation()}
             >
                 <div style={{ padding: '32px 32px 16px' }}>
-                    <h3 style={{ margin: '0 0 8px', fontSize: 20, fontWeight: 800, color: '#0f172a' }}>
+                    <h3 style={{ margin: '0 0 8px', fontSize: 20, fontWeight: 800, color: 'var(--text-primary)' }}>
                         Create Table
                     </h3>
-                    <p style={{ margin: 0, fontSize: 14, color: '#64748b' }}>
+                    <p style={{ margin: 0, fontSize: 14, color: 'var(--text-muted)' }}>
                         {selectedSegments.length} segments selected
                     </p>
                 </div>
@@ -208,7 +208,7 @@ export default function TableCreationModal({
                         style={{
                             padding: '8px 16px', borderRadius: 8, fontSize: 14, fontWeight: 600,
                             background: mode === 'auto' ? '#eff6ff' : 'transparent',
-                            color: mode === 'auto' ? '#2563eb' : '#64748b',
+                            color: mode === 'auto' ? '#E11D48' : '#737373',
                             border: 'none', cursor: isAutoDisabled ? 'not-allowed' : 'pointer',
                         }}
                     >
@@ -219,7 +219,7 @@ export default function TableCreationModal({
                         style={{
                             padding: '8px 16px', borderRadius: 8, fontSize: 14, fontWeight: 600,
                             background: mode === 'manual' ? '#eff6ff' : 'transparent',
-                            color: mode === 'manual' ? '#2563eb' : '#64748b',
+                            color: mode === 'manual' ? '#E11D48' : '#737373',
                             border: 'none', cursor: 'pointer',
                         }}
                     >
@@ -229,7 +229,7 @@ export default function TableCreationModal({
 
                 <div style={{ flex: 1, overflowY: 'auto', padding: '0 32px 32px' }}>
                     <div style={{ marginBottom: 24 }}>
-                        <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#1e293b', marginBottom: 8 }}>
+                        <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
                             Table Label (Optional)
                         </label>
                         <input
@@ -239,7 +239,7 @@ export default function TableCreationModal({
                             placeholder="e.g. Line Items, Tax Table..."
                             style={{
                                 width: '100%', padding: '10px 14px', borderRadius: 10,
-                                border: '1px solid #e2e8f0', fontSize: 14, outline: 'none',
+                                border: '1px solid var(--border)', fontSize: 14, outline: 'none',
                             }}
                         />
                     </div>
@@ -247,7 +247,7 @@ export default function TableCreationModal({
                     {mode === 'manual' ? (
                         <div style={{ display: 'flex', gap: 20 }}>
                             <div style={{ flex: 1 }}>
-                                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#1e293b', marginBottom: 8 }}>
+                                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
                                     Rows
                                 </label>
                                 <input
@@ -257,12 +257,12 @@ export default function TableCreationModal({
                                     onChange={(e) => setRowCount(parseInt(e.target.value) || 1)}
                                     style={{
                                         width: '100%', padding: '10px 14px', borderRadius: 10,
-                                        border: '1px solid #e2e8f0', fontSize: 14,
+                                        border: '1px solid var(--border)', fontSize: 14,
                                     }}
                                 />
                             </div>
                             <div style={{ flex: 1 }}>
-                                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#1e293b', marginBottom: 8 }}>
+                                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
                                     Columns
                                 </label>
                                 <input
@@ -272,7 +272,7 @@ export default function TableCreationModal({
                                     onChange={(e) => setColumnCount(parseInt(e.target.value) || 1)}
                                     style={{
                                         width: '100%', padding: '10px 14px', borderRadius: 10,
-                                        border: '1px solid #e2e8f0', fontSize: 14,
+                                        border: '1px solid var(--border)', fontSize: 14,
                                     }}
                                 />
                             </div>
@@ -283,20 +283,20 @@ export default function TableCreationModal({
                                 <>
                                     <div style={{
                                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                        marginBottom: 12, padding: '12px 16px', background: '#f8fafc',
-                                        borderRadius: 12, border: '1px solid #e2e8f0'
+                                        marginBottom: 12, padding: '12px 16px', background: 'var(--surface-secondary)',
+                                        borderRadius: 12, border: '1px solid var(--border)'
                                     }}>
-                                        <span style={{ fontSize: 14, fontWeight: 600, color: '#475569' }}>
+                                        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>
                                             Detection Summary: {detectedGrid.rowCount} rows × {detectedGrid.columnCount} columns
                                         </span>
                                     </div>
-                                    <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
+                                    <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
                                         <div style={{ overflowX: 'auto' }}>
                                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                                                 <thead>
-                                                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                                                    <tr style={{ background: 'var(--surface-secondary)', borderBottom: '1px solid #e5e5e5' }}>
                                                         {Array.from({ length: detectedGrid.columnCount }).map((_, i) => (
-                                                            <th key={i} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: '#64748b', borderRight: '1px solid #f1f5f9' }}>
+                                                            <th key={i} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)', borderRight: '1px solid #f5f5f5' }}>
                                                                 Col {i + 1}
                                                             </th>
                                                         ))}
@@ -304,7 +304,7 @@ export default function TableCreationModal({
                                                 </thead>
                                                 <tbody>
                                                     {detectedGrid.rows.map((row, ri) => (
-                                                        <tr key={ri} style={{ borderBottom: ri === detectedGrid.rows.length - 1 ? 'none' : '1px solid #f1f5f9' }}>
+                                                        <tr key={ri} style={{ borderBottom: ri === detectedGrid.rows.length - 1 ? 'none' : '1px solid #f5f5f5' }}>
                                                             {Array.from({ length: detectedGrid.columnCount }).map((_, ci) => {
                                                                 const cell = row[ci];
                                                                 const confidence = cell?.confidence ?? 0;
@@ -314,8 +314,8 @@ export default function TableCreationModal({
                                                                         key={ci}
                                                                         style={{
                                                                             padding: '8px 12px',
-                                                                            color: cell ? '#1e293b' : '#94a3b8',
-                                                                            borderRight: '1px solid #f1f5f9',
+                                                                            color: cell ? '#141414' : '#a3a3a3',
+                                                                            borderRight: '1px solid #f5f5f5',
                                                                             border: cell ? `1px solid ${isLowConf ? '#fee2e2' : '#dcfce7'}` : undefined,
                                                                             background: cell ? (isLowConf ? '#fffafb' : '#fafffa') : 'transparent',
                                                                             minWidth: 100,
@@ -339,16 +339,16 @@ export default function TableCreationModal({
                                     <div style={{ marginTop: 12, display: 'flex', gap: 16 }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                             <div style={{ width: 12, height: 12, borderRadius: 3, border: '1px solid #dcfce7', background: '#fafffa' }}></div>
-                                            <span style={{ fontSize: 12, color: '#64748b' }}>High Confidence</span>
+                                            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>High Confidence</span>
                                         </div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                             <div style={{ width: 12, height: 12, borderRadius: 3, border: '1px solid #fee2e2', background: '#fffafb' }}></div>
-                                            <span style={{ fontSize: 12, color: '#64748b' }}>Low Confidence (&lt; 0.7)</span>
+                                            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Low Confidence (&lt; 0.7)</span>
                                         </div>
                                     </div>
                                 </>
                             ) : (
-                                <div style={{ padding: '40px 0', textAlign: 'center', color: '#64748b', fontSize: 14 }}>
+                                <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
                                     Could not automatically detect table structure from selection.
                                     Try selecting segments with clear horizontal and vertical alignment.
                                 </div>
@@ -363,13 +363,13 @@ export default function TableCreationModal({
                     )}
                 </div>
 
-                <div style={{ padding: '24px 32px 32px', borderTop: '1px solid #f1f5f9', display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                <div style={{ padding: '24px 32px 32px', borderTop: '1px solid #f5f5f5', display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
                     <button
                         onClick={onClose}
                         disabled={isSubmitting}
                         style={{
-                            padding: '12px 24px', borderRadius: 12, background: '#f1f5f9',
-                            border: 'none', color: '#475569', fontSize: 14, fontWeight: 700,
+                            padding: '12px 24px', borderRadius: 12, background: '#f5f5f5',
+                            border: 'none', color: 'var(--text-secondary)', fontSize: 14, fontWeight: 700,
                             cursor: 'pointer', transition: 'background 0.2s',
                         }}
                     >
@@ -379,7 +379,7 @@ export default function TableCreationModal({
                         onClick={handleCreate}
                         disabled={isSubmitting}
                         style={{
-                            padding: '12px 32px', borderRadius: 12, background: '#2563eb',
+                            padding: '12px 32px', borderRadius: 12, background: '#E11D48',
                             border: 'none', color: '#ffffff', fontSize: 14, fontWeight: 700,
                             cursor: 'pointer', boxShadow: '0 4px 6px -1px rgba(37, 99, 235, 0.4)',
                             transition: 'all 0.2s',

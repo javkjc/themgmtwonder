@@ -106,26 +106,26 @@ export default function CreateTaskModal({ isOpen, onClose, onCreate, userId }: C
     >
       <div
         style={{
-          background: 'white',
-          borderRadius: 12,
+          background: 'var(--surface)',
+          borderRadius: 6,
           padding: 24,
           width: '100%',
           maxWidth: 520,
-          boxShadow: '0 24px 80px rgba(0,0,0,0.25)',
+          border: '1px solid var(--border)',
         }}
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <div>
-            <div style={{ fontSize: 20, fontWeight: 600, color: '#0f172a' }}>Create Task</div>
-            <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 4 }}>Title required. Description optional.</div>
+            <div style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)' }}>Create Task</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>Title required. Description optional.</div>
           </div>
           <button
             onClick={onClose}
             style={{
               background: 'transparent',
               border: 'none',
-              color: '#94a3b8',
+              color: 'var(--text-muted)',
               fontSize: 18,
               cursor: 'pointer',
               padding: 4,
@@ -139,7 +139,7 @@ export default function CreateTaskModal({ isOpen, onClose, onCreate, userId }: C
 
         <div style={{ display: 'grid', gap: 14 }}>
           <div>
-            <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 13, color: '#475569' }}>
+            <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 13, color: 'var(--text-secondary)' }}>
               Title <span style={{ color: '#ef4444' }}>*</span>
             </label>
             <input
@@ -150,8 +150,8 @@ export default function CreateTaskModal({ isOpen, onClose, onCreate, userId }: C
               style={{
                 width: '100%',
                 padding: '10px 12px',
-                borderRadius: 8,
-                border: error ? '1px solid #ef4444' : '1px solid #e2e8f0',
+                borderRadius: 6,
+                border: error ? '1px solid #ef4444' : '1px solid #e5e5e5',
                 fontSize: 14,
                 outline: 'none',
               }}
@@ -159,7 +159,7 @@ export default function CreateTaskModal({ isOpen, onClose, onCreate, userId }: C
           </div>
 
           <div>
-            <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 13, color: '#475569' }}>
+            <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 13, color: 'var(--text-secondary)' }}>
               Description
             </label>
             <textarea
@@ -171,8 +171,8 @@ export default function CreateTaskModal({ isOpen, onClose, onCreate, userId }: C
               style={{
                 width: '100%',
                 padding: '10px 12px',
-                borderRadius: 8,
-                border: '1px solid #e2e8f0',
+                borderRadius: 6,
+                border: '1px solid var(--border)',
                 fontSize: 13,
                 resize: 'vertical',
                 outline: 'none',
@@ -182,7 +182,7 @@ export default function CreateTaskModal({ isOpen, onClose, onCreate, userId }: C
             <div style={{
               marginTop: 4,
               fontSize: 11,
-              color: description.length > 450 ? '#f59e0b' : '#94a3b8',
+              color: description.length > 450 ? '#f59e0b' : '#a3a3a3',
               textAlign: 'right',
             }}>
               {description.length}/500 characters
@@ -190,7 +190,7 @@ export default function CreateTaskModal({ isOpen, onClose, onCreate, userId }: C
           </div>
 
           <div style={{ display: 'grid', gap: 8 }}>
-            <label style={{ fontWeight: 600, fontSize: 13, color: '#475569' }}>Duration (minutes)</label>
+            <label style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-secondary)' }}>Duration (minutes)</label>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <input
                 type="number"
@@ -222,14 +222,14 @@ export default function CreateTaskModal({ isOpen, onClose, onCreate, userId }: C
                 style={{
                   width: 90,
                   padding: '10px 12px',
-                  borderRadius: 8,
-                  border: '1px solid #e2e8f0',
+                  borderRadius: 6,
+                  border: '1px solid var(--border)',
                   fontSize: 14,
                   textAlign: 'center',
                   outline: 'none',
                 }}
               />
-              <span style={{ fontSize: 13, color: '#94a3b8' }}>min</span>
+              <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>min</span>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {DURATION_PRESETS.map((preset) => (
                   <button
@@ -243,9 +243,9 @@ export default function CreateTaskModal({ isOpen, onClose, onCreate, userId }: C
                     style={{
                       padding: '8px 10px',
                       borderRadius: 6,
-                      border: parseInt(durationMinInput, 10) === preset ? '1px solid #2563eb' : '1px solid #e2e8f0',
-                      background: parseInt(durationMinInput, 10) === preset ? '#e0e7ff' : '#f8fafc',
-                      color: parseInt(durationMinInput, 10) === preset ? '#1d4ed8' : '#475569',
+                      border: parseInt(durationMinInput, 10) === preset ? '1px solid #F43F5E' : '1px solid #e5e5e5',
+                      background: parseInt(durationMinInput, 10) === preset ? '#FFF1F2' : '#fafafa',
+                      color: parseInt(durationMinInput, 10) === preset ? '#E11D48' : '#525252',
                       fontSize: 12,
                       fontWeight: 600,
                       cursor: 'pointer',
@@ -262,7 +262,7 @@ export default function CreateTaskModal({ isOpen, onClose, onCreate, userId }: C
                 padding: '8px 10px',
                 background: '#fef3c7',
                 border: '1px solid #fbbf24',
-                borderRadius: 8,
+                borderRadius: 6,
                 fontSize: 13,
                 color: '#92400e',
               }}>
@@ -272,7 +272,7 @@ export default function CreateTaskModal({ isOpen, onClose, onCreate, userId }: C
           </div>
 
           <div>
-            <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 13, color: '#475569' }}>
+            <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 13, color: 'var(--text-secondary)' }}>
               Parent Task (Optional)
             </label>
             <select
@@ -281,11 +281,11 @@ export default function CreateTaskModal({ isOpen, onClose, onCreate, userId }: C
               style={{
                 width: '100%',
                 padding: '10px 12px',
-                borderRadius: 8,
-                border: '1px solid #e2e8f0',
+                borderRadius: 6,
+                border: '1px solid var(--border)',
                 fontSize: 14,
                 outline: 'none',
-                color: parentId ? '#0f172a' : '#94a3b8',
+                color: parentId ? '#111111' : '#a3a3a3',
               }}
             >
               <option value="">Independent task (no parent)</option>
@@ -293,13 +293,13 @@ export default function CreateTaskModal({ isOpen, onClose, onCreate, userId }: C
                 <option key={parent.id} value={parent.id}>{parent.title}</option>
               ))}
             </select>
-            <div style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>
+            <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-muted)' }}>
               Create this as a child of an existing task
             </div>
           </div>
 
           <div>
-            <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 13, color: '#475569' }}>
+            <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 13, color: 'var(--text-secondary)' }}>
               Category
             </label>
             <select
@@ -308,11 +308,11 @@ export default function CreateTaskModal({ isOpen, onClose, onCreate, userId }: C
               style={{
                 width: '100%',
                 padding: '10px 12px',
-                borderRadius: 8,
-                border: '1px solid #e2e8f0',
+                borderRadius: 6,
+                border: '1px solid var(--border)',
                 fontSize: 14,
                 outline: 'none',
-                color: category ? '#0f172a' : '#94a3b8',
+                color: category ? '#111111' : '#a3a3a3',
               }}
             >
               <option value="">No category</option>
@@ -334,10 +334,10 @@ export default function CreateTaskModal({ isOpen, onClose, onCreate, userId }: C
               disabled={saving}
               style={{
                 padding: '10px 16px',
-                borderRadius: 8,
-                border: '1px solid #e2e8f0',
-                background: 'white',
-                color: '#475569',
+                borderRadius: 6,
+                border: '1px solid var(--border)',
+                background: 'var(--surface)',
+                color: 'var(--text-secondary)',
                 fontWeight: 600,
                 cursor: saving ? 'not-allowed' : 'pointer',
                 opacity: saving ? 0.7 : 1,
@@ -351,13 +351,12 @@ export default function CreateTaskModal({ isOpen, onClose, onCreate, userId }: C
               data-testid="task-save"
               style={{
                 padding: '10px 18px',
-                borderRadius: 8,
+                borderRadius: 6,
                 border: 'none',
-                background: '#2563eb',
+                background: '#F43F5E',
                 color: 'white',
                 fontWeight: 700,
                 cursor: saving ? 'not-allowed' : 'pointer',
-                boxShadow: '0 10px 25px rgba(37, 99, 235, 0.25)',
                 opacity: saving ? 0.8 : 1,
               }}
             >

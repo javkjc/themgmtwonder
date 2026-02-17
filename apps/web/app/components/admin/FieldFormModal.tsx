@@ -115,7 +115,7 @@ export default function FieldFormModal({
         >
             <div
                 style={{
-                    background: 'white',
+                    background: 'var(--surface)',
                     borderRadius: 12,
                     padding: 24,
                     maxWidth: 500,
@@ -124,7 +124,7 @@ export default function FieldFormModal({
                 }}
                 onClick={(e) => e.stopPropagation()}
             >
-                <h2 style={{ margin: 0, marginBottom: 20, fontSize: 20, fontWeight: 600, color: '#1e293b' }}>
+                <h2 style={{ margin: 0, marginBottom: 20, fontSize: 20, fontWeight: 600, color: 'var(--text-primary)' }}>
                     {mode === 'create' ? 'Create New Field' : 'Edit Field'}
                 </h2>
 
@@ -133,7 +133,7 @@ export default function FieldFormModal({
                     <div style={{ marginBottom: 16 }}>
                         <label
                             htmlFor="fieldKey"
-                            style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: '#475569' }}
+                            style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: 'var(--text-secondary)' }}
                         >
                             Field Key {mode === 'create' && <span style={{ color: '#dc2626' }}>*</span>}
                         </label>
@@ -149,7 +149,7 @@ export default function FieldFormModal({
                                     style={{
                                         width: '100%',
                                         padding: '10px 14px',
-                                        border: '1px solid #e2e8f0',
+                                        border: '1px solid var(--border)',
                                         borderRadius: 6,
                                         fontSize: 14,
                                         fontFamily: 'monospace',
@@ -164,12 +164,12 @@ export default function FieldFormModal({
                             <div
                                 style={{
                                     padding: '10px 14px',
-                                    background: '#f1f5f9',
-                                    border: '1px solid #e2e8f0',
+                                    background: '#f5f5f5',
+                                    border: '1px solid var(--border)',
                                     borderRadius: 6,
                                     fontSize: 14,
                                     fontFamily: 'monospace',
-                                    color: '#64748b',
+                                    color: 'var(--text-muted)',
                                 }}
                             >
                                 {fieldKey}
@@ -181,7 +181,7 @@ export default function FieldFormModal({
                     <div style={{ marginBottom: 16 }}>
                         <label
                             htmlFor="label"
-                            style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: '#475569' }}
+                            style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: 'var(--text-secondary)' }}
                         >
                             Label <span style={{ color: '#dc2626' }}>*</span>
                         </label>
@@ -195,7 +195,7 @@ export default function FieldFormModal({
                             style={{
                                 width: '100%',
                                 padding: '10px 14px',
-                                border: '1px solid #e2e8f0',
+                                border: '1px solid var(--border)',
                                 borderRadius: 6,
                                 fontSize: 14,
                                 outline: 'none',
@@ -207,7 +207,7 @@ export default function FieldFormModal({
                     <div style={{ marginBottom: 16 }}>
                         <label
                             htmlFor="characterType"
-                            style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: '#475569' }}
+                            style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: 'var(--text-secondary)' }}
                         >
                             Character Type <span style={{ color: '#dc2626' }}>*</span>
                         </label>
@@ -219,11 +219,11 @@ export default function FieldFormModal({
                             style={{
                                 width: '100%',
                                 padding: '10px 14px',
-                                border: '1px solid #e2e8f0',
+                                border: '1px solid var(--border)',
                                 borderRadius: 6,
                                 fontSize: 14,
                                 outline: 'none',
-                                background: 'white',
+                                background: 'var(--surface)',
                             }}
                         >
                             <option value="varchar">varchar</option>
@@ -244,7 +244,7 @@ export default function FieldFormModal({
                         <div style={{ marginBottom: 16 }}>
                             <label
                                 htmlFor="characterLimit"
-                                style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: '#475569' }}
+                                style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: 'var(--text-secondary)' }}
                             >
                                 Character Limit (optional)
                             </label>
@@ -259,7 +259,7 @@ export default function FieldFormModal({
                                 style={{
                                     width: '100%',
                                     padding: '10px 14px',
-                                    border: '1px solid #e2e8f0',
+                                    border: '1px solid var(--border)',
                                     borderRadius: 6,
                                     fontSize: 14,
                                     outline: 'none',
@@ -294,9 +294,9 @@ export default function FieldFormModal({
                             style={{
                                 padding: '10px 20px',
                                 borderRadius: 6,
-                                border: '1px solid #e2e8f0',
-                                background: 'white',
-                                color: '#64748b',
+                                border: '1px solid var(--border)',
+                                background: 'var(--surface)',
+                                color: 'var(--text-muted)',
                                 fontSize: 14,
                                 fontWeight: 500,
                                 cursor: submitting ? 'not-allowed' : 'pointer',
@@ -311,7 +311,7 @@ export default function FieldFormModal({
                                 padding: '10px 20px',
                                 borderRadius: 6,
                                 border: 'none',
-                                background: !isFormValid() || submitting ? '#94a3b8' : '#3b82f6',
+                                background: !isFormValid() || submitting ? '#a3a3a3' : '#F43F5E',
                                 color: 'white',
                                 fontSize: 14,
                                 fontWeight: 500,

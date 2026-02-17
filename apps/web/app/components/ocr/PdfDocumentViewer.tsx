@@ -143,7 +143,7 @@ export default function PdfDocumentViewer({
               padding: '6px 10px',
               borderRadius: 6,
               border: '1px solid #cbd5f5',
-              background: 'white',
+              background: 'var(--surface)',
               cursor: currentPage <= 1 ? 'not-allowed' : 'pointer',
             }}
           >
@@ -160,7 +160,7 @@ export default function PdfDocumentViewer({
               padding: '6px 10px',
               borderRadius: 6,
               border: '1px solid #cbd5f5',
-              background: 'white',
+              background: 'var(--surface)',
               cursor: numPages > 0 && currentPage >= numPages ? 'not-allowed' : 'pointer',
             }}
           >
@@ -177,7 +177,7 @@ export default function PdfDocumentViewer({
             padding: '6px 10px',
             borderRadius: 6,
             border: '1px solid #cbd5f5',
-            background: 'white',
+            background: 'var(--surface)',
             cursor: scale <= MIN_SCALE ? 'not-allowed' : 'pointer',
           }}
         >
@@ -192,7 +192,7 @@ export default function PdfDocumentViewer({
             padding: '6px 10px',
             borderRadius: 6,
             border: '1px solid #cbd5f5',
-            background: 'white',
+            background: 'var(--surface)',
             cursor: scale >= MAX_SCALE ? 'not-allowed' : 'pointer',
           }}
         >
@@ -208,9 +208,9 @@ export default function PdfDocumentViewer({
         position: 'relative',
         width: '100%',
         borderRadius: 12,
-        border: '1px solid #e2e8f0',
+        border: '1px solid var(--border)',
         overflow: 'auto',
-        background: '#0f172a',
+        background: '#111111',
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'flex-start',
@@ -223,7 +223,7 @@ export default function PdfDocumentViewer({
           onLoadSuccess={handleDocumentLoadSuccess}
           onLoadError={handleError}
           loading={<div style={{ padding: 40, textAlign: 'center' }}>Loading...</div>}
-          noData={<div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>No document loaded.</div>}
+          noData={<div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>No document loaded.</div>}
           renderMode="canvas"
         >
           <Page
@@ -264,12 +264,12 @@ export default function PdfDocumentViewer({
         >
           <div>
             <p style={{ margin: 0, fontWeight: 600 }}>Unable to render PDF</p>
-            <p style={{ margin: '4px 0 0', color: '#64748b' }}>{renderError}</p>
+            <p style={{ margin: '4px 0 0', color: 'var(--text-muted)' }}>{renderError}</p>
             <a
               href={documentUrl}
               target="_blank"
               rel="noreferrer"
-              style={{ marginTop: 8, display: 'inline-block', color: '#2563eb' }}
+              style={{ marginTop: 8, display: 'inline-block', color: '#E11D48' }}
             >
               Download document
             </a>
@@ -284,9 +284,9 @@ export default function PdfDocumentViewer({
       style={{
         position: 'relative',
         borderRadius: 12,
-        border: '1px solid #e2e8f0',
+        border: '1px solid var(--border)',
         overflow: 'auto',
-        background: '#0f172a',
+        background: '#111111',
         minHeight: 320,
         display: 'flex',
         justifyContent: 'center',
@@ -342,7 +342,7 @@ export default function PdfDocumentViewer({
             alignItems: 'center',
             padding: 16,
             textAlign: 'center',
-            color: '#f8fafc',
+            color: '#fafafa',
             background: 'rgba(15,23,42,0.9)',
           }}
         >
@@ -360,21 +360,21 @@ export default function PdfDocumentViewer({
     <div
       style={{
         borderRadius: 12,
-        border: '1px solid #e2e8f0',
+        border: '1px solid var(--border)',
         padding: 40,
         textAlign: 'center',
-        background: '#f8fafc',
+        background: 'var(--surface-secondary)',
       }}
     >
-      <p style={{ margin: 0, fontWeight: 600, color: '#475569' }}>Unsupported file type</p>
-      <p style={{ margin: '8px 0', color: '#94a3b8', fontSize: 14 }}>
+      <p style={{ margin: 0, fontWeight: 600, color: 'var(--text-secondary)' }}>Unsupported file type</p>
+      <p style={{ margin: '8px 0', color: 'var(--text-muted)', fontSize: 14 }}>
         Preview not available for this file type.
       </p>
       <a
         href={documentUrl}
         target="_blank"
         rel="noreferrer"
-        style={{ color: '#2563eb', fontSize: 14 }}
+        style={{ color: '#E11D48', fontSize: 14 }}
       >
         Download file
       </a>

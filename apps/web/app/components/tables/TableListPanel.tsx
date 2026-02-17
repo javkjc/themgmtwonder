@@ -29,7 +29,7 @@ export default function TableListPanel({
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 16 }}>
             {/* Header / Create Action */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#475569' }}>Tables ({tables.length})</h3>
+                <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)' }}>Tables ({tables.length})</h3>
                 {!isReadOnly && (
                     <button
                         onClick={onCreateTable}
@@ -38,9 +38,9 @@ export default function TableListPanel({
                             fontSize: 12,
                             fontWeight: 600,
                             borderRadius: 6,
-                            border: '1px solid #e2e8f0',
+                            border: '1px solid var(--border)',
                             background: '#ffffff',
-                            color: '#475569',
+                            color: 'var(--text-secondary)',
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
@@ -58,10 +58,10 @@ export default function TableListPanel({
                     <div style={{
                         padding: 24,
                         textAlign: 'center',
-                        background: '#f8fafc',
+                        background: 'var(--surface-secondary)',
                         borderRadius: 8,
-                        border: '1px dashed #e2e8f0',
-                        color: '#94a3b8',
+                        border: '1px dashed #e5e5e5',
+                        color: 'var(--text-muted)',
                         fontSize: 13
                     }}>
                         No tables created yet.
@@ -81,7 +81,7 @@ export default function TableListPanel({
                                     padding: '12px',
                                     borderRadius: 10,
                                     background: isActive ? '#eff6ff' : '#ffffff',
-                                    border: isActive ? '1px solid #3b82f6' : '1px solid #e2e8f0',
+                                    border: isActive ? '1px solid #F43F5E' : '1px solid #e5e5e5',
                                     cursor: 'pointer',
                                     transition: 'all 0.2s',
                                     position: 'relative',
@@ -96,12 +96,12 @@ export default function TableListPanel({
                                         <div style={{
                                             fontSize: 14,
                                             fontWeight: 600,
-                                            color: isActive ? '#1e40af' : '#1e293b',
+                                            color: isActive ? '#1e40af' : '#141414',
                                             marginBottom: 2
                                         }}>
                                             {table.tableLabel || `Table #${table.tableIndex + 1}`}
                                         </div>
-                                        <div style={{ fontSize: 12, color: '#64748b' }}>
+                                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                                             {table.rowCount} rows × {table.columnCount} columns
                                         </div>
                                         {isUtilized && (
@@ -138,11 +138,11 @@ export default function TableListPanel({
                                                     border: 'none',
                                                     cursor: 'pointer',
                                                     padding: 4,
-                                                    color: '#94a3b8',
+                                                    color: 'var(--text-muted)',
                                                     fontSize: 14,
                                                 }}
                                                 onMouseOver={(e) => e.currentTarget.style.color = '#dc2626'}
-                                                onMouseOut={(e) => e.currentTarget.style.color = '#94a3b8'}
+                                                onMouseOut={(e) => e.currentTarget.style.color = '#a3a3a3'}
                                                 title="Delete table"
                                             >
                                                 🗑️

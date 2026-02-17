@@ -29,7 +29,7 @@ export default function ConfirmationModal({
             boxShadow: '0 4px 6px -1px rgba(220, 38, 38, 0.4)',
           }
         : {
-            background: '#2563eb',
+            background: '#E11D48',
             boxShadow: '0 4px 6px -1px rgba(37, 99, 235, 0.4)',
           };
 
@@ -63,10 +63,10 @@ export default function ConfirmationModal({
                 }}
                 onClick={(e) => e.stopPropagation()}
             >
-                <h3 style={{ margin: '0 0 12px', fontSize: 20, fontWeight: 800, color: '#0f172a' }}>
+                <h3 style={{ margin: '0 0 12px', fontSize: 20, fontWeight: 800, color: 'var(--text-primary)' }}>
                     {title}
                 </h3>
-                <p style={{ margin: '0 0 24px', fontSize: 15, color: '#475569', lineHeight: 1.6 }}>
+                <p style={{ margin: '0 0 24px', fontSize: 15, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
                     {message}
                 </p>
 
@@ -76,9 +76,9 @@ export default function ConfirmationModal({
                         style={{
                             padding: '12px 24px',
                             borderRadius: 12,
-                            background: '#f1f5f9',
+                            background: '#f5f5f5',
                             border: 'none',
-                            color: '#475569',
+                            color: 'var(--text-secondary)',
                             fontSize: 14,
                             fontWeight: 700,
                             cursor: 'pointer',

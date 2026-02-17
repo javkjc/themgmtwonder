@@ -9,17 +9,17 @@ import ForcePasswordChange from '../components/ForcePasswordChange';
 const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   'auth.login': { label: 'Logged in', color: '#10b981' },
   'auth.logout': { label: 'Logged out', color: '#6b7280' },
-  'auth.register': { label: 'Registered', color: '#3b82f6' },
+  'auth.register': { label: 'Registered', color: '#F43F5E' },
   'auth.password_change': { label: 'Changed password', color: '#f59e0b' },
-  'todo.create': { label: 'Created task', color: '#3b82f6' },
-  'todo.update': { label: 'Updated task', color: '#8b5cf6' },
+  'todo.create': { label: 'Created task', color: '#F43F5E' },
+  'todo.update': { label: 'Updated task', color: '#F43F5E' },
   'todo.delete': { label: 'Deleted task', color: '#ef4444' },
   'todo.schedule': { label: 'Scheduled task', color: '#06b6d4' },
   'todo.unschedule': { label: 'Unscheduled task', color: '#f97316' },
-  'todo.bulk_update': { label: 'Bulk updated tasks', color: '#8b5cf6' },
+  'todo.bulk_update': { label: 'Bulk updated tasks', color: '#F43F5E' },
   'todo.bulk_delete': { label: 'Bulk deleted tasks', color: '#ef4444' },
-  'category.create': { label: 'Created category', color: '#3b82f6' },
-  'category.update': { label: 'Updated category', color: '#8b5cf6' },
+  'category.create': { label: 'Created category', color: '#F43F5E' },
+  'category.update': { label: 'Updated category', color: '#F43F5E' },
   'category.delete': { label: 'Deleted category', color: '#ef4444' },
   'settings.update': { label: 'Updated settings', color: '#f59e0b' },
   'admin.reset_password': { label: 'Admin reset password', color: '#ef4444' },
@@ -67,7 +67,7 @@ function formatTime(dateStr: string) {
 }
 
 function ActionBadge({ action }: { action: string }) {
-  const config = ACTION_LABELS[action] || { label: action, color: '#64748b' };
+  const config = ACTION_LABELS[action] || { label: action, color: 'var(--text-muted)' };
   return (
     <span
       style={{
@@ -116,7 +116,7 @@ function ChangesDisplay({ changes }: { changes: Record<string, { from: any; to: 
     <div style={{ marginTop: 8, fontSize: 12 }}>
       {entries.map(([field, delta]) => (
         <div key={field} style={{ marginBottom: 4 }}>
-          <span style={{ color: '#94a3b8', fontWeight: 500 }}>{field}:</span>
+          <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>{field}:</span>
           {' '}
           <span style={{ color: '#ef4444' }}>{formatFieldValue(field, delta.from)}</span>
           {' → '}
@@ -142,7 +142,7 @@ function DetailsDisplay({ details }: { details: Record<string, unknown> | null }
       {changes && <ChangesDisplay changes={changes} />}
 
       {entries.length > 0 && (
-        <div style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>
+        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
           {entries.map(([key, value]) => {
             let displayValue = value;
             if (typeof value === 'boolean') {
@@ -155,7 +155,7 @@ function DetailsDisplay({ details }: { details: Record<string, unknown> | null }
 
             return (
               <span key={key} style={{ marginRight: 16 }}>
-                <span style={{ color: '#94a3b8' }}>{key}: </span>
+                <span style={{ color: 'var(--text-muted)' }}>{key}: </span>
                 <span>{String(displayValue)}</span>
               </span>
             );
@@ -180,7 +180,7 @@ function LogEntry({ log }: { log: AuditLog }) {
     <div
       style={{
         padding: '16px 20px',
-        borderBottom: '1px solid #f1f5f9',
+        borderBottom: '1px solid #f5f5f5',
         display: 'flex',
         alignItems: 'flex-start',
         gap: 16,
@@ -188,10 +188,10 @@ function LogEntry({ log }: { log: AuditLog }) {
     >
       {/* Time column */}
       <div style={{ width: 100, flexShrink: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: '#1e293b' }}>
+        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>
           {formatDate(log.createdAt)}
         </div>
-        <div style={{ fontSize: 12, color: '#94a3b8' }}>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
           {formatTime(log.createdAt)}
         </div>
       </div>
@@ -203,12 +203,12 @@ function LogEntry({ log }: { log: AuditLog }) {
         </div>
 
         {/* Who + Module + Target */}
-        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>
-          <span style={{ fontWeight: 500, color: '#475569' }}>Who:</span> {actorDisplay}
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
+          <span style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>Who:</span> {actorDisplay}
           {' · '}
-          <span style={{ fontWeight: 500, color: '#475569' }}>Module:</span> {moduleDisplay}
+          <span style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>Module:</span> {moduleDisplay}
           {' · '}
-          <span style={{ fontWeight: 500, color: '#475569' }}>Target:</span> {targetDisplay}
+          <span style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>Target:</span> {targetDisplay}
         </div>
 
         <DetailsDisplay details={log.details} />
@@ -217,7 +217,7 @@ function LogEntry({ log }: { log: AuditLog }) {
       {/* IP/Browser info (collapsed) */}
       <div style={{ width: 120, flexShrink: 0, textAlign: 'right' }}>
         {log.ipAddress && (
-          <div style={{ fontSize: 11, color: '#94a3b8' }} title={log.userAgent || ''}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)' }} title={log.userAgent || ''}>
             {log.ipAddress === '::1' || log.ipAddress === '127.0.0.1'
               ? 'Local'
               : log.ipAddress}
@@ -242,7 +242,7 @@ export default function ActivityPage() {
 
   if (!auth.me) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>
+      <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
         Please login to view activity log.
       </div>
     );
@@ -285,10 +285,10 @@ export default function ActivityPage() {
     >
       {/* Header */}
       <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, marginBottom: 8, color: '#1e293b' }}>
+        <h1 style={{ fontSize: 28, fontWeight: 700, fontFamily: 'var(--font-heading)', letterSpacing: '-0.025em', margin: 0, marginBottom: 8, color: 'var(--text-primary)' }}>
           Activity Log
         </h1>
-        <p style={{ color: '#64748b', margin: 0 }}>
+        <p style={{ color: 'var(--text-muted)', margin: 0 }}>
           View your recent activity and account history
         </p>
       </div>
@@ -296,7 +296,7 @@ export default function ActivityPage() {
       {/* Filters */}
       <div
         style={{
-          background: 'white',
+          background: 'var(--surface)',
           padding: 16,
           borderRadius: 12,
           boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
@@ -306,7 +306,7 @@ export default function ActivityPage() {
           gap: 16,
         }}
       >
-        <span style={{ fontSize: 13, color: '#64748b' }}>Filter:</span>
+        <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Filter:</span>
         <div style={{ display: 'flex', gap: 8 }}>
           {actionTypes.map((type) => (
             <button
@@ -317,9 +317,9 @@ export default function ActivityPage() {
                 fontSize: 13,
                 borderRadius: 6,
                 border: '1px solid',
-                borderColor: actionFilter === type.value ? '#3b82f6' : '#e2e8f0',
+                borderColor: actionFilter === type.value ? '#F43F5E' : '#e5e5e5',
                 background: actionFilter === type.value ? '#eff6ff' : 'white',
-                color: actionFilter === type.value ? '#3b82f6' : '#64748b',
+                color: actionFilter === type.value ? '#F43F5E' : '#737373',
                 cursor: 'pointer',
                 fontWeight: actionFilter === type.value ? 500 : 400,
               }}
@@ -338,9 +338,9 @@ export default function ActivityPage() {
             padding: '6px 12px',
             fontSize: 13,
             borderRadius: 6,
-            border: '1px solid #e2e8f0',
-            background: 'white',
-            color: '#64748b',
+            border: '1px solid var(--border)',
+            background: 'var(--surface)',
+            color: 'var(--text-muted)',
             cursor: auditLogs.loading ? 'not-allowed' : 'pointer',
           }}
         >
@@ -367,14 +367,14 @@ export default function ActivityPage() {
       {/* Activity List */}
       <div
         style={{
-          background: 'white',
+          background: 'var(--surface)',
           borderRadius: 12,
           boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
           overflow: 'hidden',
         }}
       >
         {auditLogs.logs.length === 0 && !auditLogs.loading ? (
-          <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>
+          <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>
             No activity found
           </div>
         ) : (
@@ -392,9 +392,9 @@ export default function ActivityPage() {
                     padding: '8px 24px',
                     fontSize: 13,
                     borderRadius: 6,
-                    border: '1px solid #e2e8f0',
-                    background: 'white',
-                    color: '#3b82f6',
+                    border: '1px solid var(--border)',
+                    background: 'var(--surface)',
+                    color: '#F43F5E',
                     cursor: auditLogs.loading ? 'not-allowed' : 'pointer',
                   }}
                 >

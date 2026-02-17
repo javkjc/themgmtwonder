@@ -260,3 +260,109 @@ Test Run:
 - `npm --prefix apps/api test -- --runInBand`
 - Result: 10 suites passed, 196 tests passed.
 
+---
+
+## Phase 3: DTO Layer ✅ COMPLETE (Pre-existing)
+
+6 DTO files created and integrated in `apps/api/src/baseline/dto/`:
+- `assign-baseline-field.dto.ts`
+- `create-baseline-table.dto.ts`
+- `confirm-table.dto.ts`
+- `delete-assignment.dto.ts`
+- `mark-reviewed.dto.ts`
+- `update-cell.dto.ts`
+
+Global exception filter exists at `apps/api/src/common/http-exception.filter.ts`.
+
+---
+
+## Phase 4: Web Shared Utilities ✅ COMPLETE
+
+- **Notification helpers** created at `apps/web/app/lib/notifications.ts`:
+  - `notify()`, `notifySuccess()`, `notifyError()`, `notifyInfo()` factory functions
+  - Simplifies `addNotification({id: Date.now().toString(), type, ...})` pattern
+- **styles.ts**: Skipped — codebase uses Tailwind CSS, inline style extraction unnecessary
+- **useModalStack**: Skipped — codebase uses individual boolean modal states, not a stack pattern
+
+---
+
+## Phase 5: UI Component Library ✅ COMPLETE (Pre-existing)
+
+Tailwind-based reusable components at `apps/web/app/components/ui/`:
+- `Button.tsx` — variant-based button with loading states
+- `Modal.tsx` — accessible modal with backdrop/close behavior
+- `Input.tsx` — form input with label/error support
+- `Card.tsx` — card container component
+- `index.ts` — barrel export
+
+Theme system at `apps/web/app/contexts/ThemeContext.tsx`.
+
+---
+
+## Phase 6: God Component Decomposition ✅ COMPLETE
+
+**Target**: `apps/web/app/attachments/[attachmentId]/review/page.tsx`
+**Before**: 2,120 lines, 56 useState hooks
+**After**: ~515 lines (76% reduction), thin orchestrator
+
+### Phase 6a: Type Definitions ✅
+Created `review/types.ts` with centralized type re-exports and custom types:
+- `ResetLocalField`, `CorrectionPendingAction`, `ValidationPendingAction`
+- `FieldChangeLogEntry`, `SidebarTab`, `MobileTab`
+
+### Phase 6b: Hook Extraction ✅ (5 hooks)
+All hooks in `review/hooks/`:
+
+1. **useReviewPageData.ts** — Auth, OCR data loading, baseline (auto-create draft), library fields, table suggestions, derived values (taskId, targetTaskId, fieldLabelMap)
+2. **useFieldAssignments.ts** — Field CRUD, correction modal, validation modal, field change log, accept/generate suggestions
+3. **useOcrFields.ts** — OCR field edit/create/delete/history, all related modal states
+4. **useTableManagement.ts** — Table CRUD, segment selection, table detection/suggestions, sidebar tab management
+5. **useBaselineActions.ts** — Mark reviewed (with validation checks), confirm baseline (with draft table checks, navigation)
+
+Barrel export: `review/hooks/index.ts`
+
+### Phase 6c: Component Extraction ✅
+Components in `review/components/`:
+
+1. **DocumentPreviewPanel.tsx** — PDF/image/Excel/Word preview with PdfDocumentViewer, error fallbacks
+2. **ChangeLogPanel.tsx** — Collapsible field change log sidebar with sorted entries and "Find" navigation
+
+Barrel export: `review/components/index.ts`
+
+### Phase 6d: Orchestrator Rewrite ✅
+- page.tsx now imports 5 hooks + 2 components
+- Retains `renderPanel2`, `renderPanel3`, `renderTableEditor` as local render functions (tightly coupled to multiple hook outputs)
+- Field change log audit history loading effect remains in page.tsx (cross-hook dependency)
+- Clear sectional organization: Notifications → Data → UI state → Hooks → Derived → Guards → Renderers → JSX
+
+---
+
+## Phase 7: Build & Test Verification ✅ COMPLETE
+
+### Web Build ✅
+```
+npm --prefix apps/web run build
+✓ Compiled successfully (Next.js 16.1.6 Turbopack)
+✓ TypeScript — no errors
+✓ Static pages generated (11/11)
+```
+
+### API Tests ✅
+```
+npm --prefix apps/api test -- --runInBand
+Test Suites: 11 passed, 11 total
+Tests:       198 passed, 198 total
+```
+
+**Test fix applied**: `baseline-assignments.service.spec.ts` had a pre-existing bug:
+- Missing `BaselineManagementService` mock provider (added)
+- `deleteAssignment` tests passed raw strings instead of `DeleteAssignmentDto` objects (fixed)
+
+---
+
+## Refactoring Plan: COMPLETE ✅
+
+All 7 phases finished. Summary of impact:
+- **API**: Centralized auth, typed services, DTO layer, 198 passing tests
+- **Web**: UI component library, notification helpers, god component decomposed (2,120 → 515 lines)
+- **Zero breaking changes**, zero build errors

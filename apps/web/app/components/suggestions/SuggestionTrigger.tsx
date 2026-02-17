@@ -66,8 +66,8 @@ export default function SuggestionTrigger({ disabled, onGenerate }: SuggestionTr
           padding: '6px 12px',
           borderRadius: 10,
           border: '1px solid #c7d2fe',
-          background: disabled ? '#e2e8f0' : '#eef2ff',
-          color: disabled ? '#94a3b8' : '#3730a3',
+          background: disabled ? '#e5e5e5' : '#eef2ff',
+          color: disabled ? '#a3a3a3' : '#3730a3',
           fontSize: 12,
           fontWeight: 700,
           cursor: disabled || status === 'loading' ? 'not-allowed' : 'pointer',
@@ -87,8 +87,8 @@ export default function SuggestionTrigger({ disabled, onGenerate }: SuggestionTr
             width: 220,
             padding: '10px 12px',
             borderRadius: 10,
-            background: '#0f172a',
-            color: '#e2e8f0',
+            background: '#111111',
+            color: '#e5e5e5',
             fontSize: 12,
             boxShadow: '0 12px 24px rgba(15, 23, 42, 0.25)',
             zIndex: 40,
@@ -103,8 +103,8 @@ export default function SuggestionTrigger({ disabled, onGenerate }: SuggestionTr
             style={{
               marginTop: 8,
               border: 'none',
-              background: '#e2e8f0',
-              color: '#0f172a',
+              background: '#e5e5e5',
+              color: 'var(--text-primary)',
               padding: '4px 8px',
               borderRadius: 6,
               fontSize: 11,
@@ -121,7 +121,7 @@ export default function SuggestionTrigger({ disabled, onGenerate }: SuggestionTr
         <div
           style={{
             fontSize: 11,
-            color: status === 'error' ? '#b91c1c' : '#475569',
+            color: status === 'error' ? '#b91c1c' : '#525252',
             maxWidth: 240,
             textAlign: 'right',
           }}

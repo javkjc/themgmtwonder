@@ -16,6 +16,7 @@ import { useTodos, type Filter, type ScheduleFilter, type SortDir, type DateFilt
 import { useModal, type ScheduleModalData, type ConfirmModalData } from './hooks/useModal';
 import { useScheduledEvents } from './hooks/useScheduledEvents';
 import { useSettings } from './hooks/useSettings';
+import { Button } from './components/ui/Button';
 
 export default function Home() {
   // Auth state
@@ -296,81 +297,98 @@ export default function Home() {
       <Layout currentPage="home" userEmail={auth.me.email} userRole={auth.me.role} isAdmin={auth.me.isAdmin} onLogout={auth.logout}>
         {/* Error Messages */}
         {error && (
-          <div style={{
-            background: '#fee2e2',
-            color: '#991b1b',
-            padding: 12,
-            borderRadius: 8,
-            marginBottom: 16,
-            fontSize: 14,
-          }}>
-            {error}
+          <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-md mb-6 flex items-start">
+            <svg className="w-5 h-5 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+            <span className="text-sm">{error}</span>
           </div>
         )}
 
         {/* Header Section */}
-        <div style={{ marginBottom: 32 }}>
-          <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, marginBottom: 8, color: '#1e293b' }}>
-            My Tasks
-          </h1>
-          <p style={{ color: '#64748b', margin: 0 }}>
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-2">
+            <h1 className="text-3xl font-tight font-bold tracking-tight">
+              My Tasks
+            </h1>
+            {todos.loading && (
+              <span className="text-sm text-mono-500 flex items-center">
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Refreshing...
+              </span>
+            )}
+          </div>
+          <p className="text-mono-500">
             Manage and organize your tasks efficiently
-            {todos.loading && <span style={{ marginLeft: 8, fontSize: 13, color: '#3b82f6' }}>(Refreshing...)</span>}
           </p>
         </div>
 
+        {/* Summary Cards */}
+        <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {[
+            { label: 'Total', value: summary.total },
+            { label: 'Active', value: summary.active },
+            { label: 'Completed', value: summary.completed },
+            { label: 'Scheduled', value: summary.scheduled },
+          ].map((item) => (
+            <div
+              key={item.label}
+              className="border border-mono-800 dark:border-mono-200 rounded-md p-6 transition-colors duration-150"
+            >
+              <div className="text-sm font-medium text-mono-500 mb-1">{item.label}</div>
+              <div className="text-4xl font-tight font-bold tracking-tight">{item.value}</div>
+            </div>
+          ))}
+        </div>
+
         {/* Controls Section */}
-        <div style={{
-          background: 'white',
-          padding: 24,
-          borderRadius: 12,
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-          marginBottom: 24,
-        }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            flexWrap: 'wrap',
-            marginBottom: 16,
-          }}>
-            <button
+        <div
+          className="rounded-md border p-6 mb-6"
+          style={{
+            background: 'var(--surface)',
+            borderColor: 'var(--border)',
+          }}
+        >
+          <div className="flex items-center justify-between gap-4 flex-wrap mb-6">
+            <Button
               type="button"
               onClick={() => createModal.open()}
               data-testid="task-create-open"
-              style={{
-                padding: '10px 18px',
-                background: '#2563eb',
-                color: 'white',
-                border: 'none',
-                borderRadius: 8,
-                fontSize: 14,
-                fontWeight: 700,
-                cursor: 'pointer',
-                boxShadow: '0 10px 25px rgba(37,99,235,0.2)',
-              }}
+              variant="primary"
+              size="md"
+              className="flex items-center gap-2"
             >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
               Create Task
-            </button>
+            </Button>
           </div>
 
           {/* Local Search */}
-          <div style={{ marginBottom: 16 }}>
-            <input
-              type="text"
-              placeholder="Filter tasks by title or ID..."
-              value={localSearch}
-              onChange={(e) => setLocalSearch(e.target.value)}
-              style={{
-                width: '100%',
-                maxWidth: 400,
-                padding: '10px 12px',
-                border: '1px solid #e2e8f0',
-                borderRadius: 6,
-                fontSize: 14,
-              }}
-            />
+          <div className="mb-6">
+            <div className="relative max-w-md">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg className="h-5 w-5 text-mono-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              <input
+                type="text"
+                placeholder="Search tasks by title or ID..."
+                value={localSearch}
+                onChange={(e) => setLocalSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 border rounded-md focus:ring-2 focus:ring-coral-500/40 focus:border-coral-500 transition-all placeholder:text-mono-600 dark:placeholder:text-mono-500"
+                style={{
+                  background: 'var(--surface)',
+                  color: 'var(--text-primary)',
+                  borderColor: 'var(--border)',
+                }}
+              />
+            </div>
           </div>
 
           <TaskFilters
@@ -385,31 +403,6 @@ export default function Home() {
             onDateFilterChange={setDateFilter}
             onCustomDateRangeChange={setCustomDateRange}
           />
-        </div>
-
-        {/* Summary Panel */}
-        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-          {[
-            { label: 'Total tasks', value: summary.total, gradient: 'from-violet-600 to-indigo-500' },
-            { label: 'Active', value: summary.active, gradient: 'from-blue-700 to-sky-500' },
-            { label: 'Completed', value: summary.completed, gradient: 'from-cyan-600 to-blue-500' },
-            { label: 'Scheduled', value: summary.scheduled, gradient: 'from-emerald-600 to-green-500' },
-          ].map((item) => (
-            <div
-              key={item.label}
-              className={[
-                'relative overflow-hidden rounded-2xl p-5 text-white shadow-sm',
-                'border border-white/10',
-                'bg-gradient-to-br',
-                item.gradient,
-              ].join(' ')}
-            >
-              <div className="text-sm font-medium text-white/80">{item.label}</div>
-              <div className="mt-2 text-4xl font-semibold tracking-tight">{item.value}</div>
-
-              <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/10" />
-            </div>
-          ))}
         </div>
 
         {/* Tasks Table */}

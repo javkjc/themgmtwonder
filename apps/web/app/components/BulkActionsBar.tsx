@@ -34,7 +34,7 @@ export default function BulkActionsBar({
       bottom: 24,
       left: '50%',
       transform: 'translateX(-50%)',
-      background: '#1e293b',
+      background: '#141414',
       color: 'white',
       padding: '12px 20px',
       borderRadius: 12,
@@ -93,7 +93,7 @@ export default function BulkActionsBar({
             onClick={() => setShowCategoryMenu(!showCategoryMenu)}
             style={{
               padding: '8px 12px',
-              background: '#3b82f6',
+              background: '#F43F5E',
               color: 'white',
               border: 'none',
               borderRadius: 6,
@@ -110,7 +110,7 @@ export default function BulkActionsBar({
               bottom: '100%',
               left: 0,
               marginBottom: 8,
-              background: 'white',
+              background: 'var(--surface)',
               borderRadius: 8,
               boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
               minWidth: 150,
@@ -127,15 +127,15 @@ export default function BulkActionsBar({
                   style={{
                     width: '100%',
                     padding: '10px 16px',
-                    background: 'white',
+                    background: 'var(--surface)',
                     border: 'none',
                     textAlign: 'left',
                     fontSize: 13,
-                    color: '#1e293b',
+                    color: 'var(--text-primary)',
                     cursor: 'pointer',
-                    borderBottom: '1px solid #f1f5f9',
+                    borderBottom: '1px solid #f5f5f5',
                   }}
-                  onMouseOver={(e) => { e.currentTarget.style.background = '#f8fafc'; }}
+                  onMouseOver={(e) => { e.currentTarget.style.background = '#fafafa'; }}
                   onMouseOut={(e) => { e.currentTarget.style.background = 'white'; }}
                 >
                   {cat}
@@ -149,14 +149,14 @@ export default function BulkActionsBar({
                 style={{
                   width: '100%',
                   padding: '10px 16px',
-                  background: 'white',
+                  background: 'var(--surface)',
                   border: 'none',
                   textAlign: 'left',
                   fontSize: 13,
-                  color: '#94a3b8',
+                  color: 'var(--text-muted)',
                   cursor: 'pointer',
                 }}
-                onMouseOver={(e) => { e.currentTarget.style.background = '#f8fafc'; }}
+                onMouseOver={(e) => { e.currentTarget.style.background = '#fafafa'; }}
                 onMouseOut={(e) => { e.currentTarget.style.background = 'white'; }}
               >
                 No Category

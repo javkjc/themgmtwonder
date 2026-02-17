@@ -55,7 +55,7 @@ export default function ValidationConfirmationModal({
             margin: '0 0 12px',
             fontSize: 20,
             fontWeight: 700,
-            color: '#0f172a',
+            color: 'var(--text-primary)',
           }}
         >
           Validation Warning
@@ -65,7 +65,7 @@ export default function ValidationConfirmationModal({
           style={{
             margin: '0 0 20px',
             fontSize: 14,
-            color: '#475569',
+            color: 'var(--text-secondary)',
             lineHeight: 1.6,
           }}
         >
@@ -109,7 +109,7 @@ export default function ValidationConfirmationModal({
           style={{
             margin: '0 0 20px',
             fontSize: 13,
-            color: '#64748b',
+            color: 'var(--text-muted)',
             lineHeight: 1.5,
           }}
         >
@@ -128,9 +128,9 @@ export default function ValidationConfirmationModal({
             style={{
               padding: '10px 16px',
               borderRadius: 10,
-              border: '1px solid #cbd5e1',
+              border: '1px solid #d4d4d4',
               background: '#ffffff',
-              color: '#475569',
+              color: 'var(--text-secondary)',
               fontSize: 14,
               fontWeight: 600,
               cursor: 'pointer',
@@ -165,7 +165,7 @@ export default function ValidationConfirmationModal({
               padding: '10px 16px',
               borderRadius: 10,
               border: 'none',
-              background: '#3b82f6',
+              background: '#F43F5E',
               color: '#ffffff',
               fontSize: 14,
               fontWeight: 600,

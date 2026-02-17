@@ -32,7 +32,7 @@ export default function CustomizationsPage() {
   // Edit/Add modal state
   const [editModal, setEditModal] = useState<{ category?: Category; isNew: boolean } | null>(null);
   const [modalName, setModalName] = useState('');
-  const [modalColor, setModalColor] = useState('#3b82f6');
+  const [modalColor, setModalColor] = useState('#F43F5E');
   const [saving, setSaving] = useState(false);
 
   // Delete confirmation
@@ -74,7 +74,7 @@ export default function CustomizationsPage() {
 
   // Predefined colors for quick selection
   const colorOptions = [
-    '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899',
+    '#F43F5E', '#F43F5E', '#10b981', '#f59e0b', '#ec4899',
     '#ef4444', '#06b6d4', '#84cc16', '#f97316', '#6b7280',
   ];
 
@@ -253,7 +253,7 @@ export default function CustomizationsPage() {
   const openAddModal = () => {
     setEditModal({ isNew: true });
     setModalName('');
-    setModalColor('#3b82f6');
+    setModalColor('#F43F5E');
   };
 
   const openEditModal = (category: Category) => {
@@ -265,7 +265,7 @@ export default function CustomizationsPage() {
   const closeModal = useCallback(() => {
     setEditModal(null);
     setModalName('');
-    setModalColor('#3b82f6');
+    setModalColor('#F43F5E');
   }, []);
 
   // ESC key handler for category edit modal
@@ -406,33 +406,33 @@ export default function CustomizationsPage() {
     <Layout currentPage="customizations" userEmail={me.email} userRole={me.role} isAdmin={me.isAdmin} onLogout={logout}>
       {/* Header */}
       <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, marginBottom: 8, color: '#1e293b' }}>
+        <h1 style={{ fontSize: 28, fontWeight: 700, fontFamily: 'var(--font-heading)', letterSpacing: '-0.025em', margin: 0, marginBottom: 8, color: 'var(--text-primary)' }}>
           Customizations
         </h1>
-        <p style={{ color: '#64748b', margin: 0 }}>
+        <p style={{ color: 'var(--text-muted)', margin: 0 }}>
           Manage your categories and preferences
         </p>
       </div>
 
       {/* Working Hours Section */}
       <div style={{
-        background: 'white',
+        background: 'var(--surface)',
         borderRadius: 12,
         boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
         padding: 24,
         marginBottom: 24,
       }}>
         <div style={{ marginBottom: 20 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: '#1e293b' }}>
+          <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
             Working Hours
           </h2>
-          <p style={{ fontSize: 13, color: '#64748b', margin: 0, marginTop: 4 }}>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0, marginTop: 4 }}>
             Set your availability for the calendar view
           </p>
         </div>
 
          {!settingsReady ? (
-            <div style={{ padding: 12, color: '#64748b', fontSize: 14 }}>
+            <div style={{ padding: 12, color: 'var(--text-muted)', fontSize: 14 }}>
               Loading settings…
             </div>
           ) : (
@@ -440,7 +440,7 @@ export default function CustomizationsPage() {
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24 }}>
                 {/* Time Range */}
                 <div>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8, color: '#475569' }}>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8, color: 'var(--text-secondary)' }}>
                     Hours
                   </label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -450,19 +450,19 @@ export default function CustomizationsPage() {
                       onChange={(e) => setWorkingHoursStart(e.target.value)}
                       style={{
                         padding: '8px 12px',
-                        border: '1px solid #e2e8f0',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
                         fontSize: 14,
                       }}
                     />
-                    <span style={{ color: '#64748b' }}>to</span>
+                    <span style={{ color: 'var(--text-muted)' }}>to</span>
                     <input
                       type="time"
                       value={workingHoursEnd}
                       onChange={(e) => setWorkingHoursEnd(e.target.value)}
                       style={{
                         padding: '8px 12px',
-                        border: '1px solid #e2e8f0',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
                         fontSize: 14,
                       }}
@@ -472,7 +472,7 @@ export default function CustomizationsPage() {
 
                 {/* Working Days */}
                 <div>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8, color: '#475569' }}>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8, color: 'var(--text-secondary)' }}>
                     Working Days
                   </label>
                   <div style={{ display: 'flex', gap: 4 }}>
@@ -486,9 +486,9 @@ export default function CustomizationsPage() {
                             width: 40,
                             height: 36,
                             borderRadius: 6,
-                            border: selected ? '2px solid #3b82f6' : '1px solid #e2e8f0',
+                            border: selected ? '2px solid #F43F5E' : '1px solid #e5e5e5',
                             background: selected ? '#eff6ff' : 'white',
-                            color: selected ? '#3b82f6' : '#64748b',
+                            color: selected ? '#F43F5E' : '#737373',
                             fontSize: 12,
                             fontWeight: 500,
                             cursor: 'pointer',
@@ -508,7 +508,7 @@ export default function CustomizationsPage() {
                 style={{
                   marginTop: 20,
                   padding: '10px 20px',
-                  background: savingSettings ? '#cbd5e1' : '#3b82f6',
+                  background: savingSettings ? '#d4d4d4' : '#F43F5E',
                   color: 'white',
                   border: 'none',
                   borderRadius: 6,
@@ -525,30 +525,30 @@ export default function CustomizationsPage() {
 
       {/* Duration Settings Section */}
       <div style={{
-        background: 'white',
+        background: 'var(--surface)',
         borderRadius: 12,
         boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
         padding: 24,
         marginBottom: 24,
       }}>
         <div style={{ marginBottom: 20 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: '#1e293b' }}>
+          <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
             Duration Settings
           </h2>
-          <p style={{ fontSize: 13, color: '#64748b', margin: 0, marginTop: 4 }}>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0, marginTop: 4 }}>
             Configure the minimum, maximum, and default duration for tasks (in minutes)
           </p>
         </div>
 
         {durationLoading ? (
-          <div style={{ padding: 12, color: '#64748b', fontSize: 14 }}>
+          <div style={{ padding: 12, color: 'var(--text-muted)', fontSize: 14 }}>
             Loading duration settings…
           </div>
         ) : (
           <>
             <div style={{ display: 'grid', gap: 16, maxWidth: 600 }}>
               <div>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8, color: '#475569' }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8, color: 'var(--text-secondary)' }}>
                   Minimum Duration (minutes)
                 </label>
                 <input
@@ -572,7 +572,7 @@ export default function CustomizationsPage() {
                   style={{
                     width: '100%',
                     padding: '8px 12px',
-                    border: '1px solid #e2e8f0',
+                    border: '1px solid var(--border)',
                     borderRadius: 6,
                     fontSize: 14,
                   }}
@@ -580,7 +580,7 @@ export default function CustomizationsPage() {
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8, color: '#475569' }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8, color: 'var(--text-secondary)' }}>
                   Maximum Duration (minutes)
                 </label>
                 <input
@@ -604,7 +604,7 @@ export default function CustomizationsPage() {
                   style={{
                     width: '100%',
                     padding: '8px 12px',
-                    border: '1px solid #e2e8f0',
+                    border: '1px solid var(--border)',
                     borderRadius: 6,
                     fontSize: 14,
                   }}
@@ -612,7 +612,7 @@ export default function CustomizationsPage() {
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8, color: '#475569' }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8, color: 'var(--text-secondary)' }}>
                   Default Duration (minutes)
                 </label>
                 <input
@@ -636,7 +636,7 @@ export default function CustomizationsPage() {
                   style={{
                     width: '100%',
                     padding: '8px 12px',
-                    border: '1px solid #e2e8f0',
+                    border: '1px solid var(--border)',
                     borderRadius: 6,
                     fontSize: 14,
                   }}
@@ -650,7 +650,7 @@ export default function CustomizationsPage() {
               style={{
                 marginTop: 20,
                 padding: '10px 20px',
-                background: savingDuration ? '#cbd5e1' : '#3b82f6',
+                background: savingDuration ? '#d4d4d4' : '#F43F5E',
                 color: 'white',
                 border: 'none',
                 borderRadius: 6,
@@ -667,17 +667,17 @@ export default function CustomizationsPage() {
 
       {/* Categories Section */}
       <div style={{
-        background: 'white',
+        background: 'var(--surface)',
         borderRadius: 12,
         boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
         padding: 24,
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div>
-            <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: '#1e293b' }}>
+            <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
               Categories
             </h2>
-            <p style={{ fontSize: 13, color: '#64748b', margin: 0, marginTop: 4 }}>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0, marginTop: 4 }}>
               Create and manage categories for your tasks
             </p>
           </div>
@@ -688,9 +688,9 @@ export default function CustomizationsPage() {
                 disabled={loadingCategories}
                 style={{
                   padding: '8px 16px',
-                  background: 'white',
-                  color: '#3b82f6',
-                  border: '1px solid #3b82f6',
+                  background: 'var(--surface)',
+                  color: '#F43F5E',
+                  border: '1px solid #F43F5E',
                   borderRadius: 6,
                   fontSize: 13,
                   fontWeight: 500,
@@ -705,7 +705,7 @@ export default function CustomizationsPage() {
               onClick={openAddModal}
               style={{
                 padding: '8px 16px',
-                background: '#3b82f6',
+                background: '#F43F5E',
                 color: 'white',
                 border: 'none',
                 borderRadius: 6,
@@ -721,9 +721,9 @@ export default function CustomizationsPage() {
 
         {/* Categories List */}
         {loadingCategories ? (
-          <div style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>Loading...</div>
+          <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>Loading...</div>
         ) : categories.length === 0 ? (
-          <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>
+          <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>
             <p style={{ margin: 0, marginBottom: 8 }}>No categories yet</p>
             <p style={{ margin: 0, fontSize: 13 }}>
               Click "Add Category" to create one, or "Use Defaults" to start with common categories.
@@ -739,7 +739,7 @@ export default function CustomizationsPage() {
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   padding: '12px 16px',
-                  background: '#f8fafc',
+                  background: 'var(--surface-secondary)',
                   borderRadius: 8,
                   borderLeft: `4px solid ${cat.color}`,
                 }}
@@ -753,16 +753,16 @@ export default function CustomizationsPage() {
                       background: cat.color,
                     }}
                   />
-                  <span style={{ fontSize: 14, fontWeight: 500, color: '#1e293b' }}>{cat.name}</span>
+                  <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>{cat.name}</span>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
                     onClick={() => openEditModal(cat)}
                     style={{
                       padding: '6px 12px',
-                      background: 'white',
-                      color: '#475569',
-                      border: '1px solid #e2e8f0',
+                      background: 'var(--surface)',
+                      color: 'var(--text-secondary)',
+                      border: '1px solid var(--border)',
                       borderRadius: 4,
                       fontSize: 12,
                       cursor: 'pointer',
@@ -803,19 +803,19 @@ export default function CustomizationsPage() {
           zIndex: 1000,
         }}>
           <div style={{
-            background: 'white',
+            background: 'var(--surface)',
             borderRadius: 12,
             padding: 24,
             width: '100%',
             maxWidth: 400,
             margin: 16,
           }}>
-            <h3 style={{ margin: 0, marginBottom: 20, color: '#1e293b' }}>
+            <h3 style={{ margin: 0, marginBottom: 20, color: 'var(--text-primary)' }}>
               {editModal.isNew ? 'Add Category' : 'Edit Category'}
             </h3>
 
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8, color: '#475569' }}>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8, color: 'var(--text-secondary)' }}>
                 Name
               </label>
               <input
@@ -826,7 +826,7 @@ export default function CustomizationsPage() {
                 style={{
                   width: '100%',
                   padding: '10px 14px',
-                  border: '1px solid #e2e8f0',
+                  border: '1px solid var(--border)',
                   borderRadius: 6,
                   fontSize: 14,
                   outline: 'none',
@@ -836,7 +836,7 @@ export default function CustomizationsPage() {
             </div>
 
             <div style={{ marginBottom: 20 }}>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8, color: '#475569' }}>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8, color: 'var(--text-secondary)' }}>
                 Color
               </label>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -849,7 +849,7 @@ export default function CustomizationsPage() {
                       height: 32,
                       borderRadius: 6,
                       background: color,
-                      border: modalColor === color ? '3px solid #1e293b' : '2px solid transparent',
+                      border: modalColor === color ? '3px solid #141414' : '2px solid transparent',
                       cursor: 'pointer',
                     }}
                   />
@@ -864,7 +864,7 @@ export default function CustomizationsPage() {
                     width: 40,
                     height: 32,
                     padding: 0,
-                    border: '1px solid #e2e8f0',
+                    border: '1px solid var(--border)',
                     borderRadius: 4,
                     cursor: 'pointer',
                   }}
@@ -873,11 +873,11 @@ export default function CustomizationsPage() {
                   type="text"
                   value={modalColor}
                   onChange={(e) => setModalColor(e.target.value)}
-                  placeholder="#3b82f6"
+                  placeholder="#F43F5E"
                   style={{
                     flex: 1,
                     padding: '8px 12px',
-                    border: '1px solid #e2e8f0',
+                    border: '1px solid var(--border)',
                     borderRadius: 4,
                     fontSize: 13,
                     fontFamily: 'monospace',
@@ -893,9 +893,9 @@ export default function CustomizationsPage() {
                 style={{
                   flex: 1,
                   padding: '10px 16px',
-                  background: 'white',
-                  color: '#475569',
-                  border: '1px solid #e2e8f0',
+                  background: 'var(--surface)',
+                  color: 'var(--text-secondary)',
+                  border: '1px solid var(--border)',
                   borderRadius: 6,
                   fontSize: 14,
                   cursor: saving ? 'not-allowed' : 'pointer',
@@ -909,7 +909,7 @@ export default function CustomizationsPage() {
                 style={{
                   flex: 1,
                   padding: '10px 16px',
-                  background: (saving || !modalName.trim()) ? '#cbd5e1' : '#3b82f6',
+                  background: (saving || !modalName.trim()) ? '#d4d4d4' : '#F43F5E',
                   color: 'white',
                   border: 'none',
                   borderRadius: 6,
@@ -936,15 +936,15 @@ export default function CustomizationsPage() {
           zIndex: 1000,
         }}>
           <div style={{
-            background: 'white',
+            background: 'var(--surface)',
             borderRadius: 12,
             padding: 24,
             width: '100%',
             maxWidth: 400,
             margin: 16,
           }}>
-            <h3 style={{ margin: 0, marginBottom: 16, color: '#1e293b' }}>Delete Category</h3>
-            <p style={{ margin: 0, marginBottom: 16, color: '#64748b', fontSize: 14 }}>
+            <h3 style={{ margin: 0, marginBottom: 16, color: 'var(--text-primary)' }}>Delete Category</h3>
+            <p style={{ margin: 0, marginBottom: 16, color: 'var(--text-muted)', fontSize: 14 }}>
               Are you sure you want to delete <strong>{deleteConfirm.name}</strong>?
             </p>
             <p style={{ margin: 0, marginBottom: 16, fontSize: 13, color: '#dc2626' }}>
@@ -957,9 +957,9 @@ export default function CustomizationsPage() {
                 style={{
                   flex: 1,
                   padding: '10px 16px',
-                  background: 'white',
-                  color: '#475569',
-                  border: '1px solid #e2e8f0',
+                  background: 'var(--surface)',
+                  color: 'var(--text-secondary)',
+                  border: '1px solid var(--border)',
                   borderRadius: 6,
                   fontSize: 14,
                   cursor: deleting ? 'not-allowed' : 'pointer',

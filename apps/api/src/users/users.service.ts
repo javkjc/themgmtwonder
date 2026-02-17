@@ -133,6 +133,15 @@ export class UsersService {
     return updated ?? null;
   }
 
+  async updateThemePreference(id: string, theme: 'light' | 'dark') {
+    const [updated] = await this.dbs.db
+      .update(users)
+      .set({ themePreference: theme })
+      .where(eq(users.id, id))
+      .returning();
+    return updated ?? null;
+  }
+
   async findAll() {
     return this.dbs.db.query.users.findMany({
       columns: {

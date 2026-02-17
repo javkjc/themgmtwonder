@@ -13,7 +13,7 @@ interface ExtractedTextPoolProps {
 }
 
 const getConfidenceColor = (confidenceValue: string | null) => {
-    if (!confidenceValue) return '#64748b'; // Gray for null
+    if (!confidenceValue) return '#737373'; // Gray for null
     const conf = parseFloat(confidenceValue);
     if (conf >= 0.80) return '#166534'; // Green
     if (conf >= 0.60) return '#854d0e'; // Yellow/Orange
@@ -21,7 +21,7 @@ const getConfidenceColor = (confidenceValue: string | null) => {
 };
 
 const getConfidenceBg = (confidenceValue: string | null) => {
-    if (!confidenceValue) return '#f1f5f9';
+    if (!confidenceValue) return '#f5f5f5';
     const conf = parseFloat(confidenceValue);
     if (conf >= 0.80) return '#dcfce7';
     if (conf >= 0.60) return '#fef9c3';
@@ -63,7 +63,7 @@ export default function ExtractedTextPool({
 
     if (!segments || segments.length === 0) {
         return (
-            <div style={{ padding: 20, color: '#64748b', textAlign: 'center', fontSize: 14 }}>
+            <div style={{ padding: 20, color: 'var(--text-muted)', textAlign: 'center', fontSize: 14 }}>
                 No extracted text segments available.
             </div>
         );
@@ -74,14 +74,14 @@ export default function ExtractedTextPool({
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, padding: '0 8px' }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Extracted Text Pools
                 </span>
                 {onSelectAll && (
                     <button
                         onClick={() => onSelectAll(!allSelected)}
                         style={{
-                            fontSize: 12, fontWeight: 600, color: '#2563eb',
+                            fontSize: 12, fontWeight: 600, color: '#E11D48',
                             background: 'none', border: 'none', cursor: 'pointer',
                             padding: '4px 8px', borderRadius: 6, transition: 'background 0.2s'
                         }}
@@ -108,7 +108,7 @@ export default function ExtractedTextPool({
                         style={{
                             padding: '12px 16px',
                             borderRadius: 12,
-                            border: `2px solid ${isSelected ? '#3b82f6' : '#e2e8f0'}`,
+                            border: `2px solid ${isSelected ? '#F43F5E' : '#e5e5e5'}`,
                             background: isSelected ? '#eff6ff' : '#ffffff',
                             cursor: 'default',
                             transition: 'all 0.2s',
@@ -128,8 +128,8 @@ export default function ExtractedTextPool({
                                             width: 18,
                                             height: 18,
                                             borderRadius: 4,
-                                            border: `2px solid ${isSelected ? '#2563eb' : '#cbd5e1'}`,
-                                            background: isSelected ? '#2563eb' : '#ffffff',
+                                            border: `2px solid ${isSelected ? '#E11D48' : '#d4d4d4'}`,
+                                            background: isSelected ? '#E11D48' : '#ffffff',
                                             cursor: 'pointer',
                                             display: 'flex',
                                             alignItems: 'center',
@@ -161,7 +161,7 @@ export default function ExtractedTextPool({
                                 )}
                             </div>
                             {segment.pageNumber !== null && (
-                                <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 500 }}>
+                                <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>
                                     Page {segment.pageNumber}
                                 </span>
                             )}
@@ -170,7 +170,7 @@ export default function ExtractedTextPool({
                             onClick={() => toggleExpand(segment.id)}
                             style={{
                                 fontSize: 13,
-                                color: '#1e293b',
+                                color: 'var(--text-primary)',
                                 lineHeight: 1.5,
                                 wordBreak: 'break-word',
                                 whiteSpace: 'pre-wrap',
@@ -182,7 +182,7 @@ export default function ExtractedTextPool({
                         {shouldTruncate && (
                             <div
                                 onClick={() => toggleExpand(segment.id)}
-                                style={{ marginTop: 4, fontSize: 11, color: '#2563eb', fontWeight: 600, cursor: 'pointer' }}
+                                style={{ marginTop: 4, fontSize: 11, color: '#E11D48', fontWeight: 600, cursor: 'pointer' }}
                             >
                                 {isExpanded ? 'Show less' : 'Show more'}
                             </div>

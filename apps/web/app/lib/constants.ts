@@ -9,16 +9,16 @@ export type Category = typeof CATEGORIES[number];
 
 // Category colors for calendar events
 export const CATEGORY_COLORS: Record<string, string> = {
-  Work: '#3b82f6',      // blue
-  Personal: '#8b5cf6',  // purple
+  Work: '#F43F5E',      // coral
+  Personal: '#F43F5E',  // coral
   Health: '#10b981',    // green
   Finance: '#f59e0b',   // amber
   Learning: '#ec4899',  // pink
-  Other: '#6b7280',     // gray
+  Other: '#737373',     // gray
 };
 
 // Default color for events without category
-export const DEFAULT_EVENT_COLOR = '#3b82f6';
+export const DEFAULT_EVENT_COLOR = '#F43F5E';
 
 // Task stage definitions
 export const TASK_STAGE_KEYS = ['backlog', 'in_progress', 'blocked', 'done'] as const;

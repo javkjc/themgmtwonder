@@ -6,6 +6,7 @@ import {
   Get,
   Req,
   UseGuards,
+  Patch,
 } from '@nestjs/common';
 import type { Response, Request } from 'express';
 import { AuthService } from './auth.service';
@@ -161,11 +162,20 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard, CsrfGuard)
   @Get('me')
-  me(@Req() req: any, @Res({ passthrough: true }) res: Response) {
+  async me(@Req() req: any, @Res({ passthrough: true }) res: Response) {
     if (!req.cookies?.[CSRF_COOKIE_NAME]) {
       setCsrfCookie(res, createCsrfToken());
     }
-    return req.user; // { userId, email }
+    // Fetch user theme preference from database
+    const userWithTheme = await this.auth.getUserWithTheme(req.user.userId);
+    return { ...req.user, themePreference: userWithTheme?.themePreference || 'light' };
+  }
+
+  @UseGuards(JwtAuthGuard, CsrfGuard)
+  @Patch('theme')
+  async updateTheme(@Req() req: any, @Body() body: { theme: 'light' | 'dark' }) {
+    await this.auth.updateThemePreference(req.user.userId, body.theme);
+    return { ok: true, theme: body.theme };
   }
 
   private setAuthCookie(res: Response, token: string) {

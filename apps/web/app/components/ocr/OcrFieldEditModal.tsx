@@ -73,7 +73,7 @@ export default function OcrFieldEditModal({
           width: '100%',
           maxWidth: 540,
           borderRadius: 16,
-          background: 'white',
+          background: 'var(--surface)',
           padding: 24,
           boxShadow: '0 20px 80px rgba(15,23,42,0.25)',
         }}
@@ -81,15 +81,15 @@ export default function OcrFieldEditModal({
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>
           Edit {field.fieldName.replace(/_/g, ' ')}
         </h2>
-        <p style={{ color: '#475569', marginTop: 8, fontSize: 13 }}>
+        <p style={{ color: 'var(--text-secondary)', marginTop: 8, fontSize: 13 }}>
           Confidence{' '}
           {typeof field.confidence === 'number'
             ? `${(field.confidence * 100).toFixed(0)}%`
             : 'Unknown'}
         </p>
-        <div style={{ marginTop: 16, fontSize: 13, color: '#0f172a' }}>
+        <div style={{ marginTop: 16, fontSize: 13, color: 'var(--text-primary)' }}>
           <div style={{ marginBottom: 4, fontWeight: 600 }}>Current value</div>
-          <div style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc' }}>
+          <div style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-secondary)' }}>
             {field.currentValue || 'None'}
           </div>
         </div>
@@ -109,7 +109,7 @@ export default function OcrFieldEditModal({
             style={{
               width: '100%',
               borderRadius: 10,
-              border: '1px solid #e2e8f0',
+              border: '1px solid var(--border)',
               padding: 10,
               fontSize: 14,
               resize: 'vertical',
@@ -125,9 +125,9 @@ export default function OcrFieldEditModal({
                 fontSize: 11,
                 padding: '4px 10px',
                 borderRadius: 6,
-                border: '1px solid #e2e8f0',
-                background: '#f8fafc',
-                color: '#64748b',
+                border: '1px solid var(--border)',
+                background: 'var(--surface-secondary)',
+                color: 'var(--text-muted)',
                 fontWeight: 600,
                 cursor: isSaving || !correctedValue ? 'not-allowed' : 'pointer',
               }}
@@ -142,9 +142,9 @@ export default function OcrFieldEditModal({
                 fontSize: 11,
                 padding: '4px 10px',
                 borderRadius: 6,
-                border: '1px solid #e2e8f0',
-                background: '#f8fafc',
-                color: '#64748b',
+                border: '1px solid var(--border)',
+                background: 'var(--surface-secondary)',
+                color: 'var(--text-muted)',
                 fontWeight: 600,
                 cursor: isSaving || !correctedValue ? 'not-allowed' : 'pointer',
               }}
@@ -166,9 +166,9 @@ export default function OcrFieldEditModal({
                 fontSize: 11,
                 padding: '4px 10px',
                 borderRadius: 6,
-                border: '1px solid #e2e8f0',
-                background: '#f8fafc',
-                color: '#64748b',
+                border: '1px solid var(--border)',
+                background: 'var(--surface-secondary)',
+                color: 'var(--text-muted)',
                 fontWeight: 600,
                 cursor: isSaving || !correctedValue ? 'not-allowed' : 'pointer',
               }}
@@ -203,7 +203,7 @@ export default function OcrFieldEditModal({
                     borderRadius: 6,
                     border: 'none',
                     background: 'transparent',
-                    color: '#64748b',
+                    color: 'var(--text-muted)',
                     fontSize: 11,
                     fontWeight: 600,
                     cursor: 'pointer',
@@ -224,7 +224,7 @@ export default function OcrFieldEditModal({
                     padding: '4px 12px',
                     borderRadius: 6,
                     border: 'none',
-                    background: previewValue === 'Invalid Date' ? '#94a3b8' : '#0284c7',
+                    background: previewValue === 'Invalid Date' ? '#a3a3a3' : '#0284c7',
                     color: 'white',
                     fontSize: 11,
                     fontWeight: 700,
@@ -255,7 +255,7 @@ export default function OcrFieldEditModal({
             style={{
               width: '100%',
               borderRadius: 10,
-              border: '1px solid #e2e8f0',
+              border: '1px solid var(--border)',
               padding: 10,
               fontSize: 14,
               resize: 'vertical',
@@ -278,9 +278,9 @@ export default function OcrFieldEditModal({
             style={{
               padding: '10px 18px',
               borderRadius: 8,
-              border: '1px solid #e2e8f0',
-              background: 'white',
-              color: '#475569',
+              border: '1px solid var(--border)',
+              background: 'var(--surface)',
+              color: 'var(--text-secondary)',
               cursor: 'pointer',
             }}
           >
@@ -294,7 +294,7 @@ export default function OcrFieldEditModal({
               padding: '10px 18px',
               borderRadius: 8,
               border: 'none',
-              background: '#2563eb',
+              background: '#E11D48',
               color: 'white',
               fontWeight: 600,
               cursor: isSaving || !correctedValue.trim() || !correctionReason.trim() ? 'not-allowed' : 'pointer',

@@ -13,16 +13,16 @@ export const DEFAULT_CATEGORIES = ['Work', 'Personal', 'Health', 'Finance', 'Lea
 
 // Default category colors
 export const DEFAULT_CATEGORY_COLORS: Record<string, string> = {
-  Work: '#3b82f6',      // blue
-  Personal: '#8b5cf6',  // purple
+  Work: '#F43F5E',      // coral
+  Personal: '#FB7185',  // coral light
   Health: '#10b981',    // green
   Finance: '#f59e0b',   // amber
   Learning: '#ec4899',  // pink
-  Other: '#6b7280',     // gray
+  Other: '#737373',     // gray
 };
 
 // Default color for uncategorized items
-export const DEFAULT_COLOR = '#3b82f6';
+export const DEFAULT_COLOR = '#F43F5E';
 
 export type CategoryItem = {
   name: string;

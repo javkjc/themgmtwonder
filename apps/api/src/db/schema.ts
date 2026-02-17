@@ -28,6 +28,7 @@ export const users = pgTable('users', {
   failedLoginAttempts: integer('failed_login_attempts').default(0).notNull(),
   lockUntil: timestamp('lock_until'),
   mustChangePassword: boolean('must_change_password').default(false).notNull(),
+  themePreference: text('theme_preference').default('light').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

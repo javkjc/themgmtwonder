@@ -65,17 +65,17 @@ export default function CorrectionReasonModal({
                 }}
                 onClick={(e) => e.stopPropagation()}
             >
-                <h3 style={{ margin: '0 0 12px', fontSize: 20, fontWeight: 800, color: '#0f172a' }}>
+                <h3 style={{ margin: '0 0 12px', fontSize: 20, fontWeight: 800, color: 'var(--text-primary)' }}>
                     {title}
                 </h3>
-                <p style={{ margin: '0 0 24px', fontSize: 15, color: '#475569', lineHeight: 1.6 }}>
+                <p style={{ margin: '0 0 24px', fontSize: 15, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
                     {message}
                 </p>
 
                 <div style={{ marginBottom: 24 }}>
                     <label
                         htmlFor="correction-reason"
-                        style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#1e293b', marginBottom: 8 }}
+                        style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}
                     >
                         Correction Reason
                     </label>
@@ -92,9 +92,9 @@ export default function CorrectionReasonModal({
                             minHeight: 120,
                             padding: '12px 16px',
                             borderRadius: 12,
-                            border: `1px solid ${error ? '#ef4444' : '#cbd5e1'}`,
+                            border: `1px solid ${error ? '#ef4444' : '#d4d4d4'}`,
                             fontSize: 14,
-                            color: '#1e293b',
+                            color: 'var(--text-primary)',
                             outline: 'none',
                             resize: 'vertical',
                             transition: 'all 0.2s',
@@ -109,9 +109,9 @@ export default function CorrectionReasonModal({
                         style={{
                             padding: '12px 24px',
                             borderRadius: 12,
-                            background: '#f1f5f9',
+                            background: '#f5f5f5',
                             border: 'none',
-                            color: '#475569',
+                            color: 'var(--text-secondary)',
                             fontSize: 14,
                             fontWeight: 700,
                             cursor: 'pointer',
@@ -125,7 +125,7 @@ export default function CorrectionReasonModal({
                         style={{
                             padding: '12px 24px',
                             borderRadius: 12,
-                            background: '#2563eb',
+                            background: '#E11D48',
                             border: 'none',
                             color: '#ffffff',
                             fontSize: 14,

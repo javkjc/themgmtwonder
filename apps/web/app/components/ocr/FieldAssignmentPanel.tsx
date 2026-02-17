@@ -67,7 +67,7 @@ export default function FieldAssignmentPanel({
                         style={{
                             padding: '16px',
                             borderRadius: 16,
-                            border: '1px solid #e2e8f0',
+                            border: '1px solid var(--border)',
                             background: '#ffffff',
                             transition: 'all 0.2s',
                             boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
@@ -76,10 +76,10 @@ export default function FieldAssignmentPanel({
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                             <label
                                 htmlFor={`field-${field.fieldKey}`}
-                                style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}
+                                style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}
                             >
                                 {field.label}
-                                <span style={{ fontSize: 10, fontWeight: 500, color: '#94a3b8', textTransform: 'uppercase', background: '#f1f5f9', padding: '2px 6px', borderRadius: 4 }}>
+                                <span style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-muted)', textTransform: 'uppercase', background: '#f5f5f5', padding: '2px 6px', borderRadius: 4 }}>
                                     {field.characterType}
                                 </span>
                             </label>
@@ -113,10 +113,10 @@ export default function FieldAssignmentPanel({
                                     width: '100%',
                                     padding: '10px 12px',
                                     borderRadius: 10,
-                                    border: '1px solid #cbd5e1',
+                                    border: '1px solid #d4d4d4',
                                     fontSize: 14,
-                                    color: '#1e293b',
-                                    background: isReadOnly ? '#f8fafc' : '#ffffff',
+                                    color: 'var(--text-primary)',
+                                    background: isReadOnly ? '#fafafa' : '#ffffff',
                                     outline: 'none',
                                     transition: 'border-color 0.2s',
                                 }}
@@ -126,7 +126,7 @@ export default function FieldAssignmentPanel({
                                     style={{
                                         marginTop: 6,
                                         fontSize: 11,
-                                        color: '#64748b',
+                                        color: 'var(--text-muted)',
                                         display: 'flex',
                                         alignItems: 'center',
                                         gap: 4,
@@ -137,7 +137,7 @@ export default function FieldAssignmentPanel({
                             )}
                         </div>
                         {assignment?.correctionReason && (
-                            <div style={{ marginTop: 8, fontSize: 11, color: '#64748b', fontStyle: 'italic', background: '#f8fafc', padding: '4px 8px', borderRadius: 6 }}>
+                            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic', background: 'var(--surface-secondary)', padding: '4px 8px', borderRadius: 6 }}>
                                 Reason: {assignment.correctionReason}
                             </div>
                         )}

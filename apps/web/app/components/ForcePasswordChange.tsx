@@ -59,38 +59,38 @@ export default function ForcePasswordChange({ email, onChangePassword, error }: 
   const displayError = localError || error;
 
   return (
-    <div className="fixed inset-0 bg-gray-900 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-md mx-4">
+    <div className="fixed inset-0 bg-mono-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-md p-8 w-full max-w-md mx-4">
         <div className="text-center mb-6">
           <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900">Password Change Required</h2>
-          <p className="text-gray-600 mt-2">
+          <h2 className="text-2xl font-bold text-mono-50">Password Change Required</h2>
+          <p className="text-mono-500 mt-2">
             Your account has a temporary password. Please change it to continue.
           </p>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm text-mono-9500 mt-1">
             Logged in as: <span className="font-medium">{email}</span>
           </p>
         </div>
 
         {success ? (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+          <div className="bg-green-50 border border-green-200 rounded-md p-4 text-center">
             <p className="text-green-800 font-medium">Password changed successfully!</p>
             <p className="text-green-600 text-sm mt-1">Redirecting to login...</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             {displayError && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+              <div className="bg-red-50 border border-red-200 rounded-md p-3">
                 <p className="text-red-700 text-sm">{displayError}</p>
               </div>
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-mono-400 mb-1">
                 Current Password (Temporary)
               </label>
               <input
@@ -98,14 +98,14 @@ export default function ForcePasswordChange({ email, onChangePassword, error }: 
                 data-testid="forcepw-current"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-mono-700 rounded-md focus:ring-2 focus:ring-coral-500 focus:border-coral-500"
                 placeholder="Enter temporary password"
                 disabled={loading}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-mono-400 mb-1">
                 New Password
               </label>
               <input
@@ -113,21 +113,21 @@ export default function ForcePasswordChange({ email, onChangePassword, error }: 
                 data-testid="forcepw-new"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-mono-700 rounded-md focus:ring-2 focus:ring-coral-500 focus:border-coral-500"
                 placeholder="Enter new password (min 8 characters)"
                 disabled={loading}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-mono-400 mb-1">
                 Confirm New Password
               </label>
               <input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-mono-700 rounded-md focus:ring-2 focus:ring-coral-500 focus:border-coral-500"
                 placeholder="Re-enter new password"
                 disabled={loading}
               />
@@ -137,7 +137,7 @@ export default function ForcePasswordChange({ email, onChangePassword, error }: 
               type="submit"
               disabled={loading}
               data-testid="forcepw-submit"
-              className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="w-full bg-coral-600 text-white py-2 px-4 rounded-md font-medium hover:bg-coral-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {loading ? 'Changing Password...' : 'Change Password'}
             </button>

@@ -144,7 +144,7 @@ export default function ScheduleModal({
     >
       <div
         style={{
-          background: 'white',
+          background: 'var(--surface)',
           padding: 24,
           borderRadius: 12,
           maxWidth: 450,
@@ -157,7 +157,7 @@ export default function ScheduleModal({
 
         {suggestedSlots.length > 0 && (
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', marginBottom: 8, fontWeight: 500, fontSize: 13, color: '#475569' }}>
+            <label style={{ display: 'block', marginBottom: 8, fontWeight: 500, fontSize: 13, color: 'var(--text-secondary)' }}>
               Suggested Available Times:
             </label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -169,11 +169,11 @@ export default function ScheduleModal({
                   style={{
                     padding: '6px 12px',
                     borderRadius: 6,
-                    border: '1px solid #e2e8f0',
-                    background: '#f8fafc',
+                    border: '1px solid var(--border)',
+                    background: 'var(--surface-secondary)',
                     cursor: 'pointer',
                     fontSize: 13,
-                    color: '#334155',
+                    color: '#262626',
                     transition: 'all 0.15s ease',
                   }}
                   onMouseEnter={(e) => {
@@ -181,8 +181,8 @@ export default function ScheduleModal({
                     e.currentTarget.style.borderColor = '#0070f3';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = '#f8fafc';
-                    e.currentTarget.style.borderColor = '#e2e8f0';
+                    e.currentTarget.style.background = '#fafafa';
+                    e.currentTarget.style.borderColor = '#e5e5e5';
                   }}
                 >
                   {slot.label}
@@ -268,7 +268,7 @@ export default function ScheduleModal({
               <div style={{
                 marginTop: 4,
                 fontSize: 11,
-                color: description.length > 450 ? '#f59e0b' : '#94a3b8',
+                color: description.length > 450 ? '#f59e0b' : '#a3a3a3',
                 textAlign: 'right',
               }}>
                 {description.length}/500 characters
@@ -291,7 +291,7 @@ export default function ScheduleModal({
                 padding: '8px 16px',
                 borderRadius: 4,
                 border: '1px solid #ccc',
-                background: 'white',
+                background: 'var(--surface)',
                 cursor: saving ? 'not-allowed' : 'pointer',
                 opacity: saving ? 0.6 : 1,
               }}

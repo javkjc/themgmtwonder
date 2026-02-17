@@ -143,6 +143,14 @@ export class AuthService {
     return { ok: true };
   }
 
+  async getUserWithTheme(userId: string) {
+    return await this.users.findById(userId);
+  }
+
+  async updateThemePreference(userId: string, theme: 'light' | 'dark') {
+    await this.users.updateThemePreference(userId, theme);
+  }
+
   sign(userId: string, email: string) {
     const payload = { sub: userId, email };
     const token = this.jwt.sign(payload);

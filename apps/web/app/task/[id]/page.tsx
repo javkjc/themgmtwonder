@@ -80,7 +80,7 @@ const STAGE_LABELS: Record<TaskStageKey, string> = {
 
 const STAGE_BADGE_STYLES: Record<TaskStageKey, { backgroundColor: string; color: string }> = {
   backlog: { backgroundColor: '#eef2ff', color: '#312e81' },
-  in_progress: { backgroundColor: '#dbeafe', color: '#1d4ed8' },
+  in_progress: { backgroundColor: '#dbeafe', color: '#BE123C' },
   blocked: { backgroundColor: '#fef3c7', color: '#92400e' },
   done: { backgroundColor: '#dcfce7', color: '#166534' },
 };
@@ -1298,11 +1298,11 @@ export default function TaskDetailsPage() {
       case 'confirmed':
         return { label: 'Confirmed', color: '#16a34a' };
       case 'archived':
-        return { label: 'Archived', color: '#475569' };
+        return { label: 'Archived', color: 'var(--text-secondary)' };
       case 'draft':
-        return { label: 'Draft', color: '#2563eb' };
+        return { label: 'Draft', color: '#E11D48' };
       default:
-        return { label: status ? status : 'Extraction', color: '#64748b' };
+        return { label: status ? status : 'Extraction', color: 'var(--text-muted)' };
     }
   };
 
@@ -1353,7 +1353,7 @@ export default function TaskDetailsPage() {
           padding: '8px 0',
           background: 'none',
           border: 'none',
-          color: '#64748b',
+          color: 'var(--text-muted)',
           fontSize: 14,
           cursor: 'pointer',
           marginBottom: 16,
@@ -1363,14 +1363,14 @@ export default function TaskDetailsPage() {
       </button>
 
       {loading ? (
-        <div style={{ color: '#64748b' }}>Loading...</div>
+        <div style={{ color: 'var(--text-muted)' }}>Loading...</div>
       ) : error ? (
         <div style={{ color: '#dc2626' }}>{error}</div>
       ) : task ? (
         <div style={{ width: '100%' }}>
           {/* Task Header */}
           <div style={{
-            background: 'white',
+            background: 'var(--surface)',
             borderRadius: 12,
             padding: 24,
             boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
@@ -1391,7 +1391,7 @@ export default function TaskDetailsPage() {
                       width: '100%',
                       padding: '10px 12px',
                       borderRadius: 6,
-                      border: '1px solid #e2e8f0',
+                      border: '1px solid var(--border)',
                       fontSize: 16,
                       boxSizing: 'border-box',
                     }}
@@ -1408,10 +1408,10 @@ export default function TaskDetailsPage() {
                       width: '100%',
                       padding: '10px 12px',
                       borderRadius: 6,
-                      border: '1px solid #e2e8f0',
+                      border: '1px solid var(--border)',
                       fontSize: 14,
                       boxSizing: 'border-box',
-                      background: 'white',
+                      background: 'var(--surface)',
                     }}
                   >
                     <option value="">No category</option>
@@ -1459,7 +1459,7 @@ export default function TaskDetailsPage() {
                         width: '100%',
                         padding: '10px 12px',
                         borderRadius: 6,
-                        border: '1px solid #e2e8f0',
+                        border: '1px solid var(--border)',
                         fontSize: 14,
                         boxSizing: 'border-box',
                       }}
@@ -1493,7 +1493,7 @@ export default function TaskDetailsPage() {
                       width: '100%',
                       padding: '10px 12px',
                       borderRadius: 6,
-                      border: '1px solid #e2e8f0',
+                      border: '1px solid var(--border)',
                       fontSize: 14,
                       resize: 'vertical',
                       boxSizing: 'border-box',
@@ -1503,7 +1503,7 @@ export default function TaskDetailsPage() {
                   <div style={{
                     marginTop: 4,
                     fontSize: 12,
-                    color: editDescription.length > 450 ? '#f59e0b' : '#94a3b8',
+                    color: editDescription.length > 450 ? '#f59e0b' : '#a3a3a3',
                     textAlign: 'right',
                   }}>
                     {editDescription.length}/500 characters
@@ -1518,7 +1518,7 @@ export default function TaskDetailsPage() {
                       padding: '8px 16px',
                       borderRadius: 6,
                       border: 'none',
-                      background: '#3b82f6',
+                      background: '#F43F5E',
                       color: 'white',
                       cursor: saving ? 'not-allowed' : 'pointer',
                       opacity: saving ? 0.6 : 1,
@@ -1539,8 +1539,8 @@ export default function TaskDetailsPage() {
                     style={{
                       padding: '8px 16px',
                       borderRadius: 6,
-                      border: '1px solid #e2e8f0',
-                      background: 'white',
+                      border: '1px solid var(--border)',
+                      background: 'var(--surface)',
                       cursor: 'pointer',
                     }}
                   >
@@ -1568,7 +1568,7 @@ export default function TaskDetailsPage() {
                         fontWeight: 600,
                         margin: 0,
                         textDecoration: task.done ? 'line-through' : 'none',
-                        color: task.done ? '#94a3b8' : '#1e293b',
+                        color: task.done ? '#a3a3a3' : '#141414',
                       }}>
                         {task.title}
                       </h1>
@@ -1594,8 +1594,8 @@ export default function TaskDetailsPage() {
                       style={{
                         padding: '8px 12px',
                         borderRadius: 6,
-                        border: '1px solid #e2e8f0',
-                        background: 'white',
+                        border: '1px solid var(--border)',
+                        background: 'var(--surface)',
                         cursor: 'pointer',
                         fontSize: 13,
                       }}
@@ -1608,8 +1608,8 @@ export default function TaskDetailsPage() {
                         style={{
                           padding: '8px 12px',
                           borderRadius: 6,
-                          border: '1px solid #e2e8f0',
-                          background: 'white',
+                          border: '1px solid var(--border)',
+                          background: 'var(--surface)',
                           cursor: 'pointer',
                           fontSize: 13,
                         }}
@@ -1624,8 +1624,8 @@ export default function TaskDetailsPage() {
                           padding: '8px 12px',
                           borderRadius: 6,
                           border: 'none',
-                          background: '#cbd5e1',
-                          color: '#94a3b8',
+                          background: '#d4d4d4',
+                          color: 'var(--text-muted)',
                           cursor: 'not-allowed',
                           fontSize: 13,
                         }}
@@ -1639,7 +1639,7 @@ export default function TaskDetailsPage() {
                           padding: '8px 12px',
                           borderRadius: 6,
                           border: 'none',
-                          background: '#8b5cf6',
+                          background: '#F43F5E',
                           color: 'white',
                           cursor: 'pointer',
                           fontSize: 13,
@@ -1682,16 +1682,16 @@ export default function TaskDetailsPage() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       {renderStageBadge(currentStageKey)}
-                      <span style={{ fontSize: 13, color: '#475569', fontWeight: 500 }}>
+                      <span style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>
                         {STAGE_LABELS[currentStageKey]}
                       </span>
                     </div>
-                    <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                       Stage changes are manual and informational.
                     </span>
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-                    <label htmlFor="stage-selector" style={{ fontSize: 12, fontWeight: 500, color: '#475569' }}>
+                    <label htmlFor="stage-selector" style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)' }}>
                       Stage
                     </label>
                     <select
@@ -1702,9 +1702,9 @@ export default function TaskDetailsPage() {
                       style={{
                         padding: '6px 10px',
                         borderRadius: 6,
-                        border: '1px solid #e2e8f0',
+                        border: '1px solid var(--border)',
                         fontSize: 13,
-                        background: 'white',
+                        background: 'var(--surface)',
                         minWidth: 160,
                       }}
                     >
@@ -1729,8 +1729,8 @@ export default function TaskDetailsPage() {
                         border: 'none',
                         background:
                           stageSaving || !task || selectedStage === currentStageKey
-                            ? '#94a3b8'
-                            : '#2563eb',
+                            ? '#a3a3a3'
+                            : '#E11D48',
                         color: 'white',
                         cursor:
                           stageSaving || !task || selectedStage === currentStageKey
@@ -1753,7 +1753,7 @@ export default function TaskDetailsPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
               {/* Task Details */}
               <div style={{
-                background: 'white',
+                background: 'var(--surface)',
                 borderRadius: 12,
                 padding: 24,
                 boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
@@ -1762,31 +1762,31 @@ export default function TaskDetailsPage() {
 
                 <div style={{ display: 'grid', gap: 12 }}>
                   <div style={{ display: 'flex', gap: 16 }}>
-                    <span style={{ width: 100, color: '#64748b', fontSize: 14 }}>Created:</span>
+                    <span style={{ width: 100, color: 'var(--text-muted)', fontSize: 14 }}>Created:</span>
                     <span style={{ fontSize: 14 }}>{formatDateTime(task.createdAt)}</span>
                   </div>
 
                   {task.updatedAt && (
                     <div style={{ display: 'flex', gap: 16 }}>
-                      <span style={{ width: 100, color: '#64748b', fontSize: 14 }}>Updated:</span>
+                      <span style={{ width: 100, color: 'var(--text-muted)', fontSize: 14 }}>Updated:</span>
                       <span style={{ fontSize: 14 }}>{formatDateTime(task.updatedAt)}</span>
                     </div>
                   )}
 
                   {task.durationMin && (
                     <div style={{ display: 'flex', gap: 16 }}>
-                      <span style={{ width: 100, color: '#64748b', fontSize: 14 }}>Duration:</span>
+                      <span style={{ width: 100, color: 'var(--text-muted)', fontSize: 14 }}>Duration:</span>
                       <span style={{ fontSize: 14 }}>{task.durationMin} minutes</span>
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                    <span style={{ width: 100, color: '#64748b', fontSize: 14 }}>Description:</span>
+                    <span style={{ width: 100, color: 'var(--text-muted)', fontSize: 14 }}>Description:</span>
                     <span
                       style={{
                         fontSize: 14,
                         whiteSpace: 'pre-wrap',
                         overflowWrap: 'anywhere',
-                        color: task.description ? '#1e293b' : '#94a3b8',
+                        color: task.description ? '#141414' : '#a3a3a3',
                       }}
                     >
                       {task.description ? task.description : 'No description'}
@@ -1797,7 +1797,7 @@ export default function TaskDetailsPage() {
 
               {/* Attachments */}
               <div style={{
-                background: 'white',
+                background: 'var(--surface)',
                 borderRadius: 12,
                 padding: 24,
                 boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
@@ -1813,25 +1813,25 @@ export default function TaskDetailsPage() {
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
                     style={{
-                      border: `2px dashed ${isDraggingOver ? '#3b82f6' : '#cbd5e1'}`,
+                      border: `2px dashed ${isDraggingOver ? '#F43F5E' : '#d4d4d4'}`,
                       borderRadius: 8,
                       padding: 32,
                       textAlign: 'center',
-                      background: isDraggingOver ? '#eff6ff' : '#f8fafc',
+                      background: isDraggingOver ? '#eff6ff' : '#fafafa',
                       transition: 'all 0.2s ease',
                       marginBottom: 16,
                     }}
                   >
                     <div style={{ marginBottom: 12, fontSize: 40 }}>📎</div>
-                    <div style={{ fontSize: 14, color: '#475569', marginBottom: 8 }}>
+                    <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 8 }}>
                       {selectedFile ? (
-                        <span style={{ fontWeight: 600, color: '#0f172a' }}>
+                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
                           {selectedFile.name}
                         </span>
                       ) : (
                         <>
                           Drag & drop your file here, or{' '}
-                          <label style={{ color: '#3b82f6', cursor: 'pointer', textDecoration: 'underline' }}>
+                          <label style={{ color: '#F43F5E', cursor: 'pointer', textDecoration: 'underline' }}>
                             browse
                             <input
                               ref={fileInputRef}
@@ -1844,10 +1844,10 @@ export default function TaskDetailsPage() {
                         </>
                       )}
                     </div>
-                    <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
                       Supported formats: PDF, Images, ZIP, DOC, XLS, TXT
                     </div>
-                    <div style={{ fontSize: 12, color: '#94a3b8' }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                       Maximum size: 20MB
                     </div>
                   </div>
@@ -1862,7 +1862,7 @@ export default function TaskDetailsPage() {
                       padding: '10px 16px',
                       borderRadius: 6,
                       border: 'none',
-                      background: (!selectedFile || uploading) ? '#cbd5e1' : '#3b82f6',
+                      background: (!selectedFile || uploading) ? '#d4d4d4' : '#F43F5E',
                       color: 'white',
                       cursor: (!selectedFile || uploading) ? 'not-allowed' : 'pointer',
                       fontSize: 14,
@@ -1875,7 +1875,7 @@ export default function TaskDetailsPage() {
                 </div>
 
                 {attachments.length === 0 ? (
-                  <p style={{ color: '#94a3b8', margin: 0, fontSize: 14 }}>
+                  <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: 14 }}>
                     No attachments yet
                   </p>
                 ) : (
@@ -1901,9 +1901,9 @@ export default function TaskDetailsPage() {
                         const latestLifecycleStatus = latestOutput?.lifecycleStatus ?? 'draft';
 
                         // Determine badge status - prioritize baseline status if exists
-                        let badge = { label: 'Ready', color: '#64748b' };
+                        let badge = { label: 'Ready', color: 'var(--text-muted)' };
                         if (activeJob?.status === 'queued') {
-                          badge = { label: 'Queued', color: '#0f172a' };
+                          badge = { label: 'Queued', color: 'var(--text-primary)' };
                         } else if (activeJob?.status === 'processing' || ocrTriggering) {
                           badge = { label: 'In Progress', color: '#f59e0b' };
                         } else if (baselineStatus === 'confirmed') {
@@ -1911,7 +1911,7 @@ export default function TaskDetailsPage() {
                         } else if (baselineStatus === 'reviewed') {
                           badge = { label: 'Reviewed', color: '#0ea5e9' };
                         } else if (baselineStatus === 'draft') {
-                          badge = { label: 'Draft', color: '#2563eb' };
+                          badge = { label: 'Draft', color: '#E11D48' };
                         } else if (latestOutput) {
                           // Show failed status if processing failed, regardless of text presence
                           if (latestProcessingStatus === 'failed') {
@@ -1940,7 +1940,7 @@ export default function TaskDetailsPage() {
                               gap: 10,
                               padding: 12,
                               borderRadius: 8,
-                              border: '1px solid #e2e8f0',
+                              border: '1px solid var(--border)',
                             }}
                           >
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1949,7 +1949,7 @@ export default function TaskDetailsPage() {
                                   width: 40,
                                   height: 40,
                                   borderRadius: 8,
-                                  background: '#f1f5f9',
+                                  background: '#f5f5f5',
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
@@ -1969,7 +1969,7 @@ export default function TaskDetailsPage() {
                                       <span
                                         style={{
                                           fontSize: 12,
-                                          color: baseline.utilizedAt ? '#166534' : '#64748b',
+                                          color: baseline.utilizedAt ? '#166534' : '#737373',
                                           marginLeft: 8,
                                           display: 'inline-flex',
                                           alignItems: 'center',
@@ -1995,7 +1995,7 @@ export default function TaskDetailsPage() {
                                       </span>
                                     )}
                                   </div>
-                                  <div style={{ fontSize: 12, color: '#64748b' }}>
+                                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                                     {attachment.mimeType} - {formatFileSize(attachment.size)} - {formatDateTime(attachment.createdAt)}
                                   </div>
                                 </div>
@@ -2007,9 +2007,9 @@ export default function TaskDetailsPage() {
                                   style={{
                                     padding: '6px 10px',
                                     borderRadius: 4,
-                                    border: '1px solid #e2e8f0',
-                                    background: isOcrInProgress ? '#e2e8f0' : 'white',
-                                    color: isOcrInProgress ? '#94a3b8' : '#0f172a',
+                                    border: '1px solid var(--border)',
+                                    background: isOcrInProgress ? '#e5e5e5' : 'white',
+                                    color: isOcrInProgress ? '#a3a3a3' : '#111111',
                                     cursor: isOcrInProgress ? 'not-allowed' : 'pointer',
                                     fontSize: 12,
                                   }}
@@ -2023,8 +2023,8 @@ export default function TaskDetailsPage() {
                                     padding: '6px 10px',
                                     borderRadius: 4,
                                     border: 'none',
-                                    background: isOcrInProgress ? '#e2e8f0' : '#fee2e2',
-                                    color: isOcrInProgress ? '#94a3b8' : '#dc2626',
+                                    background: isOcrInProgress ? '#e5e5e5' : '#fee2e2',
+                                    color: isOcrInProgress ? '#a3a3a3' : '#dc2626',
                                     cursor: isOcrInProgress ? 'not-allowed' : 'pointer',
                                     fontSize: 12,
                                   }}
@@ -2058,9 +2058,9 @@ export default function TaskDetailsPage() {
                                         style={{
                                           padding: '6px 10px',
                                           borderRadius: 4,
-                                          border: '1px solid #e2e8f0',
-                                          background: isDisabled ? '#e2e8f0' : 'white',
-                                          color: '#0f172a',
+                                          border: '1px solid var(--border)',
+                                          background: isDisabled ? '#e5e5e5' : 'white',
+                                          color: 'var(--text-primary)',
                                           cursor: isDisabled ? 'not-allowed' : 'pointer',
                                           fontSize: 12,
                                           position: 'relative',
@@ -2078,9 +2078,9 @@ export default function TaskDetailsPage() {
                                           style={{
                                             padding: '6px 10px',
                                             borderRadius: 4,
-                                            border: '1px solid #e2e8f0',
-                                            background: '#e2e8f0',
-                                            color: '#64748b',
+                                            border: '1px solid var(--border)',
+                                            background: '#e5e5e5',
+                                            color: 'var(--text-muted)',
                                             cursor: 'not-allowed',
                                             fontSize: 12,
                                           }}
@@ -2099,9 +2099,9 @@ export default function TaskDetailsPage() {
                                     style={{
                                       padding: '6px 10px',
                                       borderRadius: 4,
-                                      border: '1px solid #2563eb',
-                                      background: isOcrInProgress ? '#e2e8f0' : '#eff6ff',
-                                      color: isOcrInProgress ? '#94a3b8' : '#1d4ed8',
+                                      border: '1px solid #E11D48',
+                                      background: isOcrInProgress ? '#e5e5e5' : '#eff6ff',
+                                      color: isOcrInProgress ? '#a3a3a3' : '#BE123C',
                                       cursor: isOcrInProgress ? 'not-allowed' : 'pointer',
                                       fontSize: 12,
                                       fontWeight: 600,
@@ -2120,9 +2120,9 @@ export default function TaskDetailsPage() {
                                 style={{
                                   padding: '6px 10px',
                                   borderRadius: 4,
-                                  border: '1px solid #e2e8f0',
+                                  border: '1px solid var(--border)',
                                   background: viewerOpen ? '#e0f2fe' : 'white',
-                                  color: '#0f172a',
+                                  color: 'var(--text-primary)',
                                   cursor: 'pointer',
                                   fontSize: 12,
                                 }}
@@ -2134,13 +2134,13 @@ export default function TaskDetailsPage() {
                                   style={{
                                     marginTop: 12,
                                     borderRadius: 8,
-                                    border: '1px solid #e2e8f0',
-                                    background: '#f8fafc',
+                                    border: '1px solid var(--border)',
+                                    background: 'var(--surface-secondary)',
                                     padding: 12,
                                   }}
                                 >
                                   {viewerState?.loading && (
-                                    <p style={{ margin: 0, fontSize: 13, color: '#475569' }}>
+                                    <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>
                                       Loading extracted text...
                                     </p>
                                   )}
@@ -2163,8 +2163,8 @@ export default function TaskDetailsPage() {
                                         style={{
                                           padding: '4px 8px',
                                           borderRadius: 4,
-                                          border: '1px solid #e2e8f0',
-                                          background: 'white',
+                                          border: '1px solid var(--border)',
+                                          background: 'var(--surface)',
                                           cursor: 'pointer',
                                           fontSize: 12,
                                         }}
@@ -2174,7 +2174,7 @@ export default function TaskDetailsPage() {
                                     </div>
                                   )}
                                   {!viewerState?.loading && !viewerState?.error && viewerState?.outputs && viewerState.outputs.length === 0 && (
-                                    <p style={{ margin: 0, fontSize: 13, color: '#475569' }}>
+                                    <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>
                                       No extraction output has been captured for this attachment.
                                     </p>
                                   )}
@@ -2198,8 +2198,8 @@ export default function TaskDetailsPage() {
                                             style={{
                                               padding: 10,
                                               borderRadius: 8,
-                                              border: '1px solid #e2e8f0',
-                                              background: 'white',
+                                              border: '1px solid var(--border)',
+                                              background: 'var(--surface)',
                                             }}
                                           >
                                             <div
@@ -2226,7 +2226,7 @@ export default function TaskDetailsPage() {
                                                     Extraction Warning
                                                   </span>
                                                 )}
-                                                <span style={{ fontSize: 12, color: '#64748b' }}>
+                                                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                                                   {formatDateTime(record.createdAt)}
                                                 </span>
                                               </div>
@@ -2236,8 +2236,8 @@ export default function TaskDetailsPage() {
                                                 style={{
                                                   padding: '4px 8px',
                                                   borderRadius: 4,
-                                                  border: '1px solid #e2e8f0',
-                                                  background: 'white',
+                                                  border: '1px solid var(--border)',
+                                                  background: 'var(--surface)',
                                                   cursor: 'pointer',
                                                   fontSize: 12,
                                                 }}
@@ -2251,13 +2251,13 @@ export default function TaskDetailsPage() {
                                                 whiteSpace: 'pre-wrap',
                                                 wordBreak: 'break-word',
                                                 fontSize: 13,
-                                                color: '#0f172a',
+                                                color: 'var(--text-primary)',
                                               }}
                                             >
                                               {record.extractedText || 'No text extracted.'}
                                             </pre>
                                             {record.metadata && (
-                                              <div style={{ marginTop: 6, fontSize: 11, color: '#475569', wordBreak: 'break-word' }}>
+                                              <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-secondary)', wordBreak: 'break-word' }}>
                                                 Metadata: {record.metadata}
                                               </div>
                                             )}
@@ -2266,7 +2266,7 @@ export default function TaskDetailsPage() {
                                                 {recordLifecycleStatus === 'draft' && recordProcessingStatus === 'completed' && (
                                                   <>
                                                     {ocrEligibility[attachment.id]?.hasConfirmed ? (
-                                                      <span style={{ fontSize: 12, color: '#64748b', fontStyle: 'italic' }}>
+                                                      <span style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
                                                         A confirmed extraction already exists for this attachment.
                                                       </span>
                                                     ) : (
@@ -2297,9 +2297,9 @@ export default function TaskDetailsPage() {
                                                   style={{
                                                     padding: '6px 10px',
                                                     borderRadius: 4,
-                                                    border: '1px solid #e2e8f0',
-                                                    background: recordLoading.remark ? '#cbd5e1' : 'white',
-                                                    color: '#0f172a',
+                                                    border: '1px solid var(--border)',
+                                                    background: recordLoading.remark ? '#d4d4d4' : 'white',
+                                                    color: 'var(--text-primary)',
                                                     cursor: recordLoading.remark ? 'not-allowed' : 'pointer',
                                                     fontSize: 12,
                                                   }}
@@ -2313,9 +2313,9 @@ export default function TaskDetailsPage() {
                                                   style={{
                                                     padding: '6px 10px',
                                                     borderRadius: 4,
-                                                    border: '1px solid #e2e8f0',
-                                                    background: recordLoading.description ? '#cbd5e1' : 'white',
-                                                    color: '#0f172a',
+                                                    border: '1px solid var(--border)',
+                                                    background: recordLoading.description ? '#d4d4d4' : 'white',
+                                                    color: 'var(--text-primary)',
                                                     cursor: recordLoading.description ? 'not-allowed' : 'pointer',
                                                     fontSize: 12,
                                                   }}
@@ -2342,16 +2342,16 @@ export default function TaskDetailsPage() {
                       })}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
-                      <span style={{ fontSize: 13, color: '#64748b' }}>Show:</span>
+                      <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Show:</span>
                       <select
                         value={attachmentsLimit}
                         onChange={(e) => setAttachmentsLimit(Number(e.target.value))}
                         style={{
                           padding: '4px 8px',
                           borderRadius: 4,
-                          border: '1px solid #e2e8f0',
+                          border: '1px solid var(--border)',
                           fontSize: 13,
-                          background: 'white',
+                          background: 'var(--surface)',
                         }}
                       >
                         <option value={10}>10</option>
@@ -2368,7 +2368,7 @@ export default function TaskDetailsPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
               {/* Remarks */}
               <div style={{
-                background: 'white',
+                background: 'var(--surface)',
                 borderRadius: 12,
                 padding: 24,
                 boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
@@ -2390,7 +2390,7 @@ export default function TaskDetailsPage() {
                       width: '100%',
                       padding: '10px 12px',
                       borderRadius: 6,
-                      border: '1px solid #e2e8f0',
+                      border: '1px solid var(--border)',
                       fontSize: 14,
                       resize: 'vertical',
                       boxSizing: 'border-box',
@@ -2400,7 +2400,7 @@ export default function TaskDetailsPage() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{
                       fontSize: 12,
-                      color: newRemarkContent.length > 130 ? '#f59e0b' : '#94a3b8',
+                      color: newRemarkContent.length > 130 ? '#f59e0b' : '#a3a3a3',
                     }}>
                       {newRemarkContent.length}/150 characters
                     </div>
@@ -2412,7 +2412,7 @@ export default function TaskDetailsPage() {
                         padding: '8px 16px',
                         borderRadius: 6,
                         border: 'none',
-                        background: (!newRemarkContent.trim() || addingRemark) ? '#cbd5e1' : '#3b82f6',
+                        background: (!newRemarkContent.trim() || addingRemark) ? '#d4d4d4' : '#F43F5E',
                         color: 'white',
                         cursor: (!newRemarkContent.trim() || addingRemark) ? 'not-allowed' : 'pointer',
                         fontSize: 13,
@@ -2425,7 +2425,7 @@ export default function TaskDetailsPage() {
 
                 {/* Remarks List */}
                 {remarks.length === 0 ? (
-                  <p style={{ color: '#94a3b8', margin: 0, fontSize: 14 }}>
+                  <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: 14 }}>
                     No remarks yet
                   </p>
                 ) : (
@@ -2446,17 +2446,17 @@ export default function TaskDetailsPage() {
                           style={{
                             padding: 12,
                             borderRadius: 8,
-                            border: '1px solid #e2e8f0',
-                            background: '#f8fafc',
+                            border: '1px solid var(--border)',
+                            background: 'var(--surface-secondary)',
                             minWidth: 0,
                           }}
                         >
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                             <div style={{ minWidth: 0, flex: 1 }}>
-                              <div style={{ fontSize: 12, color: '#64748b' }}>
+                              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                                 {formatDateTime(remark.createdAt)}
                               </div>
-                              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
                                 Written by {remark.authorEmail || remark.userId}
                               </div>
                               {stageBadge && (
@@ -2486,7 +2486,7 @@ export default function TaskDetailsPage() {
                           <p style={{
                             margin: 0,
                             fontSize: 14,
-                            color: '#1e293b',
+                            color: 'var(--text-primary)',
                             whiteSpace: 'pre-wrap',
                             overflowWrap: 'anywhere',
                             wordBreak: 'break-word',
@@ -2507,9 +2507,9 @@ export default function TaskDetailsPage() {
                       marginTop: 16,
                       padding: '8px 16px',
                       borderRadius: 6,
-                      border: '1px solid #e2e8f0',
-                      background: 'white',
-                      color: '#64748b',
+                      border: '1px solid var(--border)',
+                      background: 'var(--surface)',
+                      color: 'var(--text-muted)',
                       cursor: 'pointer',
                       fontSize: 13,
                       width: '100%',
@@ -2522,7 +2522,7 @@ export default function TaskDetailsPage() {
 
               {/* Parent-Child Relationships (v4 visibility + actions) */}
               <div style={{
-                background: 'white',
+                background: 'var(--surface)',
                 borderRadius: 12,
                 padding: 24,
                 boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
@@ -2536,9 +2536,9 @@ export default function TaskDetailsPage() {
                         style={{
                           padding: '6px 12px',
                           borderRadius: 6,
-                          border: '1px solid #3b82f6',
+                          border: '1px solid #F43F5E',
                           background: '#eff6ff',
-                          color: '#2563eb',
+                          color: '#E11D48',
                           fontSize: 12,
                           fontWeight: 600,
                           cursor: 'pointer',
@@ -2572,28 +2572,28 @@ export default function TaskDetailsPage() {
 
                     {parent && (
                       <div style={{ marginBottom: children.length > 0 ? 16 : 0 }}>
-                        <div style={{ fontSize: 13, color: '#64748b', marginBottom: 8, fontWeight: 500 }}>Parent Task</div>
+                        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8, fontWeight: 500 }}>Parent Task</div>
                         <div
                           onClick={() => router.push(`/task/${parent.id}`)}
                           style={{
                             padding: '12px 16px',
                             borderRadius: 8,
-                            border: '1px solid #e2e8f0',
-                            background: '#f8fafc',
+                            border: '1px solid var(--border)',
+                            background: 'var(--surface-secondary)',
                             cursor: 'pointer',
                             transition: 'all 0.2s',
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#f1f5f9';
-                            e.currentTarget.style.borderColor = '#cbd5e1';
+                            e.currentTarget.style.background = '#f5f5f5';
+                            e.currentTarget.style.borderColor = '#d4d4d4';
                           }}
                           onMouseLeave={(e) => {
-                            e.currentTarget.style.background = '#f8fafc';
-                            e.currentTarget.style.borderColor = '#e2e8f0';
+                            e.currentTarget.style.background = '#fafafa';
+                            e.currentTarget.style.borderColor = '#e5e5e5';
                           }}
                         >
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ fontSize: 14, fontWeight: 500, color: '#1e293b', flex: 1 }}>
+                            <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', flex: 1 }}>
                               {parent.title}
                             </span>
                             {parent.done && (
@@ -2608,7 +2608,7 @@ export default function TaskDetailsPage() {
                                 DONE
                               </span>
                             )}
-                            <span style={{ fontSize: 18, color: '#94a3b8' }}>→</span>
+                            <span style={{ fontSize: 18, color: 'var(--text-muted)' }}>→</span>
                           </div>
                         </div>
                       </div>
@@ -2616,7 +2616,7 @@ export default function TaskDetailsPage() {
 
                     {children.length > 0 && (
                       <div>
-                        <div style={{ fontSize: 13, color: '#64748b', marginBottom: 8, fontWeight: 500 }}>
+                        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8, fontWeight: 500 }}>
                           Child Tasks ({children.length})
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -2627,22 +2627,22 @@ export default function TaskDetailsPage() {
                               style={{
                                 padding: '12px 16px',
                                 borderRadius: 8,
-                                border: '1px solid #e2e8f0',
-                                background: '#f8fafc',
+                                border: '1px solid var(--border)',
+                                background: 'var(--surface-secondary)',
                                 cursor: 'pointer',
                                 transition: 'all 0.2s',
                               }}
                               onMouseEnter={(e) => {
-                                e.currentTarget.style.background = '#f1f5f9';
-                                e.currentTarget.style.borderColor = '#cbd5e1';
+                                e.currentTarget.style.background = '#f5f5f5';
+                                e.currentTarget.style.borderColor = '#d4d4d4';
                               }}
                               onMouseLeave={(e) => {
-                                e.currentTarget.style.background = '#f8fafc';
-                                e.currentTarget.style.borderColor = '#e2e8f0';
+                                e.currentTarget.style.background = '#fafafa';
+                                e.currentTarget.style.borderColor = '#e5e5e5';
                               }}
                             >
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <span style={{ fontSize: 14, fontWeight: 500, color: '#1e293b', flex: 1 }}>
+                                <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', flex: 1 }}>
                                   {child.title}
                                 </span>
                                 {child.done && (
@@ -2657,7 +2657,7 @@ export default function TaskDetailsPage() {
                                     DONE
                                   </span>
                                 )}
-                                <span style={{ fontSize: 18, color: '#94a3b8' }}>→</span>
+                                <span style={{ fontSize: 18, color: 'var(--text-muted)' }}>→</span>
                               </div>
                             </div>
                           ))}
@@ -2666,7 +2666,7 @@ export default function TaskDetailsPage() {
                     )}
                   </div>
                 ) : (
-                  <div style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', padding: '16px 0' }}>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: '16px 0' }}>
                     No parent or child tasks. Use "Set Parent" to associate this task.
                   </div>
                 )}
@@ -2674,7 +2674,7 @@ export default function TaskDetailsPage() {
 
               {/* History Timeline */}
               <div style={{
-                background: 'white',
+                background: 'var(--surface)',
                 borderRadius: 12,
                 padding: 24,
                 boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
@@ -2684,16 +2684,16 @@ export default function TaskDetailsPage() {
                     History
                   </h2>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 13, color: '#64748b' }}>Show:</span>
+                    <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Show:</span>
                     <select
                       value={historyLimit}
                       onChange={(e) => setHistoryLimit(Number(e.target.value))}
                       style={{
                         padding: '4px 8px',
                         borderRadius: 4,
-                        border: '1px solid #e2e8f0',
+                        border: '1px solid var(--border)',
                         fontSize: 13,
-                        background: 'white',
+                        background: 'var(--surface)',
                       }}
                     >
                       <option value={10}>10</option>
@@ -2704,7 +2704,7 @@ export default function TaskDetailsPage() {
                 </div>
 
                 {history.length === 0 ? (
-                  <p style={{ color: '#94a3b8', margin: 0, fontSize: 14 }}>
+                  <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: 14 }}>
                     No history recorded
                   </p>
                 ) : (
@@ -2715,7 +2715,7 @@ export default function TaskDetailsPage() {
                       const statusText = typeof rawStatus === 'string' ? rawStatus.trim() : '';
                       const normalizedStatus = statusText.toLowerCase();
                       const showStatus = statusText && normalizedStatus !== 'in progress';
-                      const statusColor = normalizedStatus === 'failed' ? '#dc2626' : '#64748b';
+                      const statusColor = normalizedStatus === 'failed' ? '#dc2626' : '#737373';
                       const rawChangeDetails = (entry.details?.changes ?? {}) as Record<
                         string,
                         { from?: unknown; to?: unknown } | null | undefined
@@ -2732,7 +2732,7 @@ export default function TaskDetailsPage() {
                             gap: 12,
                             padding: 12,
                             borderRadius: 8,
-                            border: '1px solid #e2e8f0',
+                            border: '1px solid var(--border)',
                             alignItems: 'flex-start',
                           }}
                         >
@@ -2740,7 +2740,7 @@ export default function TaskDetailsPage() {
                             width: 32,
                             height: 32,
                             borderRadius: '50%',
-                            background: '#f1f5f9',
+                            background: '#f5f5f5',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -2775,12 +2775,12 @@ export default function TaskDetailsPage() {
                                   </span>
                                 )}
                               </div>
-                              <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                                 {formatDateTime(entry.createdAt)}
                               </span>
                             </div>
                             {entry.details && Object.keys(entry.details).length > 0 && (
-                              <div style={{ marginTop: 4, fontSize: 13, color: '#64748b' }}>
+                              <div style={{ marginTop: 4, fontSize: 13, color: 'var(--text-muted)' }}>
                                 {entry.details.title && <span>Title: {entry.details.title}</span>}
                                 {entry.details.startAt && <span> • At: {formatDateTime(entry.details.startAt)}</span>}
                                 {entry.details.durationMin && <span> • {entry.details.durationMin} min</span>}
@@ -2789,10 +2789,10 @@ export default function TaskDetailsPage() {
                               </div>
                             )}
                             {changeEntries.length > 0 && (
-                              <div style={{ marginTop: 6, fontSize: 13, color: '#475569' }}>
+                              <div style={{ marginTop: 6, fontSize: 13, color: 'var(--text-secondary)' }}>
                                 {changeEntries.map(([field, delta]) => (
                                   <div key={field} style={{ marginBottom: 4 }}>
-                                    <span style={{ color: '#94a3b8', fontWeight: 500 }}>{field}:</span>{' '}
+                                    <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>{field}:</span>{' '}
                                     <span style={{ color: '#dc2626' }}>{formatAuditChangeValue(field, delta.from)}</span>
                                     {' → '}
                                     <span style={{ color: '#10b981' }}>{formatAuditChangeValue(field, delta.to)}</span>
@@ -2814,11 +2814,11 @@ export default function TaskDetailsPage() {
                         style={{
                           padding: '10px 16px',
                           borderRadius: 6,
-                          border: '1px solid #e2e8f0',
-                          background: 'white',
+                          border: '1px solid var(--border)',
+                          background: 'var(--surface)',
                           cursor: 'pointer',
                           fontSize: 13,
-                          color: '#3b82f6',
+                          color: '#F43F5E',
                           textAlign: 'center',
                           marginTop: 8,
                         }}
@@ -2865,7 +2865,7 @@ export default function TaskDetailsPage() {
         >
           <div
             style={{
-              background: 'white',
+              background: 'var(--surface)',
               borderRadius: 12,
               padding: 24,
               width: '100%',
@@ -2876,7 +2876,7 @@ export default function TaskDetailsPage() {
           >
             <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>Set Parent Task</h2>
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 13, color: '#475569' }}>
+              <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 13, color: 'var(--text-secondary)' }}>
                 Parent Task <span style={{ color: '#ef4444' }}>*</span>
               </label>
               <select
@@ -2886,7 +2886,7 @@ export default function TaskDetailsPage() {
                   width: '100%',
                   padding: '10px 12px',
                   borderRadius: 8,
-                  border: '1px solid #e2e8f0',
+                  border: '1px solid var(--border)',
                   fontSize: 14,
                   outline: 'none',
                 }}
@@ -2898,7 +2898,7 @@ export default function TaskDetailsPage() {
               </select>
             </div>
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 13, color: '#475569' }}>
+              <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 13, color: 'var(--text-secondary)' }}>
                 Remark <span style={{ color: '#ef4444' }}>*</span>
               </label>
               <textarea
@@ -2911,14 +2911,14 @@ export default function TaskDetailsPage() {
                   width: '100%',
                   padding: '10px 12px',
                   borderRadius: 8,
-                  border: '1px solid #e2e8f0',
+                  border: '1px solid var(--border)',
                   fontSize: 13,
                   resize: 'vertical',
                   outline: 'none',
                   boxSizing: 'border-box',
                 }}
               />
-              <div style={{ marginTop: 4, fontSize: 11, color: '#94a3b8', textAlign: 'right' }}>
+              <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-muted)', textAlign: 'right' }}>
                 {associateRemark.length}/150 characters
               </div>
             </div>
@@ -2929,9 +2929,9 @@ export default function TaskDetailsPage() {
                 style={{
                   padding: '10px 16px',
                   borderRadius: 8,
-                  border: '1px solid #e2e8f0',
-                  background: 'white',
-                  color: '#475569',
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface)',
+                  color: 'var(--text-secondary)',
                   fontWeight: 600,
                   cursor: associating ? 'not-allowed' : 'pointer',
                   opacity: associating ? 0.7 : 1,
@@ -2946,7 +2946,7 @@ export default function TaskDetailsPage() {
                   padding: '10px 18px',
                   borderRadius: 8,
                   border: 'none',
-                  background: associateParentId && associateRemark.trim() ? '#2563eb' : '#cbd5e1',
+                  background: associateParentId && associateRemark.trim() ? '#E11D48' : '#d4d4d4',
                   color: 'white',
                   fontWeight: 700,
                   cursor: (associating || !associateParentId || !associateRemark.trim()) ? 'not-allowed' : 'pointer',
@@ -2977,7 +2977,7 @@ export default function TaskDetailsPage() {
         >
           <div
             style={{
-              background: 'white',
+              background: 'var(--surface)',
               borderRadius: 12,
               padding: 24,
               width: '100%',
@@ -2991,7 +2991,7 @@ export default function TaskDetailsPage() {
               This will detach "{task?.title}" from its parent "{parent?.title}".
             </div>
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 13, color: '#475569' }}>
+              <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 13, color: 'var(--text-secondary)' }}>
                 Remark <span style={{ color: '#ef4444' }}>*</span>
               </label>
               <textarea
@@ -3004,14 +3004,14 @@ export default function TaskDetailsPage() {
                   width: '100%',
                   padding: '10px 12px',
                   borderRadius: 8,
-                  border: '1px solid #e2e8f0',
+                  border: '1px solid var(--border)',
                   fontSize: 13,
                   resize: 'vertical',
                   outline: 'none',
                   boxSizing: 'border-box',
                 }}
               />
-              <div style={{ marginTop: 4, fontSize: 11, color: '#94a3b8', textAlign: 'right' }}>
+              <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-muted)', textAlign: 'right' }}>
                 {disassociateRemark.length}/150 characters
               </div>
             </div>
@@ -3022,9 +3022,9 @@ export default function TaskDetailsPage() {
                 style={{
                   padding: '10px 16px',
                   borderRadius: 8,
-                  border: '1px solid #e2e8f0',
-                  background: 'white',
-                  color: '#475569',
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface)',
+                  color: 'var(--text-secondary)',
                   fontWeight: 600,
                   cursor: associating ? 'not-allowed' : 'pointer',
                   opacity: associating ? 0.7 : 1,
@@ -3039,7 +3039,7 @@ export default function TaskDetailsPage() {
                   padding: '10px 18px',
                   borderRadius: 8,
                   border: 'none',
-                  background: disassociateRemark.trim() ? '#dc2626' : '#cbd5e1',
+                  background: disassociateRemark.trim() ? '#dc2626' : '#d4d4d4',
                   color: 'white',
                   fontWeight: 700,
                   cursor: (associating || !disassociateRemark.trim()) ? 'not-allowed' : 'pointer',
@@ -3073,7 +3073,7 @@ export default function TaskDetailsPage() {
         >
           <div
             style={{
-              background: 'white',
+              background: 'var(--surface)',
               borderRadius: 12,
               padding: 24,
               width: '100%',
@@ -3086,19 +3086,19 @@ export default function TaskDetailsPage() {
             <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>Confirm Extraction</h2>
 
             <div style={{ marginBottom: 20 }}>
-              <p style={{ fontSize: 14, fontWeight: 500, color: '#1e293b', marginBottom: 12 }}>
+              <p style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 12 }}>
                 Confirming will:
               </p>
               <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
-                <li style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14, color: '#475569' }}>
+                <li style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14, color: 'var(--text-secondary)' }}>
                   <span style={{ color: '#16a34a' }}>✓</span>
                   <span>Lock this data as the baseline</span>
                 </li>
-                <li style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14, color: '#475569' }}>
+                <li style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14, color: 'var(--text-secondary)' }}>
                   <span style={{ color: '#16a34a' }}>✓</span>
                   <span>Make it available for use in tasks, exports, and workflows</span>
                 </li>
-                <li style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14, color: '#475569' }}>
+                <li style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14, color: 'var(--text-secondary)' }}>
                   <span style={{ color: '#dc2626' }}>✗</span>
                   <span>Cannot be edited after utilization</span>
                 </li>
@@ -3114,9 +3114,9 @@ export default function TaskDetailsPage() {
                 style={{
                   padding: '10px 16px',
                   borderRadius: 8,
-                  border: '1px solid #e2e8f0',
-                  background: 'white',
-                  color: '#475569',
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface)',
+                  color: 'var(--text-secondary)',
                   fontWeight: 600,
                   cursor: 'pointer',
                 }}

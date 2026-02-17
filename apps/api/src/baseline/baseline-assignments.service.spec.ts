@@ -10,6 +10,7 @@ import { AuditService } from '../audit/audit.service';
 import { FieldAssignmentValidatorService } from './field-assignment-validator.service';
 import { FieldLibraryService } from '../field-library/field-library.service';
 import { AuthorizationService } from '../common/authorization.service';
+import { BaselineManagementService } from './baseline-management.service';
 
 describe('BaselineAssignmentsService', () => {
   let service: BaselineAssignmentsService;
@@ -111,6 +112,7 @@ describe('BaselineAssignmentsService', () => {
         },
         { provide: FieldLibraryService, useValue: mockFieldLibraryService },
         { provide: AuthorizationService, useValue: mockAuthService },
+        { provide: BaselineManagementService, useValue: {} },
       ],
     }).compile();
 
@@ -398,7 +400,7 @@ describe('BaselineAssignmentsService', () => {
         mockBaselineId,
         mockFieldKey,
         mockUserId,
-        'Field no longer needed per client',
+        { reason: 'Field no longer needed per client' },
       );
 
       expect(result.deleted).toBe(true);
@@ -412,6 +414,10 @@ describe('BaselineAssignmentsService', () => {
     });
 
     it('should throw BadRequestException if correctionReason is too short', async () => {
+      const reviewedContext = { ...mockBaselineContext, status: 'reviewed' };
+      jest
+        .spyOn(authService, 'ensureUserOwnsBaseline')
+        .mockResolvedValue(reviewedContext);
       jest.spyOn(dbService.db, 'limit').mockResolvedValue([mockAssignment]);
 
       await expect(
@@ -419,7 +425,7 @@ describe('BaselineAssignmentsService', () => {
           mockBaselineId,
           mockFieldKey,
           mockUserId,
-          'short',
+          { reason: 'short' },
         ),
       ).rejects.toThrow(BadRequestException);
     });

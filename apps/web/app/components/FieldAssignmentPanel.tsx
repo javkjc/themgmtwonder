@@ -67,7 +67,7 @@ const typeExamples: Record<FieldCharacterType, string> = {
 
 const getStatusLabel = (assignment?: Assignment) => {
   if (!assignment || !assignment.assignedValue) {
-    return { label: 'Unassigned', color: '#94a3b8' };
+    return { label: 'Unassigned', color: 'var(--text-muted)' };
   }
   if (assignment.validation && !assignment.validation.valid) {
     return { label: 'Validation error', color: '#dc2626' };
@@ -302,9 +302,9 @@ export default function FieldAssignmentPanel({
           style={{
             padding: '12px 16px',
             borderRadius: 12,
-            background: '#f8fafc',
-            border: '1px solid #e2e8f0',
-            color: '#475569',
+            background: 'var(--surface-secondary)',
+            border: '1px solid var(--border)',
+            color: 'var(--text-secondary)',
             fontSize: 13,
             fontWeight: 500,
             display: 'flex',
@@ -324,12 +324,12 @@ export default function FieldAssignmentPanel({
             justifyContent: 'space-between',
             alignItems: 'center',
             padding: '8px 12px',
-            background: '#f1f5f9',
+            background: '#f5f5f5',
             borderRadius: 12,
-            border: '1px solid #e2e8f0',
+            border: '1px solid var(--border)',
           }}
         >
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#475569' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>
             ✨ {suggestedCount} of {fields.length} fields auto-suggested
           </div>
           <button
@@ -340,9 +340,9 @@ export default function FieldAssignmentPanel({
               fontSize: 12,
               fontWeight: 700,
               cursor: 'pointer',
-              border: showOnlySuggested ? '1px solid #2563eb' : '1px solid #cbd5e1',
-              background: showOnlySuggested ? '#2563eb' : '#ffffff',
-              color: showOnlySuggested ? '#ffffff' : '#475569',
+              border: showOnlySuggested ? '1px solid #E11D48' : '1px solid #d4d4d4',
+              background: showOnlySuggested ? '#E11D48' : '#ffffff',
+              color: showOnlySuggested ? '#ffffff' : '#525252',
               transition: 'all 0.2s ease',
               boxShadow: showOnlySuggested ? '0 2px 4px rgba(37, 99, 235, 0.2)' : 'none',
             }}
@@ -374,7 +374,7 @@ export default function FieldAssignmentPanel({
             style={{
               padding: '16px',
               borderRadius: 16,
-              border: isHighlighted ? '2px solid #fb923c' : hasValidationError ? '2px solid #fecaca' : '1px solid #e2e8f0',
+              border: isHighlighted ? '2px solid #fb923c' : hasValidationError ? '2px solid #fecaca' : '1px solid #e5e5e5',
               background: isHighlighted ? '#fff7ed' : hasValidationError ? '#fef2f2' : '#ffffff',
               transition: 'box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease',
               boxShadow: isHighlighted
@@ -387,7 +387,7 @@ export default function FieldAssignmentPanel({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 {hasValidationError && <span style={{ fontSize: 16 }}>⚠️</span>}
-                <div style={{ fontSize: 13, fontWeight: 700, color: hasValidationError ? '#b91c1c' : '#0f172a' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: hasValidationError ? '#b91c1c' : '#111111' }}>
                   {field.label}
                 </div>
               </div>
@@ -397,10 +397,10 @@ export default function FieldAssignmentPanel({
                   fontWeight: 600,
                   textTransform: 'uppercase',
                   letterSpacing: 0.5,
-                  color: '#475569',
+                  color: 'var(--text-secondary)',
                   borderRadius: 99,
                   padding: '2px 8px',
-                  background: '#f1f5f9',
+                  background: '#f5f5f5',
                 }}
               >
                 {typeLabels[field.characterType] || field.characterType}
@@ -440,12 +440,12 @@ export default function FieldAssignmentPanel({
                     justifyContent: 'center',
                     width: '24px',
                     height: '24px',
-                    background: '#f1f5f9',
+                    background: '#f5f5f5',
                     borderRadius: 6,
                     transition: 'background 0.2s ease',
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#e2e8f0')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = '#f1f5f9')}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#e5e5e5')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = '#f5f5f5')}
                   title="Pick a date"
                 >
                   <span style={{ fontSize: 14 }}>📅</span>
@@ -475,7 +475,7 @@ export default function FieldAssignmentPanel({
             </div>
 
             {/* Tooltip with example values */}
-            <div style={{ marginTop: 6, fontSize: 11, color: '#64748b', fontStyle: 'italic' }}>
+            <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic' }}>
               {typeExamples[field.characterType]}
             </div>
 
@@ -488,7 +488,7 @@ export default function FieldAssignmentPanel({
                     style={{
                       background: 'none',
                       border: 'none',
-                      color: '#94a3b8',
+                      color: 'var(--text-muted)',
                       fontSize: 10,
                       fontWeight: 700,
                       cursor: 'pointer',
@@ -497,14 +497,14 @@ export default function FieldAssignmentPanel({
                       transition: 'all 0.2s',
                     }}
                     onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
-                    onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = '#a3a3a3')}
                   >
                     Clear
                   </button>
                 )}
               </div>
               {assignment?.sourceSegmentId && (
-                <span style={{ fontSize: 11, color: '#64748b' }}>Linked to text segment</span>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Linked to text segment</span>
               )}
             </div>
 
@@ -534,8 +534,8 @@ export default function FieldAssignmentPanel({
                 style={{
                   marginTop: 8,
                   fontSize: 11,
-                  color: '#475569',
-                  background: '#f8fafc',
+                  color: 'var(--text-secondary)',
+                  background: 'var(--surface-secondary)',
                   padding: '4px 8px',
                   borderRadius: 6,
                 }}

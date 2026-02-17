@@ -86,15 +86,15 @@ const TableSuggestionPreviewModal: React.FC<TableSuggestionPreviewModalProps> = 
                 <div
                     style={{
                         padding: '20px 24px',
-                        borderBottom: '1px solid #e2e8f0',
+                        borderBottom: '1px solid #e5e5e5',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        background: 'linear-gradient(to right, #f8fafc, #ffffff)',
+                        background: 'linear-gradient(to right, #fafafa, #ffffff)',
                     }}
                 >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#0f172a' }}>
+                        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>
                             Suggested Table Preview
                         </h2>
                         <div
@@ -120,7 +120,7 @@ const TableSuggestionPreviewModal: React.FC<TableSuggestionPreviewModalProps> = 
                             border: 'none',
                             fontSize: 24,
                             cursor: 'pointer',
-                            color: '#64748b',
+                            color: 'var(--text-muted)',
                             padding: 0,
                             width: 32,
                             height: 32,
@@ -130,7 +130,7 @@ const TableSuggestionPreviewModal: React.FC<TableSuggestionPreviewModalProps> = 
                             borderRadius: 8,
                             transition: 'background 0.2s',
                         }}
-                        onMouseOver={(e) => (e.currentTarget.style.background = '#f1f5f9')}
+                        onMouseOver={(e) => (e.currentTarget.style.background = '#f5f5f5')}
                         onMouseOut={(e) => (e.currentTarget.style.background = 'none')}
                     >
                         x
@@ -140,22 +140,22 @@ const TableSuggestionPreviewModal: React.FC<TableSuggestionPreviewModalProps> = 
                 {/* Content */}
                 <div style={{ padding: 24, overflowY: 'auto', flex: 1 }}>
                     <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 20 }}>
-                        <div style={{ fontSize: 13, color: '#64748b' }}>
-                            <span style={{ fontWeight: 600, color: '#0f172a' }}>{suggestion.rowCount}</span> Rows
+                        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{suggestion.rowCount}</span> Rows
                         </div>
-                        <div style={{ fontSize: 13, color: '#64748b' }}>
-                            <span style={{ fontWeight: 600, color: '#0f172a' }}>{suggestion.columnCount}</span> Columns
+                        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{suggestion.columnCount}</span> Columns
                         </div>
                         {suggestion.suggestedLabel && (
-                            <div style={{ fontSize: 13, color: '#64748b' }}>
-                                Label: <span style={{ fontWeight: 600, color: '#0f172a' }}>{suggestion.suggestedLabel}</span>
+                            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                                Label: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{suggestion.suggestedLabel}</span>
                             </div>
                         )}
                     </div>
 
                     <div
                         style={{
-                            border: '1px solid #e2e8f0',
+                            border: '1px solid var(--border)',
                             borderRadius: 12,
                             overflow: 'hidden',
                             backgroundColor: '#ffffff',
@@ -170,16 +170,16 @@ const TableSuggestionPreviewModal: React.FC<TableSuggestionPreviewModalProps> = 
                             }}
                         >
                             <thead>
-                                <tr style={{ background: '#f8fafc' }}>
+                                <tr style={{ background: 'var(--surface-secondary)' }}>
                                     {columns.map((_, colIndex) => (
                                         <th
                                             key={colIndex}
                                             style={{
                                                 padding: '10px 12px',
                                                 textAlign: 'left',
-                                                borderBottom: '1px solid #e2e8f0',
-                                                borderRight: colIndex < columns.length - 1 ? '1px solid #f1f5f9' : 'none',
-                                                color: '#64748b',
+                                                borderBottom: '1px solid #e5e5e5',
+                                                borderRight: colIndex < columns.length - 1 ? '1px solid #f5f5f5' : 'none',
+                                                color: 'var(--text-muted)',
                                                 fontWeight: 600,
                                                 fontSize: 11,
                                                 textTransform: 'uppercase',
@@ -193,14 +193,14 @@ const TableSuggestionPreviewModal: React.FC<TableSuggestionPreviewModalProps> = 
                             </thead>
                             <tbody>
                                 {grid.map((row, rowIndex) => (
-                                    <tr key={rowIndex} style={{ borderBottom: rowIndex < grid.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                                    <tr key={rowIndex} style={{ borderBottom: rowIndex < grid.length - 1 ? '1px solid #f5f5f5' : 'none' }}>
                                         {row.map((cell, colIndex) => (
                                             <td
                                                 key={colIndex}
                                                 style={{
                                                     padding: '12px',
-                                                    borderRight: colIndex < row.length - 1 ? '1px solid #f1f5f9' : 'none',
-                                                    color: cell ? '#334155' : '#cbd5e1',
+                                                    borderRight: colIndex < row.length - 1 ? '1px solid #f5f5f5' : 'none',
+                                                    color: cell ? '#262626' : '#d4d4d4',
                                                     whiteSpace: 'nowrap',
                                                     overflow: 'hidden',
                                                     textOverflow: 'ellipsis',
@@ -220,11 +220,11 @@ const TableSuggestionPreviewModal: React.FC<TableSuggestionPreviewModalProps> = 
                 <div
                     style={{
                         padding: '16px 24px',
-                        borderTop: '1px solid #e2e8f0',
+                        borderTop: '1px solid #e5e5e5',
                         display: 'flex',
                         justifyContent: 'flex-end',
                         gap: 12,
-                        background: '#f8fafc',
+                        background: 'var(--surface-secondary)',
                     }}
                 >
                     <button
@@ -232,21 +232,21 @@ const TableSuggestionPreviewModal: React.FC<TableSuggestionPreviewModalProps> = 
                         style={{
                             padding: '10px 16px',
                             borderRadius: 10,
-                            border: '1px solid #e2e8f0',
+                            border: '1px solid var(--border)',
                             background: '#ffffff',
-                            color: '#334155',
+                            color: '#262626',
                             fontSize: 14,
                             fontWeight: 600,
                             cursor: 'pointer',
                             transition: 'all 0.2s',
                         }}
                         onMouseOver={(e) => {
-                            e.currentTarget.style.background = '#f1f5f9';
-                            e.currentTarget.style.borderColor = '#cbd5e1';
+                            e.currentTarget.style.background = '#f5f5f5';
+                            e.currentTarget.style.borderColor = '#d4d4d4';
                         }}
                         onMouseOut={(e) => {
                             e.currentTarget.style.background = '#ffffff';
-                            e.currentTarget.style.borderColor = '#e2e8f0';
+                            e.currentTarget.style.borderColor = '#e5e5e5';
                         }}
                     >
                         Cancel
@@ -258,7 +258,7 @@ const TableSuggestionPreviewModal: React.FC<TableSuggestionPreviewModalProps> = 
                             padding: '10px 24px',
                             borderRadius: 10,
                             border: 'none',
-                            background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                            background: 'linear-gradient(135deg, #E11D48 0%, #BE123C 100%)',
                             color: '#ffffff',
                             fontSize: 14,
                             fontWeight: 600,

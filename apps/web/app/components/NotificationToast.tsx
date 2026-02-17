@@ -67,7 +67,7 @@ export default function NotificationToast({
           key={notification.id}
           data-testid={notification.type === 'success' ? 'toast-success' : notification.type === 'error' ? 'toast-error' : 'toast'}
           style={{
-            background: 'white',
+            background: 'var(--surface)',
             borderRadius: 8,
             boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
             padding: 16,
@@ -76,7 +76,7 @@ export default function NotificationToast({
                 ? '#10b981'
                 : notification.type === 'error'
                 ? '#ef4444'
-                : '#3b82f6'
+                : '#F43F5E'
             }`,
             animation: 'slideIn 0.3s ease-out',
           }}
@@ -91,7 +91,7 @@ export default function NotificationToast({
                   margin: 0,
                   fontSize: 14,
                   fontWeight: 600,
-                  color: notification.type === 'success' ? '#10b981' : notification.type === 'error' ? '#ef4444' : '#3b82f6',
+                  color: notification.type === 'success' ? '#10b981' : notification.type === 'error' ? '#ef4444' : '#F43F5E',
                 }}
               >
                 {notification.title}

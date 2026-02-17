@@ -57,7 +57,7 @@ export default function OcrFieldList({
           borderRadius: 12,
           border: '1px dashed #cbd5f5',
           textAlign: 'center',
-          color: '#94a3b8',
+          color: 'var(--text-muted)',
         }}
       >
         No fields extracted.
@@ -82,7 +82,7 @@ export default function OcrFieldList({
             onMouseEnter={() => onSelect?.(field)}
             style={{
               borderRadius: 12,
-              border: `1px solid ${isSelected ? '#2563eb' : '#e2e8f0'}`,
+              border: `1px solid ${isSelected ? '#E11D48' : '#e5e5e5'}`,
               padding: 20, // Increased padding for better hierarchy
               background: isSelected ? '#f0f9ff' : '#ffffff',
               cursor: onSelect ? 'pointer' : 'default',
@@ -94,7 +94,7 @@ export default function OcrFieldList({
             {/* Header: Field Name and Actions */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
               <div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>{humanReadableName(field.fieldName)}</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{humanReadableName(field.fieldName)}</div>
 
                 {/* Provenance Badge */}
                 <div style={{
@@ -107,9 +107,9 @@ export default function OcrFieldList({
                   fontSize: 10,
                   fontWeight: 800,
                   letterSpacing: '0.025em',
-                  background: field.confidence === 1 && !field.originalValue ? '#f0f9ff' : '#f8fafc',
-                  color: field.confidence === 1 && !field.originalValue ? '#0369a1' : '#64748b',
-                  border: `1px solid ${field.confidence === 1 && !field.originalValue ? '#bae6fd' : '#e2e8f0'}`,
+                  background: field.confidence === 1 && !field.originalValue ? '#f0f9ff' : '#fafafa',
+                  color: field.confidence === 1 && !field.originalValue ? '#0369a1' : '#737373',
+                  border: `1px solid ${field.confidence === 1 && !field.originalValue ? '#bae6fd' : '#e5e5e5'}`,
                   textTransform: 'uppercase'
                 }}>
                   {field.confidence === 1 && !field.originalValue ? (
@@ -124,19 +124,19 @@ export default function OcrFieldList({
                 </div>
 
                 {field.fieldType && field.confidence === 1 && !field.originalValue && (
-                  <div style={{ fontSize: 11, color: '#475569', marginTop: 6 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>
                     Type: {formatFieldType(field.fieldType)}
                   </div>
                 )}
 
-                <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
                   Confidence:{' '}
                   {conf ? (
                     <span style={{ color: conf.color, fontWeight: 600 }}>
                       {percent}% ({conf.label})
                     </span>
                   ) : (
-                    <span style={{ color: '#cbd5e1', fontWeight: 600 }}>—</span>
+                    <span style={{ color: '#d4d4d4', fontWeight: 600 }}>—</span>
                   )}
                 </div>
               </div>
@@ -148,11 +148,11 @@ export default function OcrFieldList({
                     style={{
                       padding: '4px 10px',
                       borderRadius: 8,
-                      background: '#f1f5f9',
-                      color: '#64748b',
+                      background: '#f5f5f5',
+                      color: 'var(--text-muted)',
                       fontSize: 11,
                       fontWeight: 700,
-                      border: '1px solid #e2e8f0',
+                      border: '1px solid var(--border)',
                       cursor: 'help',
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -172,9 +172,9 @@ export default function OcrFieldList({
                       style={{
                         padding: '6px 14px',
                         borderRadius: 8,
-                        border: '1px solid #2563eb',
-                        background: 'white',
-                        color: '#2563eb',
+                        border: '1px solid #E11D48',
+                        background: 'var(--surface)',
+                        color: '#E11D48',
                         fontSize: 12,
                         fontWeight: 700,
                         cursor: 'pointer',
@@ -194,7 +194,7 @@ export default function OcrFieldList({
                           padding: '6px 14px',
                           borderRadius: 8,
                           border: '1px solid #ef4444',
-                          background: 'white',
+                          background: 'var(--surface)',
                           color: '#ef4444',
                           fontSize: 12,
                           fontWeight: 700,
@@ -218,9 +218,9 @@ export default function OcrFieldList({
                     style={{
                       padding: '6px 14px',
                       borderRadius: 8,
-                      border: '1px solid #e2e8f0',
-                      background: 'white',
-                      color: '#475569',
+                      border: '1px solid var(--border)',
+                      background: 'var(--surface)',
+                      color: 'var(--text-secondary)',
                       fontSize: 12,
                       fontWeight: 700,
                       cursor: 'pointer',
@@ -240,14 +240,14 @@ export default function OcrFieldList({
               <div style={{
                 padding: '12px 16px',
                 borderRadius: 10,
-                background: field.isCorrected ? '#eff6ff' : '#f8fafc',
-                border: `1px solid ${field.isCorrected ? '#bfdbfe' : '#e2e8f0'}`,
+                background: field.isCorrected ? '#eff6ff' : '#fafafa',
+                border: `1px solid ${field.isCorrected ? '#bfdbfe' : '#e5e5e5'}`,
                 position: 'relative'
               }}>
                 <div style={{
                   fontSize: 10,
                   fontWeight: 800,
-                  color: field.isCorrected ? '#2563eb' : '#64748b',
+                  color: field.isCorrected ? '#E11D48' : '#737373',
                   textTransform: 'uppercase',
                   letterSpacing: '0.05em',
                   marginBottom: 6,
@@ -259,7 +259,7 @@ export default function OcrFieldList({
                   {field.isCorrected && (
                     <span style={{
                       background: '#dbeafe',
-                      color: '#1d4ed8',
+                      color: '#BE123C',
                       padding: '2px 6px',
                       borderRadius: 4,
                       fontSize: 9
@@ -271,11 +271,11 @@ export default function OcrFieldList({
                 <div style={{
                   fontSize: 15,
                   fontWeight: 600,
-                  color: '#0f172a',
+                  color: 'var(--text-primary)',
                   wordBreak: 'break-word',
                   lineHeight: 1.5
                 }}>
-                  {displayValue || <span style={{ color: '#cbd5e1', fontWeight: 400 }}>— No value available</span>}
+                  {displayValue || <span style={{ color: '#d4d4d4', fontWeight: 400 }}>— No value available</span>}
                 </div>
               </div>
 
@@ -284,7 +284,7 @@ export default function OcrFieldList({
                 <div style={{
                   fontSize: 10,
                   fontWeight: 800,
-                  color: '#94a3b8',
+                  color: 'var(--text-muted)',
                   textTransform: 'uppercase',
                   letterSpacing: '0.05em',
                   marginBottom: 4
@@ -293,14 +293,14 @@ export default function OcrFieldList({
                 </div>
                 <div style={{
                   fontSize: 14,
-                  color: '#64748b',
+                  color: 'var(--text-muted)',
                   textDecoration: field.isCorrected ? 'line-through' : 'none',
                   opacity: field.isCorrected ? 0.6 : 1,
                   wordBreak: 'break-word',
                   fontStyle: 'italic',
                   lineHeight: 1.4
                 }}>
-                  {field.originalValue?.trim() || <span style={{ color: '#cbd5e1' }}>— No original data</span>}
+                  {field.originalValue?.trim() || <span style={{ color: '#d4d4d4' }}>— No original data</span>}
                 </div>
               </div>
 
@@ -308,7 +308,7 @@ export default function OcrFieldList({
                 <div style={{
                   marginTop: 4,
                   fontSize: 11,
-                  color: '#64748b',
+                  color: 'var(--text-muted)',
                   display: 'flex',
                   alignItems: 'center',
                   gap: 4

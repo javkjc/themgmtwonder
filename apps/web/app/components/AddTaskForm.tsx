@@ -56,7 +56,7 @@ export default function AddTaskForm({ onAdd, userId }: AddTaskFormProps) {
 
   return (
     <div style={{ marginBottom: 20 }}>
-      <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8, color: '#475569' }}>
+      <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 8, color: 'var(--text-secondary)' }}>
         Add New Task
       </label>
       <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
@@ -70,7 +70,7 @@ export default function AddTaskForm({ onAdd, userId }: AddTaskFormProps) {
           style={{
             flex: 1,
             padding: '10px 14px',
-            border: '1px solid #e2e8f0',
+            border: '1px solid var(--border)',
             borderRadius: 6,
             fontSize: 14,
             outline: 'none',
@@ -81,12 +81,12 @@ export default function AddTaskForm({ onAdd, userId }: AddTaskFormProps) {
           onChange={(e) => setParentId(e.target.value)}
           style={{
             padding: '10px 14px',
-            border: '1px solid #e2e8f0',
+            border: '1px solid var(--border)',
             borderRadius: 6,
             fontSize: 14,
             outline: 'none',
             minWidth: 160,
-            color: parentId ? '#1e293b' : '#94a3b8',
+            color: parentId ? '#141414' : '#a3a3a3',
           }}
           title="Optional: Select parent task"
         >
@@ -100,12 +100,12 @@ export default function AddTaskForm({ onAdd, userId }: AddTaskFormProps) {
           onChange={(e) => setCategory(e.target.value)}
           style={{
             padding: '10px 14px',
-            border: '1px solid #e2e8f0',
+            border: '1px solid var(--border)',
             borderRadius: 6,
             fontSize: 14,
             outline: 'none',
             minWidth: 140,
-            color: category ? '#1e293b' : '#94a3b8',
+            color: category ? '#141414' : '#a3a3a3',
           }}
         >
           <option value="">No category</option>
@@ -150,7 +150,7 @@ export default function AddTaskForm({ onAdd, userId }: AddTaskFormProps) {
             style={{
               width: 70,
               padding: '8px 10px',
-              border: '1px solid #e2e8f0',
+              border: '1px solid var(--border)',
               borderRadius: 6,
               fontSize: 13,
               outline: 'none',
@@ -158,7 +158,7 @@ export default function AddTaskForm({ onAdd, userId }: AddTaskFormProps) {
             }}
             title={`Duration (${minDurationMin}-${maxDurationMin} min)`}
           />
-          <span style={{ fontSize: 12, color: '#94a3b8', whiteSpace: 'nowrap' }}>min</span>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>min</span>
           {DURATION_PRESETS.map((preset) => (
             <button
               key={preset}
@@ -171,9 +171,9 @@ export default function AddTaskForm({ onAdd, userId }: AddTaskFormProps) {
               style={{
                 padding: '6px 10px',
                 borderRadius: 4,
-                border: parseInt(durationMinInput, 10) === preset ? '1px solid #3b82f6' : '1px solid #e2e8f0',
-                background: parseInt(durationMinInput, 10) === preset ? '#eff6ff' : '#f8fafc',
-                color: parseInt(durationMinInput, 10) === preset ? '#2563eb' : '#475569',
+                border: parseInt(durationMinInput, 10) === preset ? '1px solid #F43F5E' : '1px solid #e5e5e5',
+                background: parseInt(durationMinInput, 10) === preset ? '#eff6ff' : '#fafafa',
+                color: parseInt(durationMinInput, 10) === preset ? '#E11D48' : '#525252',
                 fontSize: 12,
                 fontWeight: 500,
                 cursor: 'pointer',
@@ -189,7 +189,7 @@ export default function AddTaskForm({ onAdd, userId }: AddTaskFormProps) {
           disabled={!title.trim()}
           style={{
             padding: '10px 20px',
-            background: title.trim() ? '#3b82f6' : '#cbd5e1',
+            background: title.trim() ? '#F43F5E' : '#d4d4d4',
             color: 'white',
             border: 'none',
             borderRadius: 6,
@@ -211,7 +211,7 @@ export default function AddTaskForm({ onAdd, userId }: AddTaskFormProps) {
           style={{
             width: '100%',
             padding: '8px 12px',
-            border: '1px solid #e2e8f0',
+            border: '1px solid var(--border)',
             borderRadius: 6,
             fontSize: 13,
             resize: 'vertical',
@@ -222,7 +222,7 @@ export default function AddTaskForm({ onAdd, userId }: AddTaskFormProps) {
         <div style={{
           marginTop: 4,
           fontSize: 11,
-          color: description.length > 450 ? '#f59e0b' : '#94a3b8',
+          color: description.length > 450 ? '#f59e0b' : '#a3a3a3',
           textAlign: 'right',
         }}>
           {description.length}/500 characters

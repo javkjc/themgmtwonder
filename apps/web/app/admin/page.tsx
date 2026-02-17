@@ -203,17 +203,17 @@ export default function AdminPage() {
     <Layout currentPage="admin" userEmail={me.email} userRole={me.role} isAdmin={me.isAdmin} onLogout={logout}>
       {/* Header */}
       <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, marginBottom: 8, color: '#1e293b' }}>
+        <h1 style={{ fontSize: 28, fontWeight: 700, fontFamily: 'var(--font-heading)', letterSpacing: '-0.025em', margin: 0, marginBottom: 8, color: 'var(--text-primary)' }}>
           User Management
         </h1>
-        <p style={{ color: '#64748b', margin: 0 }}>
+        <p style={{ color: 'var(--text-muted)', margin: 0 }}>
           Search for users and reset passwords
         </p>
       </div>
 
       {/* Search Section */}
       <div style={{
-        background: 'white',
+        background: 'var(--surface)',
         borderRadius: 12,
         boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
         padding: 24,
@@ -230,7 +230,7 @@ export default function AdminPage() {
             style={{
               flex: 1,
               padding: '10px 14px',
-              border: '1px solid #e2e8f0',
+              border: '1px solid var(--border)',
               borderRadius: 6,
               fontSize: 14,
               outline: 'none',
@@ -242,7 +242,7 @@ export default function AdminPage() {
             data-testid="admin-search-button"
             style={{
               padding: '10px 20px',
-              background: '#3b82f6',
+              background: '#F43F5E',
               color: 'white',
               border: 'none',
               borderRadius: 6,
@@ -259,35 +259,35 @@ export default function AdminPage() {
 
       {/* Users Table */}
       <div style={{
-        background: 'white',
+        background: 'var(--surface)',
         borderRadius: 12,
         boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
         overflow: 'hidden',
       }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#475569' }}>Email</th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#475569' }}>Admin</th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#475569' }}>Status</th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#475569' }}>Created</th>
-              <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 13, fontWeight: 600, color: '#475569' }}>Actions</th>
+            <tr style={{ background: 'var(--surface-secondary)', borderBottom: '1px solid #e5e5e5' }}>
+              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>Email</th>
+              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>Admin</th>
+              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>Status</th>
+              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>Created</th>
+              <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {users.length === 0 ? (
               <tr>
-                <td colSpan={5} style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>
+                <td colSpan={5} style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>
                   {loadingUsers ? 'Loading...' : 'No users found'}
                 </td>
               </tr>
             ) : (
               users.map((user) => (
-                <tr key={user.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                <tr key={user.id} style={{ borderBottom: '1px solid #e5e5e5' }}>
                   <td style={{ padding: '12px 16px', fontSize: 14 }}>
                     {user.email}
                     {user.id === me.userId && (
-                      <span style={{ marginLeft: 8, fontSize: 11, background: '#dbeafe', color: '#1d4ed8', padding: '2px 6px', borderRadius: 4 }}>
+                      <span style={{ marginLeft: 8, fontSize: 11, background: '#dbeafe', color: '#BE123C', padding: '2px 6px', borderRadius: 4 }}>
                         You
                       </span>
                     )}
@@ -297,8 +297,8 @@ export default function AdminPage() {
                       padding: '2px 8px',
                       borderRadius: 4,
                       fontSize: 12,
-                      background: user.isAdmin ? '#fef3c7' : '#e2e8f0',
-                      color: user.isAdmin ? '#92400e' : '#475569',
+                      background: user.isAdmin ? '#fef3c7' : '#e5e5e5',
+                      color: user.isAdmin ? '#92400e' : '#525252',
                     }}>
                       {user.isAdmin ? 'Yes' : 'No'}
                     </span>
@@ -310,7 +310,7 @@ export default function AdminPage() {
                       <span style={{ color: '#16a34a', fontSize: 12 }}>Active</span>
                     )}
                   </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: '#64748b' }}>
+                  <td style={{ padding: '12px 16px', fontSize: 14, color: 'var(--text-muted)' }}>
                     {new Date(user.createdAt).toLocaleDateString()}
                   </td>
                   <td style={{ padding: '12px 16px', textAlign: 'right' }}>
@@ -371,7 +371,7 @@ export default function AdminPage() {
           zIndex: 1000,
         }}>
           <div style={{
-            background: 'white',
+            background: 'var(--surface)',
             borderRadius: 12,
             padding: 24,
             width: '100%',
@@ -380,8 +380,8 @@ export default function AdminPage() {
           }}>
             {resetModal.tempPassword ? (
               <>
-                <h3 style={{ margin: 0, marginBottom: 16, color: '#1e293b' }}>Password Reset Complete</h3>
-                <p style={{ margin: 0, marginBottom: 8, color: '#64748b', fontSize: 14 }}>
+                <h3 style={{ margin: 0, marginBottom: 16, color: 'var(--text-primary)' }}>Password Reset Complete</h3>
+                <p style={{ margin: 0, marginBottom: 8, color: 'var(--text-muted)', fontSize: 14 }}>
                   A temporary password has been generated for <strong>{resetModal.user.email}</strong>
                 </p>
                 <div style={{
@@ -412,7 +412,7 @@ export default function AdminPage() {
                     width: '100%',
                     marginTop: 16,
                     padding: '10px 16px',
-                    background: '#3b82f6',
+                    background: '#F43F5E',
                     color: 'white',
                     border: 'none',
                     borderRadius: 6,
@@ -425,8 +425,8 @@ export default function AdminPage() {
               </>
             ) : (
               <>
-                <h3 style={{ margin: 0, marginBottom: 16, color: '#1e293b' }}>Reset Password</h3>
-                <p style={{ margin: 0, marginBottom: 16, color: '#64748b', fontSize: 14 }}>
+                <h3 style={{ margin: 0, marginBottom: 16, color: 'var(--text-primary)' }}>Reset Password</h3>
+                <p style={{ margin: 0, marginBottom: 16, color: 'var(--text-muted)', fontSize: 14 }}>
                   Are you sure you want to reset the password for <strong>{resetModal.user.email}</strong>?
                 </p>
                 <p style={{ margin: 0, marginBottom: 16, fontSize: 13, color: '#dc2626' }}>
@@ -439,9 +439,9 @@ export default function AdminPage() {
                     style={{
                       flex: 1,
                       padding: '10px 16px',
-                      background: 'white',
-                      color: '#475569',
-                      border: '1px solid #e2e8f0',
+                      background: 'var(--surface)',
+                      color: 'var(--text-secondary)',
+                      border: '1px solid var(--border)',
                       borderRadius: 6,
                       fontSize: 14,
                       cursor: resetting ? 'not-allowed' : 'pointer',

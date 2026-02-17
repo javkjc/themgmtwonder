@@ -80,17 +80,17 @@ export default function SuggestionActionModal({
                     }}>
                         ✨
                     </div>
-                    <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#0f172a' }}>
+                    <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: 'var(--text-primary)' }}>
                         {title}
                     </h3>
                 </div>
 
-                <p style={{ margin: '0 0 8px', fontSize: 15, color: '#475569', lineHeight: 1.6, fontWeight: 600 }}>
+                <p style={{ margin: '0 0 8px', fontSize: 15, color: 'var(--text-secondary)', lineHeight: 1.6, fontWeight: 600 }}>
                     {message}
                 </p>
 
                 {description && (
-                    <p style={{ margin: '0 0 24px', fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
+                    <p style={{ margin: '0 0 24px', fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5 }}>
                         {description}
                     </p>
                 )}
@@ -98,7 +98,7 @@ export default function SuggestionActionModal({
                 <div style={{ marginBottom: 24 }}>
                     <label
                         htmlFor="suggestion-reason"
-                        style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#1e293b', marginBottom: 8 }}
+                        style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}
                     >
                         Reason for Change
                     </label>
@@ -115,9 +115,9 @@ export default function SuggestionActionModal({
                             minHeight: 100,
                             padding: '12px 16px',
                             borderRadius: 12,
-                            border: `1px solid ${error ? '#ef4444' : '#cbd5e1'}`,
+                            border: `1px solid ${error ? '#ef4444' : '#d4d4d4'}`,
                             fontSize: 14,
-                            color: '#1e293b',
+                            color: 'var(--text-primary)',
                             outline: 'none',
                             resize: 'vertical',
                             transition: 'all 0.2s',
@@ -132,9 +132,9 @@ export default function SuggestionActionModal({
                         style={{
                             padding: '10px 20px',
                             borderRadius: 10,
-                            background: '#f1f5f9',
+                            background: '#f5f5f5',
                             border: 'none',
-                            color: '#475569',
+                            color: 'var(--text-secondary)',
                             fontSize: 14,
                             fontWeight: 700,
                             cursor: 'pointer',
@@ -148,7 +148,7 @@ export default function SuggestionActionModal({
                         style={{
                             padding: '10px 20px',
                             borderRadius: 10,
-                            background: '#2563eb',
+                            background: '#E11D48',
                             border: 'none',
                             color: '#ffffff',
                             fontSize: 14,

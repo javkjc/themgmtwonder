@@ -16,7 +16,7 @@ export default function FieldTable({ fields, loading, onEdit, onHide, onUnhide, 
         const styles = {
             active: { bg: '#dcfce7', color: '#166534', text: 'Active' },
             hidden: { bg: '#fef3c7', color: '#92400e', text: 'Hidden' },
-            archived: { bg: '#f1f5f9', color: '#475569', text: 'Archived' },
+            archived: { bg: '#f5f5f5', color: 'var(--text-secondary)', text: 'Archived' },
         };
         const style = styles[status];
         return (
@@ -45,7 +45,7 @@ export default function FieldTable({ fields, loading, onEdit, onHide, onUnhide, 
     return (
         <div
             style={{
-                background: 'white',
+                background: 'var(--surface)',
                 borderRadius: 12,
                 boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
                 overflow: 'hidden',
@@ -53,23 +53,23 @@ export default function FieldTable({ fields, loading, onEdit, onHide, onUnhide, 
         >
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
-                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                        <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#475569' }}>
+                    <tr style={{ background: 'var(--surface-secondary)', borderBottom: '1px solid #e5e5e5' }}>
+                        <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>
                             Field Key
                         </th>
-                        <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#475569' }}>
+                        <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>
                             Label
                         </th>
-                        <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#475569' }}>
+                        <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>
                             Character Type
                         </th>
-                        <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: 13, fontWeight: 600, color: '#475569' }}>
+                        <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>
                             Version
                         </th>
-                        <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: 13, fontWeight: 600, color: '#475569' }}>
+                        <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>
                             Status
                         </th>
-                        <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 13, fontWeight: 600, color: '#475569' }}>
+                        <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>
                             Actions
                         </th>
                     </tr>
@@ -77,27 +77,27 @@ export default function FieldTable({ fields, loading, onEdit, onHide, onUnhide, 
                 <tbody>
                     {loading ? (
                         <tr>
-                            <td colSpan={6} style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>
+                            <td colSpan={6} style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>
                                 Loading fields...
                             </td>
                         </tr>
                     ) : fields.length === 0 ? (
                         <tr>
-                            <td colSpan={6} style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>
+                            <td colSpan={6} style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>
                                 No fields found
                             </td>
                         </tr>
                     ) : (
                         fields.map((field) => (
-                            <tr key={field.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                                <td style={{ padding: '12px 16px', fontSize: 14, fontFamily: 'monospace', color: '#1e293b' }}>
+                            <tr key={field.id} style={{ borderBottom: '1px solid #e5e5e5' }}>
+                                <td style={{ padding: '12px 16px', fontSize: 14, fontFamily: 'monospace', color: 'var(--text-primary)' }}>
                                     {field.fieldKey}
                                 </td>
-                                <td style={{ padding: '12px 16px', fontSize: 14, color: '#1e293b' }}>{field.label}</td>
-                                <td style={{ padding: '12px 16px', fontSize: 14, fontFamily: 'monospace', color: '#64748b' }}>
+                                <td style={{ padding: '12px 16px', fontSize: 14, color: 'var(--text-primary)' }}>{field.label}</td>
+                                <td style={{ padding: '12px 16px', fontSize: 14, fontFamily: 'monospace', color: 'var(--text-muted)' }}>
                                     {getCharacterTypeDisplay(field.characterType, field.characterLimit)}
                                 </td>
-                                <td style={{ padding: '12px 16px', fontSize: 14, textAlign: 'center', color: '#64748b' }}>
+                                <td style={{ padding: '12px 16px', fontSize: 14, textAlign: 'center', color: 'var(--text-muted)' }}>
                                     v{field.version}
                                 </td>
                                 <td style={{ padding: '12px 16px', textAlign: 'center' }}>{getStatusBadge(field.status)}</td>
@@ -202,7 +202,7 @@ export default function FieldTable({ fields, loading, onEdit, onHide, onUnhide, 
                                             </>
                                         )}
                                         {field.status === 'archived' && (
-                                            <span style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>Read-only</span>
+                                            <span style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>Read-only</span>
                                         )}
                                     </div>
                                 </td>

@@ -40,7 +40,7 @@ export default function ConfirmModal({
   const colors = {
     danger: { bg: '#fee2e2', text: '#991b1b', button: '#dc2626' },
     warning: { bg: '#fef3c7', text: '#92400e', button: '#f59e0b' },
-    info: { bg: '#dbeafe', text: '#1e40af', button: '#3b82f6' },
+    info: { bg: '#dbeafe', text: '#1e40af', button: '#F43F5E' },
   };
 
   const color = colors[variant];
@@ -64,7 +64,7 @@ export default function ConfirmModal({
     >
       <div
         style={{
-          background: 'white',
+          background: 'var(--surface)',
           borderRadius: 12,
           padding: 24,
           maxWidth: 450,
@@ -73,7 +73,7 @@ export default function ConfirmModal({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 style={{ margin: 0, marginBottom: 16, fontSize: 20, fontWeight: 600, color: '#1e293b' }}>
+        <h2 style={{ margin: 0, marginBottom: 16, fontSize: 20, fontWeight: 600, color: 'var(--text-primary)' }}>
           {title}
         </h2>
 
@@ -93,7 +93,7 @@ export default function ConfirmModal({
           </div>
         )}
 
-        <p style={{ margin: 0, marginBottom: 24, fontSize: 14, color: '#64748b', lineHeight: 1.6 }}>
+        <p style={{ margin: 0, marginBottom: 24, fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.6 }}>
           {message}
         </p>
 
@@ -104,9 +104,9 @@ export default function ConfirmModal({
             style={{
               padding: '10px 20px',
               borderRadius: 6,
-              border: '1px solid #e2e8f0',
-              background: 'white',
-              color: '#64748b',
+              border: '1px solid var(--border)',
+              background: 'var(--surface)',
+              color: 'var(--text-muted)',
               fontSize: 14,
               fontWeight: 500,
               cursor: 'pointer',

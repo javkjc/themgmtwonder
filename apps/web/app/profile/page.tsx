@@ -151,23 +151,23 @@ export default function ProfilePage() {
     <Layout currentPage="profile" userEmail={me.email} userRole={me.role} isAdmin={me.isAdmin} onLogout={logout}>
       {/* Header */}
       <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, marginBottom: 8, color: '#1e293b' }}>
+        <h1 style={{ fontSize: 28, fontWeight: 700, fontFamily: 'var(--font-heading)', letterSpacing: '-0.025em', margin: 0, marginBottom: 8, color: 'var(--text-primary)' }}>
           Profile & Settings
         </h1>
-        <p style={{ color: '#64748b', margin: 0 }}>
+        <p style={{ color: 'var(--text-muted)', margin: 0 }}>
           Manage your account settings
         </p>
       </div>
 
       {/* Account Info Card */}
       <div style={{
-        background: 'white',
+        background: 'var(--surface)',
         borderRadius: 12,
         boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
         padding: 24,
         marginBottom: 24,
       }}>
-        <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, marginBottom: 16, color: '#1e293b' }}>
+        <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, marginBottom: 16, color: 'var(--text-primary)' }}>
           Account Information
         </h2>
 
@@ -188,10 +188,10 @@ export default function ProfilePage() {
               {me.email.charAt(0).toUpperCase()}
             </div>
             <div>
-              <div style={{ fontSize: 14, fontWeight: 500, color: '#1e293b' }}>
+              <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>
                 {me.email}
               </div>
-              <div style={{ fontSize: 12, color: '#64748b' }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                 User ID: {me.userId.substring(0, 8)}...
               </div>
             </div>
@@ -201,12 +201,12 @@ export default function ProfilePage() {
 
       {/* Change Password Card */}
       <div style={{
-        background: 'white',
+        background: 'var(--surface)',
         borderRadius: 12,
         boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
         padding: 24,
       }}>
-        <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, marginBottom: 16, color: '#1e293b' }}>
+        <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, marginBottom: 16, color: 'var(--text-primary)' }}>
           Change Password
         </h2>
 
@@ -244,7 +244,7 @@ export default function ProfilePage() {
               fontSize: 13,
               fontWeight: 500,
               marginBottom: 8,
-              color: '#475569'
+              color: 'var(--text-secondary)'
             }}>
               Current Password
             </label>
@@ -256,7 +256,7 @@ export default function ProfilePage() {
               style={{
                 width: '100%',
                 padding: '10px 14px',
-                border: '1px solid #e2e8f0',
+                border: '1px solid var(--border)',
                 borderRadius: 6,
                 fontSize: 14,
                 outline: 'none',
@@ -270,7 +270,7 @@ export default function ProfilePage() {
               fontSize: 13,
               fontWeight: 500,
               marginBottom: 8,
-              color: '#475569'
+              color: 'var(--text-secondary)'
             }}>
               New Password
             </label>
@@ -283,7 +283,7 @@ export default function ProfilePage() {
               style={{
                 width: '100%',
                 padding: '10px 14px',
-                border: '1px solid #e2e8f0',
+                border: '1px solid var(--border)',
                 borderRadius: 6,
                 fontSize: 14,
                 outline: 'none',
@@ -297,7 +297,7 @@ export default function ProfilePage() {
               fontSize: 13,
               fontWeight: 500,
               marginBottom: 8,
-              color: '#475569'
+              color: 'var(--text-secondary)'
             }}>
               Confirm New Password
             </label>
@@ -312,7 +312,7 @@ export default function ProfilePage() {
               style={{
                 width: '100%',
                 padding: '10px 14px',
-                border: '1px solid #e2e8f0',
+                border: '1px solid var(--border)',
                 borderRadius: 6,
                 fontSize: 14,
                 outline: 'none',
@@ -327,8 +327,8 @@ export default function ProfilePage() {
             style={{
               padding: '10px 20px',
               background: (changingPassword || passwordSuccess || !currentPassword || !newPassword || !confirmPassword)
-                ? '#cbd5e1'
-                : '#3b82f6',
+                ? '#d4d4d4'
+                : '#F43F5E',
               color: 'white',
               border: 'none',
               borderRadius: 6,

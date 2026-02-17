@@ -7,7 +7,7 @@ const styles: Record<
   draft: { background: '#fef9c3', color: '#854d0e', border: '#fde68a' },
   reviewed: { background: '#e0f2fe', color: '#075985', border: '#bae6fd' },
   confirmed: { background: '#dcfce7', color: '#166534', border: '#bbf7d0' },
-  archived: { background: '#f1f5f9', color: '#475569', border: '#e2e8f0' },
+  archived: { background: '#f5f5f5', color: 'var(--text-secondary)', border: '#e5e5e5' },
 };
 
 interface Props {

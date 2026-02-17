@@ -253,10 +253,10 @@ export default function AdminFieldsPage() {
         <Layout currentPage="adminFields" userEmail={me.email} userRole={me.role} isAdmin={me.isAdmin} onLogout={logout}>
             {/* Header */}
             <div style={{ marginBottom: 32 }}>
-                <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, marginBottom: 8, color: '#1e293b' }}>
+                <h1 style={{ fontSize: 28, fontWeight: 700, fontFamily: 'var(--font-heading)', letterSpacing: '-0.025em', margin: 0, marginBottom: 8, color: 'var(--text-primary)' }}>
                     Field Library
                 </h1>
-                <p style={{ color: '#64748b', margin: 0 }}>
+                <p style={{ color: 'var(--text-muted)', margin: 0 }}>
                     Manage structured field definitions for extraction baselines
                 </p>
             </div>
@@ -272,7 +272,7 @@ export default function AdminFieldsPage() {
             >
                 {/* Status Filter */}
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <label htmlFor="statusFilter" style={{ fontSize: 14, fontWeight: 500, color: '#475569' }}>
+                    <label htmlFor="statusFilter" style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-secondary)' }}>
                         Status:
                     </label>
                     <select
@@ -281,11 +281,11 @@ export default function AdminFieldsPage() {
                         onChange={(e) => setStatusFilter(e.target.value as FieldStatus | 'all')}
                         style={{
                             padding: '8px 12px',
-                            border: '1px solid #e2e8f0',
+                            border: '1px solid var(--border)',
                             borderRadius: 6,
                             fontSize: 14,
                             outline: 'none',
-                            background: 'white',
+                            background: 'var(--surface)',
                         }}
                     >
                         <option value="all">All</option>
@@ -300,7 +300,7 @@ export default function AdminFieldsPage() {
                     onClick={() => setFormModal({ mode: 'create' })}
                     style={{
                         padding: '10px 20px',
-                        background: '#3b82f6',
+                        background: '#F43F5E',
                         color: 'white',
                         border: 'none',
                         borderRadius: 6,

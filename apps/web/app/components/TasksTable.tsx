@@ -43,6 +43,7 @@ export default function TasksTable({
   const [relationshipModal, setRelationshipModal] = useState<{ todo: Todo; type: 'parent' | 'child' } | null>(null);
   const [modalLoading, setModalLoading] = useState(false);
   const [modalData, setModalData] = useState<Todo | Todo[] | null>(null);
+  const [openActionsId, setOpenActionsId] = useState<string | null>(null);
 
   const { getCategoryNames } = useCategories(userId);
   const categoryNames = getCategoryNames();
@@ -74,6 +75,17 @@ export default function TasksTable({
 
     fetchRelationshipData();
   }, [relationshipModal]);
+
+  useEffect(() => {
+    if (!openActionsId) return;
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest(`[data-actions-id="${openActionsId}"]`)) return;
+      setOpenActionsId(null);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [openActionsId]);
 
   const toggleSelection = (todoId: string) => {
     if (!onSelectionChange) return;
@@ -131,12 +143,12 @@ export default function TasksTable({
   if (todos.length === 0) {
     return (
       <div style={{
-        background: 'white',
+        background: 'var(--surface)',
         borderRadius: 12,
-        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+        border: '1px solid var(--border)',
         padding: 48,
         textAlign: 'center',
-        color: '#94a3b8',
+        color: 'var(--text-muted)',
       }}>
         No tasks found. Add your first task above!
       </div>
@@ -145,15 +157,15 @@ export default function TasksTable({
 
   return (
     <div style={{
-      background: 'white',
+      background: 'var(--surface)',
       borderRadius: 12,
-      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+      border: '1px solid var(--border)',
       overflow: 'hidden',
     }}>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+            <tr style={{ background: 'var(--surface-secondary)', borderBottom: '1px solid var(--border)' }}>
               {onSelectionChange && (
                 <th style={{ padding: '12px 16px', textAlign: 'center', width: 40 }}>
                   <input
@@ -164,28 +176,28 @@ export default function TasksTable({
                   />
                 </th>
               )}
-              <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', width: 40 }}>
+              <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', width: 40 }}>
                 Pin
               </th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', width: 40 }}>
+              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', width: 40 }}>
                 Done
               </th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>
+              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                 Task
               </th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', width: 100 }}>
+              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', width: 100 }}>
                 Relationship
               </th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', width: 100 }}>
+              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', width: 100 }}>
                 Status
               </th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', width: 80 }}>
+              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', width: 80 }}>
                 Duration
               </th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', width: 140 }}>
+              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', width: 140 }}>
                 Schedule
               </th>
-              <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', width: 200 }}>
+              <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', width: 200 }}>
                 Actions
               </th>
             </tr>
@@ -196,16 +208,32 @@ export default function TasksTable({
                 key={t.id}
                 data-testid={`task-row-${t.id}`}
                 style={{
-                  borderBottom: '1px solid #f1f5f9',
+                  borderBottom: '1px solid var(--border)',
                   transition: 'background 0.15s, box-shadow 0.15s, transform 0.15s',
-                  background: t.isPinned ? '#fffbeb' : t.done ? '#f8fafc' : 'white',
-                  borderLeft: t.isPinned ? '3px solid #f59e0b' : t.done ? '3px solid #cbd5e1' : '3px solid transparent',
+                  background: t.isPinned
+                    ? 'rgba(244, 63, 94, 0.12)'
+                    : t.done
+                      ? 'var(--surface-secondary)'
+                      : 'var(--surface)',
+                  borderLeft: t.isPinned
+                    ? '3px solid var(--accent)'
+                    : t.done
+                      ? '3px solid var(--border-strong)'
+                      : '3px solid transparent',
                 }}
                 onMouseOver={(e) => {
-                  e.currentTarget.style.background = t.isPinned ? '#fff7ed' : t.done ? '#f1f5f9' : '#f8fafc';
+                  e.currentTarget.style.background = t.isPinned
+                    ? 'rgba(244, 63, 94, 0.2)'
+                    : t.done
+                      ? 'var(--surface-hover)'
+                      : 'var(--surface-secondary)';
                 }}
                 onMouseOut={(e) => {
-                  e.currentTarget.style.background = t.isPinned ? '#fffbeb' : t.done ? '#f8fafc' : 'white';
+                  e.currentTarget.style.background = t.isPinned
+                    ? 'rgba(244, 63, 94, 0.12)'
+                    : t.done
+                      ? 'var(--surface-secondary)'
+                      : 'var(--surface)';
                 }}
               >
                 {onSelectionChange && (
@@ -227,7 +255,7 @@ export default function TasksTable({
                       border: 'none',
                       cursor: 'pointer',
                       fontSize: 16,
-                      color: t.isPinned ? '#f59e0b' : '#cbd5e1',
+                      color: t.isPinned ? 'var(--accent)' : 'var(--border-strong)',
                       padding: 0,
                       display: 'flex',
                       alignItems: 'center',
@@ -298,7 +326,9 @@ export default function TasksTable({
                             padding: '6px 10px',
                             fontSize: 14,
                             borderRadius: 4,
-                            border: '1px solid #3b82f6',
+                            border: '1px solid var(--accent)',
+                            background: 'var(--surface)',
+                            color: 'var(--text-primary)',
                             outline: 'none',
                           }}
                           autoFocus
@@ -316,7 +346,9 @@ export default function TasksTable({
                             padding: '6px 10px',
                             fontSize: 13,
                             borderRadius: 4,
-                            border: '1px solid #e2e8f0',
+                            border: '1px solid var(--border)',
+                            background: 'var(--surface)',
+                            color: 'var(--text-primary)',
                             outline: 'none',
                             resize: 'vertical',
                             boxSizing: 'border-box',
@@ -325,7 +357,7 @@ export default function TasksTable({
                         <div style={{
                           marginTop: 2,
                           fontSize: 10,
-                          color: editingDescription.length > 450 ? '#f59e0b' : '#94a3b8',
+                          color: editingDescription.length > 450 ? 'var(--accent-warning)' : 'var(--text-muted)',
                           textAlign: 'right',
                         }}>
                           {editingDescription.length}/500
@@ -340,9 +372,10 @@ export default function TasksTable({
                             padding: '6px 10px',
                             fontSize: 13,
                             borderRadius: 4,
-                            border: '1px solid #e2e8f0',
+                            border: '1px solid var(--border)',
+                            background: 'var(--surface)',
                             outline: 'none',
-                            color: '#64748b',
+                            color: 'var(--text-muted)',
                           }}
                         >
                           <option value="">No category</option>
@@ -372,13 +405,15 @@ export default function TasksTable({
                                 padding: '6px 8px',
                                 fontSize: 12,
                                 borderRadius: 4,
-                                border: '1px solid #e2e8f0',
+                                border: '1px solid var(--border)',
+                                background: 'var(--surface)',
+                                color: 'var(--text-primary)',
                                 outline: 'none',
                                 textAlign: 'center',
                               }}
                               title={`Duration (${minDurationMin}-${maxDurationMin} min)`}
                             />
-                            <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>min</span>
+                            <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>min</span>
                           </>
                         )}
                         <button
@@ -389,7 +424,7 @@ export default function TasksTable({
                             borderRadius: 4,
                             border: 'none',
                             background: '#10b981',
-                            color: 'white',
+                            color: '#ffffff',
                             cursor: 'pointer',
                           }}
                         >
@@ -401,9 +436,9 @@ export default function TasksTable({
                             padding: '6px 12px',
                             fontSize: 12,
                             borderRadius: 4,
-                            border: '1px solid #e2e8f0',
-                            background: 'white',
-                            color: '#64748b',
+                            border: '1px solid var(--border)',
+                            background: 'var(--surface)',
+                            color: 'var(--text-muted)',
                             cursor: 'pointer',
                           }}
                         >
@@ -420,16 +455,16 @@ export default function TasksTable({
                           style={{
                             fontSize: 14,
                             fontWeight: 500,
-                            color: t.done ? '#94a3b8' : '#1e293b',
+                            color: t.done ? 'var(--text-muted)' : 'var(--text-primary)',
                             textDecoration: t.done ? 'line-through' : 'none',
                           }}
                           onMouseOver={(e) => {
                             if (!t.done) {
-                              e.currentTarget.style.color = '#3b82f6';
+                              e.currentTarget.style.color = 'var(--accent)';
                             }
                           }}
                           onMouseOut={(e) => {
-                            e.currentTarget.style.color = t.done ? '#94a3b8' : '#1e293b';
+                            e.currentTarget.style.color = t.done ? 'var(--text-muted)' : 'var(--text-primary)';
                           }}
                         >
                           {t.title}
@@ -437,8 +472,8 @@ export default function TasksTable({
                         <span style={{
                           fontFamily: 'monospace',
                           fontSize: 11,
-                          color: '#94a3b8',
-                          background: '#f1f5f9',
+                          color: 'var(--text-muted)',
+                          background: 'var(--surface-hover)',
                           padding: '2px 6px',
                           borderRadius: 4,
                         }}>
@@ -448,8 +483,8 @@ export default function TasksTable({
                           <span style={{
                             fontSize: 11,
                             fontWeight: 700,
-                            color: '#92400e',
-                            background: '#fef9c3',
+                            color: 'var(--accent-strong)',
+                            background: 'rgba(244, 63, 94, 0.2)',
                             padding: '2px 8px',
                             borderRadius: 9999,
                             textTransform: 'uppercase',
@@ -463,7 +498,7 @@ export default function TasksTable({
                             fontSize: 11,
                             fontWeight: 600,
                             color: '#10b981',
-                            background: '#d1fae5',
+                            background: 'rgba(34, 197, 94, 0.2)',
                             padding: '2px 8px',
                             borderRadius: 4,
                           }}>
@@ -474,7 +509,7 @@ export default function TasksTable({
                       {t.description && (
                       <div style={{
                         fontSize: 12,
-                        color: '#64748b',
+                        color: 'var(--text-muted)',
                         marginBottom: 4,
                         wordBreak: 'break-word',
                         whiteSpace: 'pre-wrap',
@@ -483,12 +518,12 @@ export default function TasksTable({
                         {t.description}
                       </div>
                       )}
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: '#94a3b8' }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: 'var(--text-muted)' }}>
                         <span>Created {formatDate(t.createdAt)}</span>
                         {t.category && (
                           <>
                             <span>-</span>
-                            <span style={{ color: '#3b82f6', fontWeight: 500 }}>{t.category}</span>
+                            <span style={{ color: '#F43F5E', fontWeight: 500 }}>{t.category}</span>
                           </>
                         )}
                       </div>
@@ -502,7 +537,7 @@ export default function TasksTable({
 
                     if (!hasChildren && !hasParent) {
                       return (
-                        <span style={{ fontSize: 13, color: '#94a3b8' }}>
+                        <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
                           Independent
                         </span>
                       );
@@ -515,7 +550,7 @@ export default function TasksTable({
                             onClick={() => setRelationshipModal({ todo: t, type: 'parent' })}
                             style={{
                               fontSize: 13,
-                              color: '#8b5cf6',
+                              color: '#F43F5E',
                               fontWeight: 500,
                               cursor: 'pointer',
                               textDecoration: 'underline',
@@ -545,7 +580,7 @@ export default function TasksTable({
                           onClick={() => setRelationshipModal({ todo: t, type: 'parent' })}
                           style={{
                             fontSize: 13,
-                            color: '#8b5cf6',
+                            color: '#F43F5E',
                             fontWeight: 500,
                             cursor: 'pointer',
                             textDecoration: 'underline',
@@ -582,114 +617,206 @@ export default function TasksTable({
                       fontSize: 12,
                       fontWeight: 500,
                       borderRadius: 12,
-                      background: t.done ? '#d1fae5' : '#dbeafe',
-                      color: t.done ? '#065f46' : '#1e40af',
+                      background: t.done ? 'rgba(34, 197, 94, 0.2)' : 'rgba(244, 63, 94, 0.16)',
+                      color: t.done ? '#16a34a' : 'var(--accent-strong)',
                     }}
                   >
                     {t.done ? 'Done' : 'Active'}
                   </span>
                 </td>
-                <td style={{ padding: '16px', whiteSpace: 'nowrap', fontSize: 13, color: '#475569' }}>
+                <td style={{ padding: '16px', whiteSpace: 'nowrap', fontSize: 13, color: 'var(--text-secondary)' }}>
                   {t.durationMin ? `${t.durationMin}m` : ''}
                 </td>
                 <td style={{ padding: '16px' }}>
                   {t.startAt && t.durationMin ? (
                     <div>
-                      <div style={{ fontSize: 13, color: '#1e293b', fontWeight: 500 }}>
+                      <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>
                         {formatDate(t.startAt)}
                       </div>
-                      <div style={{ fontSize: 12, color: '#64748b' }}>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                         {formatTimeRange(t.startAt, t.durationMin)}
                       </div>
                     </div>
                   ) : (
-                    <span style={{ fontSize: 13, color: '#94a3b8' }}>Not scheduled</span>
+                    <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Not scheduled</span>
                   )}
                 </td>
-                <td style={{ padding: '16px', textAlign: 'right' }}>
+                <td style={{ padding: '16px', textAlign: 'right', position: 'relative' }}>
                   {editingId !== t.id && (
-                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                      <Link
-                        href={`/task/${t.id}`}
-                        style={{
-                          padding: '6px 10px',
-                          fontSize: 12,
-                          borderRadius: 4,
-                          border: '1px solid #e2e8f0',
-                          background: 'white',
-                          color: '#3b82f6',
-                          cursor: 'pointer',
-                          textDecoration: 'none',
-                          display: 'inline-block',
-                        }}
-                        title="View task details"
-                      >
-                        View
-                      </Link>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end' }} data-actions-id={t.id}>
                       <button
-                        onClick={() => startEditing(t)}
+                        onClick={() => setOpenActionsId(openActionsId === t.id ? null : t.id)}
                         style={{
                           padding: '6px 10px',
                           fontSize: 12,
-                          borderRadius: 4,
-                          border: '1px solid #e2e8f0',
-                          background: 'white',
-                          color: '#64748b',
+                          borderRadius: 8,
+                          border: '1px solid var(--accent)',
+                          background: 'transparent',
+                          color: 'var(--accent)',
                           cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          boxShadow: '0 6px 16px rgba(0,0,0,0.08)',
                         }}
-                        title="Edit task"
+                        title="Actions"
                       >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => onSchedule(t.id, t.startAt, t.durationMin)}
-                        data-testid={`task-schedule-${t.id}`}
-                        style={{
-                          padding: '6px 10px',
-                          fontSize: 12,
-                          borderRadius: 4,
-                          border: '1px solid #e2e8f0',
-                          background: 'white',
-                          color: '#3b82f6',
-                          cursor: 'pointer',
-                        }}
-                        title={t.startAt ? 'Reschedule' : 'Schedule'}
-                      >
-                        {t.startAt ? 'Reschedule' : 'Schedule'}
-                      </button>
-                      {t.startAt && (
-                        <button
-                          onClick={() => onUnschedule(t.id, t.title)}
+                        <span style={{ paddingRight: 6 }}>Actions</span>
+                        <span
                           style={{
-                            padding: '6px 10px',
-                            fontSize: 12,
-                            borderRadius: 4,
-                            border: '1px solid #e2e8f0',
-                            background: 'white',
-                            color: '#f59e0b',
-                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: 22,
+                            height: 20,
+                            borderLeft: '1px solid var(--accent)',
+                            color: 'var(--accent)',
                           }}
-                          title="Unschedule"
                         >
-                          Unschedule
-                        </button>
-                      )}
-                      <button
-                        onClick={() => onDelete(t.id, t.title)}
-                        data-testid={`task-delete-${t.id}`}
-                        style={{
-                          padding: '6px 10px',
-                          fontSize: 12,
-                          borderRadius: 4,
-                          border: '1px solid #fee2e2',
-                          background: 'white',
-                          color: '#dc2626',
-                          cursor: 'pointer',
-                        }}
-                        title="Delete task"
-                      >
-                        Delete
+                          ▾
+                        </span>
                       </button>
+                      {openActionsId === t.id && (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            marginTop: 8,
+                            right: 0,
+                            background: 'var(--surface)',
+                            border: '1px solid var(--border)',
+                            borderRadius: 12,
+                            minWidth: 180,
+                            boxShadow: '0 16px 32px rgba(0,0,0,0.18)',
+                            padding: '6px 0',
+                            zIndex: 20,
+                          }}
+                        >
+                          <Link
+                            href={`/task/${t.id}`}
+                            style={{
+                              padding: '8px 14px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              textDecoration: 'none',
+                              color: 'var(--text-primary)',
+                              fontSize: 12,
+                              borderRadius: 8,
+                              background: 'transparent',
+                              margin: '2px 6px',
+                            }}
+                            onClick={() => setOpenActionsId(null)}
+                            onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(244, 63, 94, 0.12)'; }}
+                            onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                          >
+                            View task
+                          </Link>
+                          <button
+                            onClick={() => {
+                              setOpenActionsId(null);
+                              startEditing(t);
+                            }}
+                            style={{
+                              width: '100%',
+                              textAlign: 'center',
+                              padding: '8px 14px',
+                              border: 'none',
+                              background: 'transparent',
+                              color: 'var(--text-primary)',
+                              fontSize: 12,
+                              cursor: 'pointer',
+                              borderRadius: 8,
+                              margin: '2px 6px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                            onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(244, 63, 94, 0.12)'; }}
+                            onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => {
+                              setOpenActionsId(null);
+                              onSchedule(t.id, t.startAt, t.durationMin);
+                            }}
+                            data-testid={`task-schedule-${t.id}`}
+                            style={{
+                              width: '100%',
+                              textAlign: 'center',
+                              padding: '8px 14px',
+                              border: 'none',
+                              background: 'transparent',
+                              color: 'var(--text-primary)',
+                              fontSize: 12,
+                              cursor: 'pointer',
+                              borderRadius: 8,
+                              margin: '2px 6px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                            onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(244, 63, 94, 0.12)'; }}
+                            onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                          >
+                            {t.startAt ? 'Reschedule' : 'Schedule'}
+                          </button>
+                          {t.startAt && (
+                            <button
+                              onClick={() => {
+                                setOpenActionsId(null);
+                                onUnschedule(t.id, t.title);
+                              }}
+                              style={{
+                                width: '100%',
+                                textAlign: 'center',
+                                padding: '8px 14px',
+                                border: 'none',
+                                background: 'transparent',
+                                color: '#f59e0b',
+                                fontSize: 12,
+                                cursor: 'pointer',
+                                borderRadius: 8,
+                                margin: '2px 6px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                              onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(244, 63, 94, 0.12)'; }}
+                              onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                            >
+                              Unschedule
+                            </button>
+                          )}
+                          <button
+                            onClick={() => {
+                              setOpenActionsId(null);
+                              onDelete(t.id, t.title);
+                            }}
+                            data-testid={`task-delete-${t.id}`}
+                            style={{
+                              width: '100%',
+                              textAlign: 'center',
+                              padding: '8px 14px',
+                              border: 'none',
+                              background: 'transparent',
+                              color: '#dc2626',
+                              fontSize: 12,
+                              cursor: 'pointer',
+                              borderRadius: 8,
+                              margin: '2px 6px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                            onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(244, 63, 94, 0.12)'; }}
+                            onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </td>
@@ -715,14 +842,14 @@ export default function TasksTable({
         >
           <div
             style={{
-              background: 'white',
+              background: 'var(--surface)',
               borderRadius: 12,
               padding: 24,
               maxWidth: 600,
               width: '90%',
               maxHeight: '80vh',
               overflow: 'auto',
-              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)',
+              border: '1px solid var(--border)',
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -730,13 +857,13 @@ export default function TasksTable({
               <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, marginBottom: 8 }}>
                 {relationshipModal.type === 'parent' ? 'Parent Task' : 'Child Tasks'}
               </h2>
-              <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>
+              <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>
                 Related to: {relationshipModal.todo.title}
               </p>
             </div>
 
             {modalLoading ? (
-              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
+              <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
                 Loading...
               </div>
             ) : modalData ? (
@@ -751,31 +878,31 @@ export default function TasksTable({
                         style={{
                           padding: '16px',
                           borderRadius: 8,
-                          border: '1px solid #e2e8f0',
-                          background: '#f8fafc',
+                          border: '1px solid var(--border)',
+                          background: 'var(--surface-secondary)',
                           display: 'block',
                           textDecoration: 'none',
                           transition: 'all 0.2s',
                         }}
                         onMouseOver={(e) => {
-                          e.currentTarget.style.background = '#f1f5f9';
-                          e.currentTarget.style.borderColor = '#cbd5e1';
+                          e.currentTarget.style.background = 'var(--surface-hover)';
+                          e.currentTarget.style.borderColor = 'var(--border-strong)';
                         }}
                         onMouseOut={(e) => {
-                          e.currentTarget.style.background = '#f8fafc';
-                          e.currentTarget.style.borderColor = '#e2e8f0';
+                          e.currentTarget.style.background = 'var(--surface-secondary)';
+                          e.currentTarget.style.borderColor = 'var(--border)';
                         }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: 14, fontWeight: 500, color: '#1e293b' }}>
+                          <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>
                             {parent.title}
                           </span>
                           {parent.done && (
                             <span style={{
                               padding: '2px 8px',
                               borderRadius: 4,
-                              background: '#dcfce7',
-                              color: '#166534',
+                              background: 'rgba(34, 197, 94, 0.2)',
+                              color: '#16a34a',
                               fontSize: 11,
                               fontWeight: 600,
                             }}>
@@ -784,7 +911,7 @@ export default function TasksTable({
                           )}
                         </div>
                         {parent.description && (
-                          <div style={{ fontSize: 13, color: '#64748b', marginTop: 8 }}>
+                          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 8 }}>
                             {parent.description}
                           </div>
                         )}
@@ -800,31 +927,31 @@ export default function TasksTable({
                       style={{
                         padding: '16px',
                         borderRadius: 8,
-                        border: '1px solid #e2e8f0',
-                        background: '#f8fafc',
+                        border: '1px solid var(--border)',
+                        background: 'var(--surface-secondary)',
                         display: 'block',
                         textDecoration: 'none',
                         transition: 'all 0.2s',
                       }}
                       onMouseOver={(e) => {
-                        e.currentTarget.style.background = '#f1f5f9';
-                        e.currentTarget.style.borderColor = '#cbd5e1';
+                        e.currentTarget.style.background = 'var(--surface-hover)';
+                        e.currentTarget.style.borderColor = 'var(--border-strong)';
                       }}
                       onMouseOut={(e) => {
-                        e.currentTarget.style.background = '#f8fafc';
-                        e.currentTarget.style.borderColor = '#e2e8f0';
+                        e.currentTarget.style.background = 'var(--surface-secondary)';
+                        e.currentTarget.style.borderColor = 'var(--border)';
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: 14, fontWeight: 500, color: '#1e293b' }}>
+                        <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>
                           {child.title}
                         </span>
                         {child.done && (
                           <span style={{
                             padding: '2px 8px',
                             borderRadius: 4,
-                            background: '#dcfce7',
-                            color: '#166534',
+                            background: 'rgba(34, 197, 94, 0.2)',
+                            color: '#16a34a',
                             fontSize: 11,
                             fontWeight: 600,
                           }}>
@@ -833,7 +960,7 @@ export default function TasksTable({
                         )}
                       </div>
                       {child.description && (
-                        <div style={{ fontSize: 13, color: '#64748b', marginTop: 8 }}>
+                        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 8 }}>
                           {child.description}
                         </div>
                       )}
@@ -842,7 +969,7 @@ export default function TasksTable({
                 )}
               </div>
             ) : (
-              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
+              <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
                 No data found
               </div>
             )}
@@ -853,9 +980,9 @@ export default function TasksTable({
                 style={{
                   padding: '8px 16px',
                   borderRadius: 6,
-                  border: '1px solid #e2e8f0',
-                  background: 'white',
-                  color: '#64748b',
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface)',
+                  color: 'var(--text-muted)',
                   cursor: 'pointer',
                   fontSize: 14,
                 }}

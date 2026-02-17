@@ -1,41 +1,109 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f6f8fb;
-  --foreground: #0f172a;
-  --page-background: #f6f8fb;
+  /* Minimal Monochrome + Coral Design System — Light Mode */
+  --background: #ffffff;
+  --surface: #ffffff;
+  --surface-secondary: #fafafa;
+  --surface-hover: #f5f5f5;
+  --border: #e5e5e5;
+  --border-strong: #d4d4d4;
+  --text-primary: #111111;
+  --text-secondary: #525252;
+  --text-muted: #a3a3a3;
+
+  /* Coral Accent */
+  --accent-primary: #F43F5E;
+  --accent-primary-hover: #E11D48;
+  --accent-secondary: #FB7185;
+  --accent-success: #22c55e;
+  --accent-warning: #f59e0b;
+  --accent-danger: #ef4444;
+
+  /* Legacy compatibility — Light Mode */
+  --terminal-bg: #ffffff;
+  --page-background: #fafafa;
   --content-background: #ffffff;
   --surface-background: #ffffff;
-  --border-color: rgba(15, 23, 42, 0.08);
-  --card-border: rgba(15, 23, 42, 0.12);
-  --card-shadow: 0 18px 35px rgba(15, 23, 42, 0.08);
-  --sidebar-background: #111827;
-  --sidebar-text: #f8fafc;
-  --sidebar-text-muted: rgba(248, 250, 252, 0.75);
-  --sidebar-link-active: rgba(59, 130, 246, 0.25);
-  --sidebar-link-border: #3b82f6;
-  --sidebar-border: rgba(255, 255, 255, 0.12);
-  --sidebar-toggle-bg: rgba(255, 255, 255, 0.08);
-  --text-primary: #0f172a;
-  --text-muted: #475569;
-  --text-muted-strong: #64748b;
-  --accent: #2563eb;
-  --accent-strong: #1d4ed8;
-  --success: #10b981;
+  --border-color: #e5e5e5;
+  --card-border: #e5e5e5;
+  --card-shadow: none;
+  --sidebar-background: #ffffff;
+  --sidebar-text: #111111;
+  --sidebar-text-muted: #737373;
+  --sidebar-link-active: rgba(244, 63, 94, 0.06);
+  --sidebar-link-border: #F43F5E;
+  --sidebar-border: #e5e5e5;
+  --sidebar-toggle-bg: #f5f5f5;
+  --accent: #F43F5E;
+  --accent-strong: #E11D48;
+  --accent-alt: #FB7185;
+  --accent-amber: #f59e0b;
+  --accent-cyan: #06b6d4;
+  --success: #22c55e;
   --warning: #f59e0b;
-  --danger: #dc2626;
-  --radius-lg: 18px;
-  --radius-md: 12px;
-  --radius-sm: 8px;
-  --font-body: var(--font-geist-sans);
-  --font-heading: var(--font-geist-sans);
+  --danger: #ef4444;
+  --radius-lg: 8px;
+  --radius-md: 6px;
+  --radius-sm: 4px;
+
+  /* Typography */
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-heading: "Inter Tight", "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-code: "JetBrains Mono", "Fira Code", monospace;
+  --font-serif: "Crimson Pro", serif;
+}
+
+[data-theme="dark"] {
+  /* Dark Mode — Pure grays */
+  --background: #0a0a0a;
+  --surface: #141414;
+  --surface-secondary: #1a1a1a;
+  --surface-hover: #262626;
+  --border: #262626;
+  --border-strong: #404040;
+  --text-primary: #fafafa;
+  --text-secondary: #a3a3a3;
+  --text-muted: #737373;
+
+  /* Coral Accent (brighter for dark) */
+  --accent-primary: #FB7185;
+  --accent-primary-hover: #F43F5E;
+  --accent-secondary: #FDA4AF;
+  --accent-success: #22c55e;
+  --accent-warning: #f59e0b;
+  --accent-danger: #ef4444;
+
+  /* Legacy compatibility — Dark Mode */
+  --terminal-bg: #0a0a0a;
+  --page-background: #0a0a0a;
+  --content-background: #141414;
+  --surface-background: #141414;
+  --border-color: #262626;
+  --card-border: #262626;
+  --card-shadow: none;
+  --sidebar-background: #141414;
+  --sidebar-text: #fafafa;
+  --sidebar-text-muted: #a3a3a3;
+  --sidebar-link-active: rgba(244, 63, 94, 0.12);
+  --sidebar-link-border: #F43F5E;
+  --sidebar-border: #262626;
+  --sidebar-toggle-bg: #262626;
+  --accent: #FB7185;
+  --accent-strong: #F43F5E;
+  --accent-alt: #FDA4AF;
+  --accent-amber: #f59e0b;
+  --accent-cyan: #06b6d4;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-code);
 }
 
 
@@ -43,10 +111,13 @@
 body {
   background: var(--page-background);
   color: var(--text-primary);
-  font-family: var(--font-body), "Inter", "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-body);
   line-height: 1.6;
   margin: 0;
   min-height: 100vh;
+  font-feature-settings: "tnum" 1, "zero" 1; /* Tabular numbers, slashed zero */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 html, body {
@@ -76,7 +147,7 @@ h2,
 h3,
 h4 {
   font-family: var(--font-heading);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
   color: var(--text-primary);
   margin: 0;
 }
@@ -158,4 +229,3 @@ p {
   position: relative !important;
   pointer-events: none;
 }
-

@@ -95,14 +95,15 @@ export default function GlobalSearch() {
         onChange={handleInputChange}
         onFocus={() => query && setIsOpen(true)}
         placeholder="Search tasks..."
+        className="placeholder:text-mono-600 dark:placeholder:text-mono-500"
         style={{
           width: '100%',
           padding: '8px 12px 8px 36px',
-          border: '1px solid rgba(255,255,255,0.2)',
+          border: '1px solid var(--border)',
           borderRadius: 8,
           fontSize: 13,
-          background: 'rgba(255,255,255,0.1)',
-          color: 'white',
+          background: 'var(--surface-secondary)',
+          color: 'var(--text-primary)',
           outline: 'none',
         }}
       />
@@ -114,6 +115,7 @@ export default function GlobalSearch() {
           transform: 'translateY(-50%)',
           width: 16,
           height: 16,
+          color: 'var(--text-muted)',
           opacity: 0.5,
         }}
         fill="none"
@@ -131,15 +133,15 @@ export default function GlobalSearch() {
           left: 0,
           right: 0,
           marginTop: 4,
-          background: 'white',
+          background: 'var(--surface)',
+          border: '1px solid var(--border)',
           borderRadius: 8,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
           maxHeight: 320,
           overflowY: 'auto',
           zIndex: 1000,
         }}>
           {loading ? (
-            <div style={{ padding: 16, textAlign: 'center', color: '#64748b', fontSize: 13 }}>
+            <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
               Searching...
             </div>
           ) : error ? (
@@ -147,7 +149,7 @@ export default function GlobalSearch() {
               {error}
             </div>
           ) : results.length === 0 && query ? (
-            <div style={{ padding: 16, textAlign: 'center', color: '#64748b', fontSize: 13 }}>
+            <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
               No tasks found
             </div>
           ) : (
@@ -157,11 +159,11 @@ export default function GlobalSearch() {
                 onClick={() => handleResultClick(todo)}
                 style={{
                   padding: '12px 16px',
-                  borderBottom: '1px solid #f1f5f9',
+                  borderBottom: '1px solid var(--border)',
                   cursor: 'pointer',
                   transition: 'background 0.1s',
                 }}
-                onMouseOver={(e) => { e.currentTarget.style.background = '#f8fafc'; }}
+                onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
                 onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -170,12 +172,12 @@ export default function GlobalSearch() {
                     width: 8,
                     height: 8,
                     borderRadius: '50%',
-                    background: todo.done ? '#10b981' : (todo.startAt ? '#3b82f6' : '#94a3b8'),
+                    background: todo.done ? '#10b981' : (todo.startAt ? 'var(--accent)' : 'var(--text-muted)'),
                   }} />
                   <div style={{
                     fontSize: 14,
                     fontWeight: 500,
-                    color: todo.done ? '#64748b' : '#1e293b',
+                    color: todo.done ? 'var(--text-muted)' : 'var(--text-primary)',
                     textDecoration: todo.done ? 'line-through' : 'none',
                     flex: 1,
                     overflow: 'hidden',
@@ -188,8 +190,8 @@ export default function GlobalSearch() {
                   <span style={{
                     fontFamily: 'monospace',
                     fontSize: 10,
-                    color: '#94a3b8',
-                    background: '#f1f5f9',
+                    color: 'var(--text-muted)',
+                    background: 'var(--surface-hover)',
                     padding: '2px 5px',
                     borderRadius: 3,
                     flexShrink: 0,
@@ -207,7 +209,7 @@ export default function GlobalSearch() {
                       {todo.category}
                     </span>
                   )}
-                  <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                     {todo.startAt ? `Scheduled ${formatDate(todo.startAt)}` : 'Unscheduled'}
                   </span>
                 </div>

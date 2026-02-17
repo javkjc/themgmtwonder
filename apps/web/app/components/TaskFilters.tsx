@@ -29,10 +29,10 @@ function FilterButton({ active, onClick, children }: FilterButtonProps) {
       style={{
         padding: '6px 12px',
         fontSize: 13,
-        borderRadius: 6,
-        border: active ? 'none' : '1px solid #e2e8f0',
-        background: active ? '#3b82f6' : 'white',
-        color: active ? 'white' : '#64748b',
+        borderRadius: 4,
+        border: active ? 'none' : '1px solid var(--border)',
+        background: active ? 'var(--accent)' : 'var(--surface)',
+        color: active ? '#ffffff' : 'var(--text-muted)',
         cursor: 'pointer',
         fontWeight: active ? 500 : 400,
       }}
@@ -87,7 +87,7 @@ export default function TaskFilters({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <span style={{ fontSize: 13, fontWeight: 500, color: '#475569' }}>Status:</span>
+          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>Status:</span>
           <FilterButton active={filter === 'all'} onClick={() => onFilterChange('all')}>
             All
           </FilterButton>
@@ -100,7 +100,7 @@ export default function TaskFilters({
         </div>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <span style={{ fontSize: 13, fontWeight: 500, color: '#475569' }}>Schedule:</span>
+          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>Schedule:</span>
           <FilterButton active={scheduleFilter === 'all'} onClick={() => onScheduleFilterChange('all')}>
             All
           </FilterButton>
@@ -113,7 +113,7 @@ export default function TaskFilters({
         </div>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <span style={{ fontSize: 13, fontWeight: 500, color: '#475569' }}>Sort:</span>
+          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>Sort:</span>
           <FilterButton active={sortDir === 'desc'} onClick={() => onSortDirChange('desc')}>
             Newest
           </FilterButton>
@@ -125,7 +125,7 @@ export default function TaskFilters({
 
       <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <span style={{ fontSize: 13, fontWeight: 500, color: '#475569' }}>Added:</span>
+          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>Added:</span>
           <FilterButton active={dateFilter === 'all'} onClick={() => handleDateFilterChange('all')}>
             All Time
           </FilterButton>
@@ -141,7 +141,7 @@ export default function TaskFilters({
         </div>
 
         {customDateRange && dateFilter === 'custom' && (
-          <span style={{ fontSize: 12, color: '#64748b' }}>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
             {customDateRange.start || 'Any'} - {customDateRange.end || 'Any'}
           </span>
         )}
@@ -154,12 +154,13 @@ export default function TaskFilters({
           gap: 12,
           alignItems: 'center',
           padding: 12,
-          background: '#f8fafc',
-          borderRadius: 8,
+          background: 'var(--surface-secondary)',
+          borderRadius: 6,
+          border: '1px solid var(--border)',
           flexWrap: 'wrap',
         }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <label style={{ fontSize: 13, color: '#64748b' }}>From:</label>
+            <label style={{ fontSize: 13, color: 'var(--text-muted)' }}>From:</label>
             <input
               type="date"
               value={tempStartDate}
@@ -167,13 +168,15 @@ export default function TaskFilters({
               style={{
                 padding: '6px 10px',
                 borderRadius: 4,
-                border: '1px solid #e2e8f0',
+                border: '1px solid var(--border)',
+                background: 'var(--surface)',
+                color: 'var(--text-primary)',
                 fontSize: 13,
               }}
             />
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <label style={{ fontSize: 13, color: '#64748b' }}>To:</label>
+            <label style={{ fontSize: 13, color: 'var(--text-muted)' }}>To:</label>
             <input
               type="date"
               value={tempEndDate}
@@ -181,7 +184,9 @@ export default function TaskFilters({
               style={{
                 padding: '6px 10px',
                 borderRadius: 4,
-                border: '1px solid #e2e8f0',
+                border: '1px solid var(--border)',
+                background: 'var(--surface)',
+                color: 'var(--text-primary)',
                 fontSize: 13,
               }}
             />
@@ -193,8 +198,8 @@ export default function TaskFilters({
               fontSize: 13,
               borderRadius: 4,
               border: 'none',
-              background: '#3b82f6',
-              color: 'white',
+              background: 'var(--accent)',
+              color: '#ffffff',
               cursor: 'pointer',
             }}
           >
@@ -206,9 +211,9 @@ export default function TaskFilters({
               padding: '6px 12px',
               fontSize: 13,
               borderRadius: 4,
-              border: '1px solid #e2e8f0',
-              background: 'white',
-              color: '#64748b',
+              border: '1px solid var(--border)',
+              background: 'var(--surface)',
+              color: 'var(--text-muted)',
               cursor: 'pointer',
             }}
           >

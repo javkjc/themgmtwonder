@@ -10,7 +10,7 @@ type OcrQueuePanelProps = {
 
 const badgeStyle = (status: string) => {
   if (status === 'processing') {
-    return { bg: '#0f172a', color: '#f8fafc' };
+    return { bg: '#111111', color: '#fafafa' };
   }
   if (status === 'completed') {
     return { bg: '#16a34a', color: '#f0fdf4' };
@@ -18,7 +18,7 @@ const badgeStyle = (status: string) => {
   if (status === 'failed') {
     return { bg: '#dc2626', color: '#fee2e2' };
   }
-  return { bg: '#e2e8f0', color: '#0f172a' };
+  return { bg: '#e5e5e5', color: 'var(--text-primary)' };
 };
 
 const formatStatus = (status: string) => {
@@ -89,7 +89,7 @@ export default function OcrQueuePanel({ pollMs = 3000 }: OcrQueuePanelProps) {
         width: 320,
         borderRadius: 10,
         background: '#111827',
-        color: '#f8fafc',
+        color: '#fafafa',
         boxShadow: '0 12px 24px rgba(0,0,0,0.25)',
         zIndex: 9000,
         overflow: 'hidden',
@@ -106,7 +106,7 @@ export default function OcrQueuePanel({ pollMs = 3000 }: OcrQueuePanelProps) {
           padding: '10px 14px',
           background: '#0b1220',
           border: 'none',
-          color: '#f8fafc',
+          color: '#fafafa',
           cursor: 'pointer',
           fontSize: 14,
           fontWeight: 600,
@@ -159,7 +159,7 @@ export default function OcrQueuePanel({ pollMs = 3000 }: OcrQueuePanelProps) {
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#e5e5e5' }}>
                       {job.filename}
                     </span>
                     <span
@@ -181,7 +181,7 @@ export default function OcrQueuePanel({ pollMs = 3000 }: OcrQueuePanelProps) {
                     Task: {job.todoTitle}
                   </div>
                   {job.completedAt && (job.status === 'completed' || job.status === 'failed') && (
-                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
                       Completed: {new Date(job.completedAt).toLocaleString()}
                     </div>
                   )}

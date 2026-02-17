@@ -160,7 +160,7 @@ export function DragProvider({
             <div
               style={{
                 padding: '8px 12px',
-                background: '#3b82f6',
+                background: '#F43F5E',
                 color: 'white',
                 borderRadius: 6,
                 fontSize: 13,

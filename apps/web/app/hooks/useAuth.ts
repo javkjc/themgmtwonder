@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetchJson, isUnauthorized, isNetworkError } from '../lib/api';
+import { useTheme } from '../contexts/ThemeContext';
 
 export type Me = {
   userId: string;
@@ -9,6 +10,7 @@ export type Me = {
   mustChangePassword: boolean;
   role: string;
   isAdmin: boolean;
+  themePreference?: 'light' | 'dark';
 };
 
 export type AuthState = {
@@ -39,6 +41,7 @@ export function useAuth(): AuthState & AuthActions {
   const [loading, setLoading] = useState(true);
   const [initialLoad, setInitialLoad] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { setThemeFromServer } = useTheme();
 
   const clearError = useCallback(() => {
     setError(null);
@@ -48,6 +51,10 @@ export function useAuth(): AuthState & AuthActions {
     try {
       const meJson = await apiFetchJson('/auth/me');
       setMe(meJson);
+      // Apply theme from server
+      if (meJson?.themePreference) {
+        setThemeFromServer(meJson.themePreference as 'light' | 'dark');
+      }
     } catch (e: any) {
       if (isUnauthorized(e)) {
         setMe(null);
@@ -62,7 +69,7 @@ export function useAuth(): AuthState & AuthActions {
       setMe(null);
       setError(e?.message || 'Failed to fetch user');
     }
-  }, []);
+  }, [setThemeFromServer]);
 
   const login = useCallback(async (email: string, password: string): Promise<boolean> => {
     setError(null);
@@ -121,8 +128,9 @@ export function useAuth(): AuthState & AuthActions {
       // even if logout request fails, clear UI state
     } finally {
       setMe(null);
+      setThemeFromServer('light', { force: true });
     }
-  }, []);
+  }, [setThemeFromServer]);
 
   const changePassword = useCallback(async (currentPassword: string, newPassword: string): Promise<boolean> => {
     setError(null);
@@ -213,6 +221,10 @@ export function useAuth(): AuthState & AuthActions {
       try {
         const meJson = await apiFetchJson('/auth/me');
         setMe(meJson);
+        // Apply theme from server
+        if (meJson?.themePreference) {
+          setThemeFromServer(meJson.themePreference as 'light' | 'dark');
+        }
       } catch (e: any) {
         if (isUnauthorized(e)) {
           setMe(null);
@@ -231,7 +243,7 @@ export function useAuth(): AuthState & AuthActions {
     };
 
     checkAuth();
-  }, []);
+  }, [setThemeFromServer]);
 
   return {
     me,
