@@ -79,8 +79,8 @@ const STAGE_LABELS: Record<TaskStageKey, string> = {
 };
 
 const STAGE_BADGE_STYLES: Record<TaskStageKey, { backgroundColor: string; color: string }> = {
-  backlog: { backgroundColor: '#eef2ff', color: '#312e81' },
-  in_progress: { backgroundColor: '#dbeafe', color: '#BE123C' },
+  backlog: { backgroundColor: 'var(--surface-secondary)', color: 'var(--text-secondary)' },
+  in_progress: { backgroundColor: '#FFF1F2', color: '#E11D48' },
   blocked: { backgroundColor: '#fef3c7', color: '#92400e' },
   done: { backgroundColor: '#dcfce7', color: '#166534' },
 };
@@ -1371,9 +1371,9 @@ export default function TaskDetailsPage() {
           {/* Task Header */}
           <div style={{
             background: 'var(--surface)',
-            borderRadius: 12,
+            borderRadius: 6,
+            border: '1px solid var(--border)',
             padding: 24,
-            boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
             marginBottom: 24,
           }}>
             {isEditing ? (
@@ -1577,7 +1577,7 @@ export default function TaskDetailsPage() {
                       <span style={{
                         display: 'inline-block',
                         padding: '4px 10px',
-                        borderRadius: 12,
+                        borderRadius: 6,
                         background: getCategoryColor(task.category),
                         color: 'white',
                         fontSize: 12,
@@ -1624,7 +1624,7 @@ export default function TaskDetailsPage() {
                           padding: '8px 12px',
                           borderRadius: 6,
                           border: 'none',
-                          background: '#d4d4d4',
+                          background: 'var(--surface-secondary)',
                           color: 'var(--text-muted)',
                           cursor: 'not-allowed',
                           fontSize: 13,
@@ -1754,9 +1754,9 @@ export default function TaskDetailsPage() {
               {/* Task Details */}
               <div style={{
                 background: 'var(--surface)',
-                borderRadius: 12,
+                borderRadius: 6,
+                border: '1px solid var(--border)',
                 padding: 24,
-                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
               }}>
                 <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0, marginBottom: 16 }}>Details</h2>
 
@@ -1798,9 +1798,9 @@ export default function TaskDetailsPage() {
               {/* Attachments */}
               <div style={{
                 background: 'var(--surface)',
-                borderRadius: 12,
+                borderRadius: 6,
+                border: '1px solid var(--border)',
                 padding: 24,
-                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
               }}>
                 <div style={{ marginBottom: 16 }}>
                   <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0, marginBottom: 16 }}>
@@ -1817,7 +1817,7 @@ export default function TaskDetailsPage() {
                       borderRadius: 8,
                       padding: 32,
                       textAlign: 'center',
-                      background: isDraggingOver ? '#eff6ff' : '#fafafa',
+                      background: isDraggingOver ? '#FFF1F2' : 'var(--surface-secondary)',
                       transition: 'all 0.2s ease',
                       marginBottom: 16,
                     }}
@@ -1862,8 +1862,8 @@ export default function TaskDetailsPage() {
                       padding: '10px 16px',
                       borderRadius: 6,
                       border: 'none',
-                      background: (!selectedFile || uploading) ? '#d4d4d4' : '#F43F5E',
-                      color: 'white',
+                      background: (!selectedFile || uploading) ? 'var(--surface-secondary)' : '#F43F5E',
+                      color: (!selectedFile || uploading) ? 'var(--text-muted)' : 'white',
                       cursor: (!selectedFile || uploading) ? 'not-allowed' : 'pointer',
                       fontSize: 14,
                       fontWeight: 500,
@@ -1949,7 +1949,7 @@ export default function TaskDetailsPage() {
                                   width: 40,
                                   height: 40,
                                   borderRadius: 8,
-                                  background: '#f5f5f5',
+                                  background: 'var(--surface-secondary)',
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
@@ -2008,8 +2008,8 @@ export default function TaskDetailsPage() {
                                     padding: '6px 10px',
                                     borderRadius: 4,
                                     border: '1px solid var(--border)',
-                                    background: isOcrInProgress ? '#e5e5e5' : 'white',
-                                    color: isOcrInProgress ? '#a3a3a3' : '#111111',
+                                    background: isOcrInProgress ? 'var(--surface-secondary)' : 'var(--surface)',
+                                    color: isOcrInProgress ? 'var(--text-muted)' : 'var(--text-primary)',
                                     cursor: isOcrInProgress ? 'not-allowed' : 'pointer',
                                     fontSize: 12,
                                   }}
@@ -2059,7 +2059,7 @@ export default function TaskDetailsPage() {
                                           padding: '6px 10px',
                                           borderRadius: 4,
                                           border: '1px solid var(--border)',
-                                          background: isDisabled ? '#e5e5e5' : 'white',
+                                          background: isDisabled ? 'var(--surface-secondary)' : 'var(--surface)',
                                           color: 'var(--text-primary)',
                                           cursor: isDisabled ? 'not-allowed' : 'pointer',
                                           fontSize: 12,
@@ -2079,7 +2079,7 @@ export default function TaskDetailsPage() {
                                             padding: '6px 10px',
                                             borderRadius: 4,
                                             border: '1px solid var(--border)',
-                                            background: '#e5e5e5',
+                                            background: 'var(--surface-secondary)',
                                             color: 'var(--text-muted)',
                                             cursor: 'not-allowed',
                                             fontSize: 12,
@@ -2100,8 +2100,8 @@ export default function TaskDetailsPage() {
                                       padding: '6px 10px',
                                       borderRadius: 4,
                                       border: '1px solid #E11D48',
-                                      background: isOcrInProgress ? '#e5e5e5' : '#eff6ff',
-                                      color: isOcrInProgress ? '#a3a3a3' : '#BE123C',
+                                      background: isOcrInProgress ? 'var(--surface-secondary)' : 'var(--surface)',
+                                      color: isOcrInProgress ? 'var(--text-muted)' : '#BE123C',
                                       cursor: isOcrInProgress ? 'not-allowed' : 'pointer',
                                       fontSize: 12,
                                       fontWeight: 600,
@@ -2121,7 +2121,7 @@ export default function TaskDetailsPage() {
                                   padding: '6px 10px',
                                   borderRadius: 4,
                                   border: '1px solid var(--border)',
-                                  background: viewerOpen ? '#e0f2fe' : 'white',
+                                  background: viewerOpen ? 'var(--surface-secondary)' : 'var(--surface)',
                                   color: 'var(--text-primary)',
                                   cursor: 'pointer',
                                   fontSize: 12,
@@ -2278,7 +2278,7 @@ export default function TaskDetailsPage() {
                                                           padding: '6px 10px',
                                                           borderRadius: 4,
                                                           border: '1px solid #16a34a',
-                                                          background: '#f0fdf4',
+                                                          background: 'var(--surface)',
                                                           color: '#166534',
                                                           cursor: ocrConfirming[record.id] ? 'not-allowed' : 'pointer',
                                                           fontSize: 12,
@@ -2298,7 +2298,7 @@ export default function TaskDetailsPage() {
                                                     padding: '6px 10px',
                                                     borderRadius: 4,
                                                     border: '1px solid var(--border)',
-                                                    background: recordLoading.remark ? '#d4d4d4' : 'white',
+                                                    background: recordLoading.remark ? 'var(--surface-secondary)' : 'var(--surface)',
                                                     color: 'var(--text-primary)',
                                                     cursor: recordLoading.remark ? 'not-allowed' : 'pointer',
                                                     fontSize: 12,
@@ -2314,7 +2314,7 @@ export default function TaskDetailsPage() {
                                                     padding: '6px 10px',
                                                     borderRadius: 4,
                                                     border: '1px solid var(--border)',
-                                                    background: recordLoading.description ? '#d4d4d4' : 'white',
+                                                    background: recordLoading.description ? 'var(--surface-secondary)' : 'var(--surface)',
                                                     color: 'var(--text-primary)',
                                                     cursor: recordLoading.description ? 'not-allowed' : 'pointer',
                                                     fontSize: 12,
@@ -2369,9 +2369,9 @@ export default function TaskDetailsPage() {
               {/* Remarks */}
               <div style={{
                 background: 'var(--surface)',
-                borderRadius: 12,
+                borderRadius: 6,
+                border: '1px solid var(--border)',
                 padding: 24,
-                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
               }}>
                 <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0, marginBottom: 16 }}>
                   Remarks ({remarks.length})
@@ -2412,8 +2412,8 @@ export default function TaskDetailsPage() {
                         padding: '8px 16px',
                         borderRadius: 6,
                         border: 'none',
-                        background: (!newRemarkContent.trim() || addingRemark) ? '#d4d4d4' : '#F43F5E',
-                        color: 'white',
+                        background: (!newRemarkContent.trim() || addingRemark) ? 'var(--surface-secondary)' : '#F43F5E',
+                        color: (!newRemarkContent.trim() || addingRemark) ? 'var(--text-muted)' : 'white',
                         cursor: (!newRemarkContent.trim() || addingRemark) ? 'not-allowed' : 'pointer',
                         fontSize: 13,
                       }}
@@ -2472,7 +2472,7 @@ export default function TaskDetailsPage() {
                                   padding: '4px 8px',
                                   borderRadius: 4,
                                   border: 'none',
-                                  background: '#fee2e2',
+                                  background: 'var(--surface)',
                                   color: '#dc2626',
                                   cursor: 'pointer',
                                   fontSize: 11,
@@ -2523,9 +2523,9 @@ export default function TaskDetailsPage() {
               {/* Parent-Child Relationships (v4 visibility + actions) */}
               <div style={{
                 background: 'var(--surface)',
-                borderRadius: 12,
+                borderRadius: 6,
+                border: '1px solid var(--border)',
                 padding: 24,
-                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                   <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Relationships</h2>
@@ -2537,7 +2537,7 @@ export default function TaskDetailsPage() {
                           padding: '6px 12px',
                           borderRadius: 6,
                           border: '1px solid #F43F5E',
-                          background: '#eff6ff',
+                          background: 'var(--surface)',
                           color: '#E11D48',
                           fontSize: 12,
                           fontWeight: 600,
@@ -2554,7 +2554,7 @@ export default function TaskDetailsPage() {
                           padding: '6px 12px',
                           borderRadius: 6,
                           border: '1px solid #ef4444',
-                          background: '#fef2f2',
+                          background: 'var(--surface)',
                           color: '#dc2626',
                           fontSize: 12,
                           fontWeight: 600,
@@ -2675,9 +2675,9 @@ export default function TaskDetailsPage() {
               {/* History Timeline */}
               <div style={{
                 background: 'var(--surface)',
-                borderRadius: 12,
+                borderRadius: 6,
+                border: '1px solid var(--border)',
                 padding: 24,
-                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                   <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>
@@ -2740,7 +2740,7 @@ export default function TaskDetailsPage() {
                             width: 32,
                             height: 32,
                             borderRadius: '50%',
-                            background: '#f5f5f5',
+                            background: 'var(--surface-secondary)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -2866,11 +2866,11 @@ export default function TaskDetailsPage() {
           <div
             style={{
               background: 'var(--surface)',
-              borderRadius: 12,
+              borderRadius: 6,
               padding: 24,
               width: '100%',
               maxWidth: 480,
-              boxShadow: '0 24px 80px rgba(0,0,0,0.25)',
+              border: '1px solid var(--border)',
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -2946,8 +2946,8 @@ export default function TaskDetailsPage() {
                   padding: '10px 18px',
                   borderRadius: 8,
                   border: 'none',
-                  background: associateParentId && associateRemark.trim() ? '#E11D48' : '#d4d4d4',
-                  color: 'white',
+                  background: associateParentId && associateRemark.trim() ? '#E11D48' : 'var(--surface-secondary)',
+                  color: associateParentId && associateRemark.trim() ? 'white' : 'var(--text-muted)',
                   fontWeight: 700,
                   cursor: (associating || !associateParentId || !associateRemark.trim()) ? 'not-allowed' : 'pointer',
                   opacity: associating ? 0.8 : 1,
@@ -2978,11 +2978,11 @@ export default function TaskDetailsPage() {
           <div
             style={{
               background: 'var(--surface)',
-              borderRadius: 12,
+              borderRadius: 6,
               padding: 24,
               width: '100%',
               maxWidth: 480,
-              boxShadow: '0 24px 80px rgba(0,0,0,0.25)',
+              border: '1px solid var(--border)',
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -3039,8 +3039,8 @@ export default function TaskDetailsPage() {
                   padding: '10px 18px',
                   borderRadius: 8,
                   border: 'none',
-                  background: disassociateRemark.trim() ? '#dc2626' : '#d4d4d4',
-                  color: 'white',
+                  background: disassociateRemark.trim() ? '#dc2626' : 'var(--surface-secondary)',
+                  color: disassociateRemark.trim() ? 'white' : 'var(--text-muted)',
                   fontWeight: 700,
                   cursor: (associating || !disassociateRemark.trim()) ? 'not-allowed' : 'pointer',
                   opacity: associating ? 0.8 : 1,
@@ -3074,11 +3074,11 @@ export default function TaskDetailsPage() {
           <div
             style={{
               background: 'var(--surface)',
-              borderRadius: 12,
+              borderRadius: 6,
               padding: 24,
               width: '100%',
               maxWidth: 480,
-              boxShadow: '0 24px 80px rgba(0,0,0,0.25)',
+              border: '1px solid var(--border)',
               position: 'relative',
             }}
             onClick={(e) => e.stopPropagation()}

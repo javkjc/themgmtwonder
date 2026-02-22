@@ -7,6 +7,7 @@ RUN PIP_REQUIRE_HASHES=0 pip install --no-cache-dir -r requirements.txt
 
 COPY main.py .
 COPY model.py .
+COPY model_registry.py .
 COPY table_detect.py .
 
 RUN HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0 HF_HUB_DISABLE_TELEMETRY=1 \

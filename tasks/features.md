@@ -2986,7 +2986,7 @@ E2E Tests:
 
 ---
 
-## v8.8.1 — Adaptive Doc Intelligence (Pairing + Field Context + Selection + Table Enhancements + Eval) 📋 (Planned)
+## v8.8.1 — Adaptive Doc Intelligence (Pairing + Field Context + Selection + Table Enhancements + Eval) ✅ (Complete)
 
 **What this is**
 - Layout-aware label/value pairing as a derived candidate layer (no mutation of raw segments)
@@ -3026,172 +3026,402 @@ Improve suggestion quality and reviewer efficiency without changing governance i
 - Field selection might hide needed fields. Mitigation: explicit “Show all fields” toggle.
 - Table false positives. Mitigation: higher thresholds + ignore‑forever per attachment.
 
+**What Was Built**
+- Suggestion context schema and provenance surfaced end‑to‑end (API + UI) via `suggestionContext` on baseline assignments.
+- Pairing/context pre‑processing in API and ML reranking using `pairCandidates` and `segmentContext`.
+- Client‑side paired label/value cards with batch selection and drag‑to‑field using value segment text.
+- Top‑N suggested fields default view with explicit “Show all fields” toggle.
+- Table detection precision improvements with ignore‑forever filtering.
+- Admin metrics endpoint (`/admin/ml/metrics`) and UI (`/admin/ml`) for acceptance/modify/clear rates and top‑1 accuracy.
+
+**Status**
+✅ Complete
+
 --- 
 
-## v8.9 — ML Model Training & Fine-Tuning 📋 (Planned)
+## v8.9 — ML Model Training & Fine-Tuning 🚧 (In Progress — partially superseded)
 
 **What this is**
 
-Collect user corrections from v8.8 to build training dataset
-Fine-tune Sentence-BERT on domain-specific field matching
-Improve suggestion accuracy over time (active learning loop)
-A/B test model versions to measure improvement
+Governed training data export from user corrections, model version registry, hot-swap activation, deterministic A/B testing, assisted auto-learning (volume-triggered, global only), and an admin performance dashboard. All activation remains manual.
 
 **What this is not**
 
-Not automatic model updates (admin triggers retraining)
-Not real-time learning (batch training, e.g., weekly)
-Not mandatory (v8.6 works with pre-trained models)
+- Not automatic model updates or cron-based retraining
+- Not real-time learning
+- Not mandatory (manual workflow works without ML)
 
 **Scope Clarification**
-- v8.9 includes semantic memory/learning from confirmed baselines and cross‑encoder reranking/model‑ops.
-- v8.9 builds on v8.8.1 outputs (pairing/context/selection) but does not change v8.8.x invariants.
-- Memory + reranking only influence ranking on confirmed baselines; suggestions remain opt-in
+- v8.9 builds on v8.8.1 outputs (pairing/context/selection) and does not change v8.8.x invariants.
+- Milestones 8.9.1–8.9.3 and 8.9.6 (A1/A2/B1/B2/B3 in plan.md) are confirmed complete.
+- Milestones 8.9.7–8.9.11 (C1/C2/D0–D5/E1/E2 in plan.md) are **in progress / not yet complete**.
+- Milestones 8.9.4–8.9.5 (SentenceTransformer fine-tuning + model versioning semantics) are superseded by the LayoutLMv3 pipeline introduced in v8.10.
 
+---
 
+**Capability A: Correction Dataset Collection** ✅ Complete (plan.md A1/A2)
 
-Capability A: Correction Dataset Collection
-Milestone 8.9.1: Correction Data Schema
+**Milestone 8.9.1: Correction Data Schema** ✅ Complete
+- Uses `baseline_field_assignments` joined to `extracted_text_segments`, `extraction_baselines`, and `users`.
+- Filters: `suggestionConfidence IS NOT NULL` and `sourceSegmentId IS NOT NULL`.
+- Export fields: `textSegment`, `suggestedField`, `userAssignedField`, `confidence`, `accepted`, `modelVersionId`, `assignedAt`, `correctionReason`.
 
-Use existing baseline_field_assignments table
-Filter records where corrected_from IS NOT NULL (user corrected suggestion)
-Export format:
+**Milestone 8.9.2: Training Data Export API** ✅ Complete
+- `GET /admin/ml/training-data` (admin-only, JWT + CSRF + AdminGuard).
+- Query params: `startDate`, `endDate` (ISO, required), `minCorrections` (int, default 10).
+- Implemented in `apps/api/src/ml/ml-training-data.controller.ts` + `ml-training-data.service.ts`.
+- Audit log: `ml.training-data.export` with count, startDate, endDate, filter counts.
 
-json  {
-    "text_segment": "INV-12345",
-    "suggested_field": "invoice_number",
-    "user_assigned_field": "invoice_number",
-    "confidence": 0.75,
-    "accepted": true
-  }
-Milestone 8.9.2: Training Data Export API
+**Milestone 8.9.3: Training Data Quality Filters** ✅ Complete
+- Typo filter: excludes `correctionReason = 'typo'` (case-insensitive).
+- Early-user filter: excludes `assignedAt < users.createdAt + 30 days`.
+- Single-user filter: excludes rows where only one distinct user corrected the same `(fieldKey, normalizedSegmentText)` pair.
+- If filtered count < `minCorrections`: returns 400 with `code="insufficient_corrections"`.
 
-GET /admin/ml/training-data (admin only)
-Query parameters: ?start_date, ?end_date, ?min_corrections=10
-Returns: JSON array of correction records
-Include: text, suggested field, actual field, confidence, accepted/rejected
+---
 
-Milestone 8.9.3: Training Data Quality Filters
+**Capability B: Model Registry & Activation** ✅ Complete (plan.md B1/B2/B3)
 
-Exclude low-quality corrections:
+**Milestone 8.9.6: Model Deployment (Hot Swap)** ✅ Complete
+- `POST /ml/models/activate` in `apps/ml-service/main.py`.
+- Loads model from `filePath`, runs warm-up, swaps active only on success.
+- Rollback to prior model on load failure.
+- `ModelRegistry` singleton in `apps/ml-service/model_registry.py`.
+- Audit: `ml.model.activate.success` / `ml.model.activate.failed`.
 
-Corrections with reason="typo" (not model error)
-Single-user corrections (might be user-specific preference)
-Corrections from first 30 days (users still learning system)
+**Model Version Admin API** ✅ Complete
+- `POST /admin/ml/models` — register model version (isActive=false by default).
+- `GET /admin/ml/models` — list all versions sorted by trainedAt desc.
+- `POST /admin/ml/models/activate` — transactionally swaps isActive, calls ML service.
+- Implemented in `apps/api/src/ml/ml-models.controller.ts` + `ml-models.service.ts`.
 
+---
 
-Include high-quality signals:
+**Capability B (fine-tuning): Model Fine-Tuning Pipeline** ❌ Superseded
 
-Corrections made by multiple users (consensus)
-Corrections on high-confidence suggestions (model was confident but wrong)
+**Milestone 8.9.4: Fine-Tuning Script (Python)** ❌ Superseded
+- Original plan: fine-tune Sentence-BERT (`all-MiniLM-L6-v2`) on text-pair correction data.
+- **Superseded by:** LayoutLMv3 fine-tuning pipeline in `training-worker` container (v8.10). LayoutLMv3 requires token sequences with bounding-box coordinates and zone labels, not text pairs.
+- Scripts `training/finetune.py` and `training/generate_synthetic.py` should not be built; replaced by the v8.10 training-worker.
 
+**Milestone 8.9.5: Model Versioning semantics** ❌ Superseded (table exists, semantics amended)
+- `ml_model_versions` table is built and in production.
+- `modelName: 'sentence-bert-field-matching'` is superseded; new canonical name is `'layoutlmv3-extraction'`.
+- `metrics` JSON schema extended to include per-field F1 and zone accuracy.
+- `filePath` now points to a HuggingFace checkpoint directory, not an ONNX file.
+- See v8.10 for full amendment.
 
+---
 
+**Capability C: A/B Testing & Suggestion Tracking** 📋 Not yet complete (plan.md C1/C2)
 
-Capability B: Model Fine-Tuning Pipeline
-Milestone 8.9.4: Fine-Tuning Script (Python)
+**Milestone 8.9.7: Deterministic A/B Model Selection** 📋 Planned
+- Env flag `ML_MODEL_AB_TEST=true`.
+- Deterministic 50/50 routing by stable hash of `baselineId % 2`.
+- Resolves active model as A, most recent inactive as B.
+- Files: `apps/api/src/ml/field-suggestion.service.ts`, `ml.service.ts`.
+- Audit fields: `abGroup`, `modelVersionId`, `modelVersion`.
 
-NEW: /ml-service/training/finetune.py
-Process:
+**Milestone 8.9.8: Suggestion Outcome Tracking Integrity** 📋 Planned
+- Schema already has `suggestionAccepted` (boolean nullable), `modelVersionId` (uuid fk) — fields exist.
+- Work: confirm API DTOs pass these through correctly; confirm frontend sends correct flags for accept/modify/clear.
+- Files: `baseline-assignments.service.ts`, `assign-baseline-field.dto.ts`, `delete-assignment.dto.ts`, review page.
 
-Load correction dataset (from API export)
-Split train/val/test (80/10/10)
-Fine-tune Sentence-BERT on field matching task
-Evaluate: accuracy, precision, recall on test set
-Save fine-tuned model to /ml-service/models/minilm-finetuned-v{date}.onnx
+---
 
+**Capability D: Training Pipeline** 📋 Not yet complete (plan.md D0–D5)
 
-Hyperparameters: learning rate, epochs, batch size (configurable)
+> Note: D0 (synthetic generator) and D1 (fine-tuning script) are **superseded** by v8.10 LayoutLMv3 pipeline. D2 (register trained model) uses existing B1 endpoint. D3/D4/D5 (assisted auto-learning + activation gates) remain to be built.
 
-Milestone 8.9.5: Model Versioning
+**Milestone 8.9.9: Synthetic Training Data Generator** ❌ Superseded — replaced by v8.10 spatial generator
 
-NEW TABLE: ml_model_versions (id, model_name, version, file_path, metrics, trained_at, is_active)
+**Milestone 8.9.10: Fine-Tuning Script** ❌ Superseded — replaced by v8.10 LayoutLMv3 finetune
 
-model_name: 'sentence-bert-field-matching'
-version: 'v2024-02-01' (date-based)
-file_path: '/ml-service/models/minilm-finetuned-v2024-02-01.onnx'
-metrics: JSON (accuracy, precision, recall from evaluation)
-is_active: BOOLEAN (only one active version at a time)
+**Milestone 8.9.11: Register Trained Model Metadata** 📋 Planned
+- Uses existing `POST /admin/ml/models` endpoint (already built in B1).
+- No new code; operational step to register the output of v8.10 training-worker.
 
+**Milestone 8.9.12: Global Volume Trigger + Job State** 📋 Planned (plan.md D3)
+- Trigger: `qualified_corrections_since_last_success >= 1000` (global only, no per-user triggers).
+- New tables: `ml_training_jobs`, `ml_training_state` singleton.
+- Automation service polls every `ML_TRAINING_POLL_MS` (default 60000) when `ML_TRAINING_ASSISTED=true`.
+- Files: `ml-training-automation.service.ts`, `ml-training-jobs.service.ts`, `ml-training-jobs.controller.ts`.
 
+**Milestone 8.9.13: Assisted Training Run + Auto-Register Candidate** 📋 Planned (plan.md D4)
+- `POST /ml/training/run` in ML service.
+- On success: calls API callback, auto-registers model with `isActive=false`.
+- Audit: `ml.training.run.started`, `ml.training.run.succeeded`, `ml.training.run.failed`.
 
-Milestone 8.9.6: Model Deployment (Hot Swap)
+**Milestone 8.9.14: Activation Gates** 📋 Planned (plan.md D5)
+- Offline gate: candidate must beat active by ≥2% accuracy delta.
+- Online gate: candidate must beat active by ≥5% acceptance delta with ≥1000 suggestions.
+- Activation remains explicit admin action only; UI disables Activate button until both gates met.
 
-FastAPI endpoint: POST /ml/models/activate
+---
 
-Input: { version }
-Action: Load new model into memory, mark as active in DB
-Atomic: old model remains loaded until new model ready
-Rollback: if new model fails health check, keep old model active
+**Capability E: Performance Dashboard** 📋 Not yet complete (plan.md E1/E2)
 
+**Milestone 8.9.15: Performance API** 📋 Planned (plan.md E1)
+- `GET /admin/ml/performance` — per-model acceptance rates, 12-week trends, recommendation signal.
+- Files: `ml-performance.controller.ts`, `ml-performance.service.ts`.
 
+**Milestone 8.9.16: Admin Performance UI** 📋 Planned (plan.md E2)
+- Route: `/admin/ml/performance`.
+- Summary cards, model table, 12-week trend chart, Activate button (gated by D5 gates).
+- File: `apps/web/app/admin/ml/performance/page.tsx`.
 
-
-Capability C: A/B Testing & Performance Tracking
-Milestone 8.9.7: Suggestion Acceptance Tracking
-
-EXTEND baseline_field_assignments: add suggestion_accepted BOOLEAN
-
-TRUE: user accepted suggestion without modification
-FALSE: user modified or cleared suggestion
-NULL: manually entered (no suggestion provided)
-
-
-Track per model version (link to ml_model_versions.id)
-
-Milestone 8.9.8: A/B Testing Framework
-
-Feature flag: ML_MODEL_AB_TEST=true
-When enabled:
-
-50% of requests use model A (current active)
-50% of requests use model B (new candidate)
-
-
-Track acceptance rate per model version
-After 1000 suggestions per model: compare metrics
-
-Milestone 8.9.9: Model Performance Dashboard (Admin)
-
-Page: /admin/ml/performance
-Display:
-
-Current active model: version, accuracy, acceptance rate
-Historical models: list with metrics over time
-Trend chart: acceptance rate by week (last 12 weeks)
-Recommendation: "Model v2024-02-01 has 5% higher acceptance rate. Activate?"
-
-
-
-
-Capability D: Continuous Improvement Loop
-Milestone 8.9.10: Scheduled Retraining (Weekly Batch)
-
-Cron job: Every Sunday at 2 AM
-Steps:
-
-Export correction dataset (last 7 days)
-If corrections < 100: skip (insufficient data)
-Run fine-tuning script
-Evaluate new model
-If accuracy > current model + 2%: mark as candidate for A/B test
-Notify admin: "New model ready for testing"
-
-
-
-Milestone 8.9.11: Admin Retraining Trigger (Manual)
-
-Admin can trigger retraining manually:
-
-Button: "Retrain Model" (on ML performance dashboard)
-Input: date range for corrections, minimum correction count
-Run asynchronously (background job)
-Notify admin when complete
+**Status**
+🚧 In Progress — A1/A2/B1/B2/B3 complete. C1/C2/D3/D4/D5/E1/E2 planned. D0/D1 superseded by v8.10.
 
 
 
 
-## v8.10 — Multi-Language OCR Support 📋 (To be confirmed)
+## v8.10 — Optimal Extraction Accuracy 📋 (Planned)
+
+**What this is**
+
+- PyMuPDF for PDF ingestion: auto-detect image-based vs text-based pages; use text layer directly for digital PDFs, route scanned pages through OpenCV preprocessing
+- Dedicated `preprocessor` container: OpenCV deskew, orientation correction, shadow removal, contrast enhancement, quality gate
+- LayoutLMv3 replacing all-MiniLM-L6-v2: spatially-aware token classification using bounding boxes as first-class inputs
+- Zone classifier: assigns document regions to `header`, `addresses`, `line_items`, `instructions`, `footer`
+- Per-field confidence scoring: auto-confirm / verify / flag tiers driving the verification UI
+- LayoutLMv3 fine-tuning pipeline with data augmentation in a dedicated `training-worker` container
+- Training data capture from corrections: spatially-annotated export (text + bounding box + zone) for retraining
+- Verification UI: side-by-side PDF viewer + extracted fields; PDF auto-scrolls to flagged field region; confidence-driven highlighting; bulk confirm and keyboard flow
+
+**What this is not**
+
+- ❌ Not automatic field assignment (user must accept suggestions)
+- ❌ Not background automation (activation remains manual)
+- ❌ Not a replacement of the review/correction governance model from v8.6–v8.9
+- ❌ Not real-time retraining
+
+**Design Intent**
+
+Maximise extraction accuracy on both scanned and digital documents by replacing text-only semantic matching with layout-aware spatial extraction, while preserving all governance invariants (explicit intent, auditability, backend authority).
+
+**Dependencies**
+- **REQUIRES:** v8.6 (baseline_field_assignments, field_library)
+- **REQUIRES:** v8.9 (ml_model_versions, model registry, A/B routing infrastructure)
+- **AMENDS:** v8.9 model architecture (LayoutLMv3 replaces all-MiniLM-L6-v2)
+- **NEW CONTAINERS:** `preprocessor`, amended `ml-worker`, new `training-worker`
+
+---
+
+### New Schema (only where not already in codebase)
+
+**NEW TABLE: `document_types`**
+- `id` uuid pk, `name` varchar unique (e.g., "Invoice", "Purchase Order", "Delivery Note"), `description` text nullable, `createdAt` timestamp
+
+**NEW TABLE: `document_type_fields`**
+- `id` uuid pk, `documentTypeId` fk document_types, `fieldKey` fk field_library.fieldKey, `required` boolean default false, `zoneHint` text nullable (expected zone for this field), `sortOrder` int, `createdAt` timestamp
+- UNIQUE(documentTypeId, fieldKey)
+
+**NEW TABLE: `extraction_training_examples`**
+- `id` uuid pk, `baselineId` fk extraction_baselines, `fieldKey` fk field_library.fieldKey, `assignedValue` text, `zone` text nullable, `boundingBox` jsonb nullable, `extractionMethod` text (layoutlmv3/manual/llm), `confidence` decimal(5,4) nullable, `isSynthetic` boolean default false, `createdAt` timestamp
+- Purpose: normalised training record with spatial ground truth for LayoutLMv3 fine-tuning
+
+**NEW TABLE: `extraction_models`**
+- `id` uuid pk, `modelName` text (e.g., `'layoutlmv3-extraction'`), `architecture` text (e.g., `'layoutlmv3'`), `version` text, `filePath` text (HuggingFace checkpoint directory), `documentTypeId` fk document_types nullable (null = general model), `metrics` jsonb (per-field F1, zone accuracy, overall accuracy), `trainedAt` timestamp, `isActive` boolean, `createdAt` timestamp
+- UNIQUE(modelName, version)
+- Note: supplements existing `ml_model_versions`; `ml_model_versions` retains v8.9 models; new LayoutLMv3 models register here
+
+**NEW TABLE: `training_runs`**
+- `id` uuid pk, `status` text (queued/running/succeeded/failed), `triggerType` text (volume_auto/manual), `windowStart` timestamp, `windowEnd` timestamp, `qualifiedExampleCount` int, `candidateVersion` text, `modelPath` text, `metrics` jsonb, `startedAt` timestamp, `finishedAt` timestamp nullable, `errorMessage` text nullable
+- Replaces / unifies `ml_training_jobs` from v8.9 D3 for the LayoutLMv3 pipeline; `ml_training_jobs` remains for the v8.9 SentenceTransformer-era jobs (historical)
+
+**AMEND `baseline_field_assignments` — add columns:**
+- `confidence_score` decimal(5,4) nullable — per-field extraction confidence from LayoutLMv3 (distinct from `suggestionConfidence`, which is ML match confidence)
+- `zone` text nullable — zone classifier output (header/addresses/line_items/instructions/footer)
+- `bounding_box` jsonb nullable — source bounding box on document (normalised 0–1000 per LayoutLMv3 convention)
+- `extraction_method` text nullable — e.g., `'layoutlmv3'`, `'manual'`, `'llm'`
+- `llm_reviewed` boolean nullable
+- `llm_reasoning` text nullable
+
+**AMEND `attachment_ocr_outputs` — add columns:**
+- `document_type_id` uuid nullable fk document_types — detected or user-assigned document type
+- `extraction_path` text nullable — which pipeline was used (e.g., `'layoutlmv3'`, `'paddleocr'`, `'text_layer'`)
+- `preprocessing_applied` jsonb nullable — record of OpenCV steps applied (deskew angle, contrast params, quality score)
+- `overall_confidence` decimal(5,4) nullable — aggregate confidence across all extracted fields
+- `processing_duration_ms` int nullable
+
+---
+
+### Capability A — PyMuPDF PDF Ingestion
+
+**Milestone 8.10.1: PyMuPDF Integration in OCR Pipeline**
+- Add `PyMuPDF` (`fitz`) to `apps/preprocessor/` (or `apps/ocr-worker/`).
+- Per-page logic: `page.get_text()` non-empty → use text layer directly (digital PDF), skip image OCR.
+- If page has no text layer → render to image via `page.get_pixmap()` → route to OpenCV preprocessor → PaddleOCR.
+- Store `extraction_path='text_layer'` or `extraction_path='ocr_pipeline'` per output.
+- Update `codemapcc.md` with new dependency and logic.
+
+**Milestone 8.10.2: Page-Level Routing Metadata**
+- Each extracted text segment gains `pageType` field: `'digital'` or `'scanned'`.
+- `attachment_ocr_outputs.preprocessing_applied` records per-page routing decisions.
+- No change to existing OCR confirmation or baseline lifecycle.
+
+---
+
+### Capability B — OpenCV Preprocessor Container
+
+**Milestone 8.10.3: Preprocessor Container Setup**
+- New service: `apps/preprocessor/` (FastAPI + `opencv-python-headless`, `Pillow`, `numpy`).
+- `preprocessor.Dockerfile`: python:3.11-slim, installs OpenCV, uvicorn on port 6000, backend network only.
+- `docker-compose.yml`: add `preprocessor` service on backend network.
+- Endpoint: `POST /preprocess` — accepts raw image bytes, returns preprocessed bytes + `preprocessing_applied` JSON.
+- `codemapcc.md` entry required.
+
+**Milestone 8.10.4: OpenCV Preprocessing Pipeline**
+- Steps applied in order (each logged in `preprocessing_applied`):
+  1. Orientation detection and correction (using moments or Tesseract OSD)
+  2. Deskew (Hough line transform, correct angles -45° to +45°)
+  3. Shadow removal (morphological operations + normalisation)
+  4. Contrast enhancement (CLAHE with clip limit 2.0, tile grid 8×8)
+  5. Quality gate: compute estimated DPI / sharpness score; if below threshold, return `{ok: false, reason: "quality_too_low"}` so caller can decide whether to proceed or fail the job
+- All steps optional per request via `{steps: ["deskew","contrast",...]}` body field.
+- Log applied steps, angles corrected, quality score in response.
+
+---
+
+### Capability C — LayoutLMv3 Model (ml-worker Amendment)
+
+**Milestone 8.10.5: LayoutLMv3 Model Loading**
+- `apps/ml-service/requirements.txt`: add `transformers`, `datasets`; remove `sentence-transformers`.
+- `apps/ml-service/model.py`: replace `SentenceTransformer(...)` with HuggingFace `LayoutLMv3Processor` + `LayoutLMv3ForTokenClassification` loading from checkpoint directory.
+- `apps/ml-service/model_registry.py`: update warm-up to use a token+bbox input (not a text embedding call).
+- `apps/ml-service/ml.Dockerfile`: update base image requirements; ensure `transformers` and `torch` installed.
+- Inference input: `{tokens: string[], bboxes: [x,y,w,h][], image?: base64}`.
+- Inference output per token: `{token, fieldKey, confidence, zone}`.
+
+**Milestone 8.10.6: Zone Classifier Integration**
+- Add zone classification as a pre-pass before field extraction.
+- Input: bounding boxes + page dimensions.
+- Output: per-segment zone label (`header`/`addresses`/`line_items`/`instructions`/`footer`).
+- Integrated into `POST /ml/suggest-fields` response: each suggestion gains `zone` field.
+- Store zone on `baseline_field_assignments.zone` at suggestion persistence time.
+
+**Milestone 8.10.7: Updated Suggestion Endpoint Contract**
+- `POST /ml/suggest-fields` request gains: `pageWidth`, `pageHeight` (for bbox normalisation), `pageType` (`digital`/`scanned`).
+- Response per suggestion gains: `zone` (text), `boundingBox` (normalised 0–1000 jsonb), `extractionMethod` (`'layoutlmv3'`).
+- `FieldSuggestionService` persists `zone`, `bounding_box`, `extraction_method`, `confidence_score` on `baseline_field_assignments`.
+- Remove hardcoded `'all-MiniLM-L6-v2'` model name; resolve active `layoutlmv3-extraction` model from `extraction_models`.
+
+---
+
+### Capability D — Per-Field Confidence Tiers
+
+**Milestone 8.10.8: Confidence Tier Logic**
+- Backend: after LayoutLMv3 inference, classify each field's `confidence_score` into tier:
+  - **Auto-confirm** ≥ 0.90: pre-populated and surfaced as confirmed-pending-review
+  - **Verify** 0.70–0.89: highlighted for user review
+  - **Flag** < 0.70: prominently surfaced; PDF viewer scrolls to region
+- Tier thresholds configurable via env (`ML_TIER_AUTOCONFIRM=0.90`, `ML_TIER_VERIFY=0.70`).
+- Tier stored as derived field (not persisted; computed on read from `confidence_score`).
+
+**Milestone 8.10.9: Bulk Confirm Auto-Confirm Tier**
+- Review page: new "Confirm High-Confidence Fields" button visible when ≥1 auto-confirm field exists.
+- Clicking bulk-accepts all auto-confirm fields in a single API call with `suggestionAccepted=true`.
+- Keyboard shortcut: `Shift+Enter` to bulk confirm.
+- Does not affect verify or flag fields.
+
+---
+
+### Capability E — Verification UI
+
+**Milestone 8.10.10: Side-by-Side Verification Layout**
+- Amend `/attachments/[attachmentId]/review` to a two-panel verification mode when LayoutLMv3 extraction data is present:
+  - Left 50%: PDF viewer (existing `PdfDocumentViewer`)
+  - Right 50%: extracted fields panel, sorted by confidence tier (flag → verify → auto-confirm)
+- Confidence-driven field highlighting:
+  - Flag fields: red background + red PDF region overlay
+  - Verify fields: amber background + amber PDF region overlay
+  - Auto-confirm fields: green background
+- PDF auto-scrolls to the page/region corresponding to the currently focused field (using `bounding_box`).
+- New component: `apps/web/app/components/ocr/VerificationPanel.tsx`.
+
+**Milestone 8.10.11: Keyboard Flow**
+- `Tab` / `Shift+Tab`: move focus to next/previous field in the panel (by confidence tier order).
+- `Enter`: accept currently focused suggestion (`suggestionAccepted=true`).
+- `Escape`: skip field (move focus without accepting).
+- `Shift+Enter`: bulk confirm all auto-confirm fields.
+- Keyboard hints visible in panel footer.
+
+---
+
+### Capability F — LayoutLMv3 Fine-Tuning Pipeline (training-worker)
+
+**Milestone 8.10.12: training-worker Container Setup**
+- New service: `apps/training-worker/` (FastAPI + HuggingFace `transformers`, `datasets`, `torch`).
+- `training-worker.Dockerfile`: GPU-compatible base image, mounts model volume.
+- `docker-compose.yml`: add `training-worker` service on backend network; no host port mapping.
+- Separate from `ml-worker` so inference is not blocked during training.
+- `codemapcc.md` entry required.
+
+**Milestone 8.10.13: LayoutLMv3 Fine-Tuning Script**
+- `apps/training-worker/finetune.py`:
+  - Load `extraction_training_examples` export (JSON with tokens, bboxes, zone labels, field labels).
+  - Apply data augmentation: rotation ±5°, brightness ±15%, horizontal scale ±10% (image augmentation on rendered page images).
+  - Split 80/10/10 with fixed seed; validation/test exclude `isSynthetic=true` rows.
+  - Fine-tune `LayoutLMv3ForTokenClassification` using HuggingFace Trainer.
+  - Save checkpoint to `/app/models/<candidateVersion>/`; write `metrics.json` (per-field F1, zone accuracy, overall).
+  - Emit callback to `POST /admin/ml/training-runs/:id/complete` on success.
+
+**Milestone 8.10.14: Spatially-Annotated Training Data Export**
+- Extend `MlTrainingDataService` (or new `ExtractionTrainingExportService`) to export `extraction_training_examples` rows with `boundingBox` and `zone`.
+- Export format per row: `{tokens, bboxes, zoneLabel, fieldKey, isSynthetic}` matching LayoutLMv3 input convention (bboxes normalised 0–1000).
+- Endpoint: `GET /admin/ml/training-data/spatial` (admin-only, extends existing training data route).
+
+**Milestone 8.10.15: Synthetic Data Generator (Spatial)**
+- `apps/training-worker/generate_synthetic.py`:
+  - Templates include field-key, label variants, value patterns, AND synthetic bounding boxes (grid positions for common document layouts).
+  - Output per row: `{tokens, bboxes, zoneLabel, fieldKey, assignedValue, isSynthetic: true}`.
+  - CLI: `python generate_synthetic.py --templates templates.json --output synthetic.json --count 200 --seed 42`.
+
+---
+
+### Capability G — Training Data Capture from Corrections
+
+**Milestone 8.10.16: Populate extraction_training_examples**
+- When a field assignment is saved (via `BaselineAssignmentsService.upsertAssignment`), if `bounding_box`, `zone`, and `extraction_method` are present, insert a row into `extraction_training_examples`.
+- No mutation of existing audit or correction flows.
+- `isSynthetic=false` for all user-sourced examples.
+
+---
+
+### Execution Order
+
+1. **8.10.1** PyMuPDF integration — no dependencies
+2. **8.10.3** Preprocessor container setup — no dependencies (parallel with 8.10.1)
+3. **8.10.4** OpenCV preprocessing pipeline — depends on 8.10.3
+4. **8.10.5** LayoutLMv3 model loading — depends on 8.10.3/8.10.4 (preprocessor feeds images)
+5. **8.10.6** Zone classifier — depends on 8.10.5
+6. **8.10.7** Updated suggestion endpoint contract — depends on 8.10.5/8.10.6
+7. **8.10.2** Page routing metadata — depends on 8.10.1
+8. **8.10.8** Confidence tier logic — depends on 8.10.7
+9. **8.10.16** Populate extraction_training_examples — depends on 8.10.7 (new columns must exist)
+10. **8.10.10** Verification UI layout — depends on 8.10.8
+11. **8.10.11** Keyboard flow — depends on 8.10.10
+12. **8.10.9** Bulk confirm — depends on 8.10.10
+13. **8.10.12** training-worker container — depends on 8.10.5 (model family known)
+14. **8.10.14** Spatial training data export — depends on 8.10.16
+15. **8.10.15** Synthetic data generator (spatial) — depends on 8.10.12
+16. **8.10.13** LayoutLMv3 fine-tuning script — depends on 8.10.12/8.10.14/8.10.15
+
+---
+
+**Governance Alignment**
+- **Explicit Intent:** All field acceptance requires user action; bulk confirm is a separate explicit action
+- **Auditability:** Zone, bounding box, extraction method, and confidence stored per assignment; training example capture is append-only
+- **Backend authority:** Tier thresholds configurable server-side only; UI renders tiers from API response
+- **No background automation:** Training-worker runs only when triggered by `training_runs` job record; activation always manual
+
+**Status**
+📋 Planned — depends on v8.9 completion (✅ done)
+
+---
+
+## v8.11 — Multi-Language OCR Support 📋 (To be confirmed)
 What this is
 
 Support OCR for non-English documents (Spanish, French, German, Chinese, etc.)
@@ -3206,7 +3436,7 @@ Not cross-language field matching (Spanish text → English fields)
 
 
 Capability A: Language Detection
-Milestone 8.10.1: Language Detection Service
+Milestone 8.11.1: Language Detection Service
 
 Integrate language detection library (langdetect or fasttext)
 NEW SERVICE: LanguageDetectionService
@@ -3218,14 +3448,14 @@ Confidence score (0-100%)
 
 
 
-Milestone 8.10.2: Language Field in Data Model
+Milestone 8.11.2: Language Field in Data Model
 
 EXTEND extracted_text_segments: add detected_language VARCHAR(5)
 EXTEND extraction_baselines: add primary_language VARCHAR(5)
 Store detected language for each text segment
 Baseline primary language = most common language in segments
 
-Milestone 8.10.3: Language Detection UI
+Milestone 8.11.3: Language Detection UI
 
 On OCR retrieval: automatically detect language
 Display detected language in Review Page header
@@ -3234,7 +3464,7 @@ If confidence <80%: show warning + manual language selector
 
 
 Capability B: Multi-Language OCR Engine
-Milestone 8.10.4: PaddleOCR Multi-Language Support
+Milestone 8.11.4: PaddleOCR Multi-Language Support
 
 PaddleOCR already supports 80+ languages
 Configure language models in FastAPI service:
@@ -3249,7 +3479,7 @@ python  ocr_engines = {
 
 On OCR request: detect language → select appropriate engine
 
-Milestone 8.10.5: Language-Specific Model Loading
+Milestone 8.11.5: Language-Specific Model Loading
 
 Lazy load language models (don't preload all 80 languages)
 Cache loaded models in memory (30 min TTL)
@@ -3257,14 +3487,14 @@ If language not cached: download model (one-time), then load
 
 
 Capability C: Language-Specific Field Matching
-Milestone 8.10.6: Multi-Language Embeddings
+Milestone 8.11.6: Multi-Language Embeddings
 
 Use multilingual Sentence-BERT model: paraphrase-multilingual-MiniLM-L12-v2
 Supports 50+ languages in same vector space
 Replace monolingual model in FastAPI service
 No code changes needed (API stays same)
 
-Milestone 8.10.7: Language-Aware Field Suggestions
+Milestone 8.11.7: Language-Aware Field Suggestions
 
 When suggesting field assignments:
 
@@ -3277,14 +3507,14 @@ Example: Spanish text "Número de factura" matches field "invoice_number"
 
 
 Capability D: Organization Language Settings
-Milestone 8.10.8: Org Default Language
+Milestone 8.11.8: Org Default Language
 
 EXTEND organizations.settings: add default_language VARCHAR(5)
 Admin can set default language in org settings
 Used as fallback if language detection fails
 Applied to new attachments automatically
 
-Milestone 8.10.9: User Language Preference
+Milestone 8.11.9: User Language Preference
 
 EXTEND users table: add preferred_language VARCHAR(5)
 User can set in profile settings
@@ -3292,7 +3522,7 @@ Affects UI language (labels, messages)
 Does not affect OCR language (OCR uses detected language)
 
 
-## v8.11 — Batch Extraction & Processing 📋 (Planned)
+## v8.12 — Batch Extraction & Processing 📋 (Planned)
 What this is
 
 Upload multiple documents at once
@@ -3312,14 +3542,14 @@ Not a complete redesign of queue UI (v8.6.add1 established the target UX)
 
 
 Capability A: Bulk Upload
-Milestone 8.11.1: Multi-File Upload UI
+Milestone 8.12.1: Multi-File Upload UI
 
 On Task detail page: "Upload Multiple Files" button
 File picker: allow selecting multiple files (Ctrl+Click or Drag-drop)
 Display upload queue: list of files with progress bars
 Validation: check file types, max size (20MB each), max count (50 files)
 
-Milestone 8.11.2: Bulk Upload API
+Milestone 8.12.2: Bulk Upload API
 
 POST /attachments/bulk/upload
 
@@ -3332,7 +3562,7 @@ Backend: handle concurrent uploads (use async/await, rate limit per user)
 
 
 Capability B: Batch OCR Processing
-Milestone 8.11.3: OCR Job Queue
+Milestone 8.12.3: OCR Job Queue
 
 **REPLACES:** v8.6.add1 database polling with BullMQ infrastructure
 **PRESERVES:** API endpoints and UI components from v8.6.add1
@@ -3342,7 +3572,7 @@ NEW QUEUE: ocr-processing-queue
 Job structure: { attachmentId, userId, priority }
 Worker: processes jobs concurrently (5 workers, configurable)
 
-Milestone 8.11.4: Queue Job Lifecycle
+Milestone 8.12.4: Queue Job Lifecycle
 
 On bulk upload: create OCR job for each attachment
 Job states: pending → processing → completed → failed
@@ -3362,7 +3592,7 @@ Track retries: max 3 attempts, exponential backoff
   - Ability to adjust worker count dynamically
 - **Graceful Degradation:** If Redis is down, fall back to database polling (v8.6.add1 mode)
 
-Milestone 8.11.5: Capacity Planning & Configuration
+Milestone 8.12.5: Capacity Planning & Configuration
 
 **System Settings Table:**
 - `ocr_queue_max_global`: INT DEFAULT 100 (total jobs allowed system-wide)
@@ -3383,7 +3613,7 @@ Milestone 8.11.5: Capacity Planning & Configuration
   - "Bulk upload limit: 50 files maximum"
   - "Please wait 30 seconds before next bulk upload"
 
-Milestone 8.11.6: Progress Tracking UI
+Milestone 8.12.6: Progress Tracking UI
 
 **BUILDS ON v8.6.add1 OcrQueuePanel - Adds Enhanced Features:**
 
@@ -3409,7 +3639,7 @@ Milestone 8.11.6: Progress Tracking UI
 
 
 Capability C: Bulk Baseline Review
-Milestone 8.11.6: Batch Review UI
+Milestone 8.12.6: Batch Review UI
 
 New page: /tasks/:id/batch-review
 Display: grid view of all attachments (thumbnails)
@@ -3422,7 +3652,7 @@ Field assignment count (e.g., "5/10 fields assigned")
 
 Click thumbnail → opens Review Page (v8.6)
 
-Milestone 8.11.7: Bulk Confirmation
+Milestone 8.12.7: Bulk Confirmation
 
 On Batch Review page: "Confirm All Reviewed" button
 Enabled only if all baselines in "Reviewed" state
@@ -3437,7 +3667,7 @@ Action: loop through baselines, confirm each (atomic transaction)
 
 
 Capability D: Error Handling & Retry
-Milestone 8.11.8: Failed OCR Handling
+Milestone 8.12.8: Failed OCR Handling
 
 If OCR job fails (API timeout, invalid file, etc.):
 
@@ -3448,7 +3678,7 @@ Button: "Retry OCR" (re-queues job)
 
 
 
-Milestone 8.11.9: Partial Batch Completion
+Milestone 8.12.9: Partial Batch Completion
 
 If batch processing partially fails (some succeed, some fail):
 
@@ -5927,3 +6157,4 @@ Comprehensive field validation system with auto-normalization, enhanced error vi
 - ✅ Minimal localized changes (no new dependencies)
 
 ---
+

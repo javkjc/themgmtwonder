@@ -3,7 +3,7 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import numpy as np
 
@@ -46,6 +46,9 @@ def load_model(timeout_seconds: float = 20.0) -> None:
                     "loadMs": int((_model_loaded_at - start_time) * 1000),
                 },
             )
+            # Seed the registry with the default model so hot-swap can fall back to it
+            from model_registry import registry
+            registry.seed(MODEL_VERSION, _model, MODEL_VERSION)
         except TimeoutError:
             _model = None
             _model_error = f"TimeoutError: model load exceeded {timeout_seconds}s"
@@ -62,6 +65,31 @@ def load_model(timeout_seconds: float = 20.0) -> None:
             )
 
 
+def load_model_from_path(file_path: str, timeout_seconds: float = 60.0) -> Tuple[object, str]:
+    """Load a SentenceTransformer model from an explicit file path.
+
+    Returns (model, warm_up_embedding_repr) on success.
+    Raises on any failure so the caller can keep the prior model active.
+    """
+    def _load():
+        from sentence_transformers import SentenceTransformer
+        return SentenceTransformer(file_path)
+
+    start_time = time.time()
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_load)
+        model = future.result(timeout=timeout_seconds)
+
+    # Warm-up: generate one embedding to confirm the model works
+    warmup = model.encode(["warm-up"], convert_to_numpy=True, normalize_embeddings=True)
+    load_ms = int((time.time() - start_time) * 1000)
+    logging.info(
+        "ml_model_from_path_loaded",
+        extra={"filePath": file_path, "loadMs": load_ms},
+    )
+    return model, repr(warmup.shape)
+
+
 def get_model_error() -> Optional[str]:
     return _model_error
 
@@ -71,11 +99,14 @@ def get_model_loaded_at() -> Optional[float]:
 
 
 def embed_texts(texts: List[str]) -> np.ndarray:
-    if _model is None:
+    # Prefer the registry's active model (updated by hot-swap); fall back to startup model
+    from model_registry import registry
+    active = registry.model if registry.model is not None else _model
+    if active is None:
         raise RuntimeError("Model not loaded")
     if not texts:
         return np.zeros((0, 0), dtype=np.float32)
-    embeddings = _model.encode(
+    embeddings = active.encode(
         texts,
         convert_to_numpy=True,
         normalize_embeddings=True,

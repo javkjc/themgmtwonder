@@ -83,6 +83,59 @@ export class MlService {
     return this.callMlEndpoint<TableDetection[]>('/ml/detect-tables', payload);
   }
 
+  async activateModel(payload: {
+    version: string;
+    filePath: string;
+  }): Promise<{ ok: boolean; activeVersion?: string; error?: { code: string; message: string } }> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const url = `${this.mlServiceUrl}/ml/models/activate`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        this.logger.error('ML service activate error', {
+          service: 'ml-service',
+          endpoint: '/ml/models/activate',
+          statusCode: response.status,
+          errorType: 'http_error',
+        });
+        return {
+          ok: false,
+          error: { code: 'ML_SERVICE_ERROR', message: `ML service returned status ${response.status}` },
+        };
+      }
+
+      const result = await response.json();
+      return result;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      const errorType = error.name === 'AbortError' ? 'timeout' : 'network_error';
+      this.logger.error('ML service activate call failed', {
+        service: 'ml-service',
+        endpoint: '/ml/models/activate',
+        statusCode: null,
+        errorType,
+        errorMessage: error.message,
+      });
+      return {
+        ok: false,
+        error: {
+          code: errorType === 'timeout' ? 'ML_TIMEOUT' : 'ML_NETWORK_ERROR',
+          message: errorType === 'timeout' ? 'ML service request timed out' : 'Failed to connect to ML service',
+        },
+      };
+    }
+  }
+
   private async callMlEndpoint<T>(
     endpoint: string,
     payload: unknown,

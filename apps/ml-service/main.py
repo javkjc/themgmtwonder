@@ -6,7 +6,8 @@ import numpy as np
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
-from model import MODEL_VERSION, embed_texts, get_model_error, load_model
+from model import MODEL_VERSION, embed_texts, get_model_error, load_model, load_model_from_path
+from model_registry import registry
 from table_detect import detect_tables
 
 logging.basicConfig(level=logging.INFO)
@@ -122,6 +123,46 @@ def startup_event() -> None:
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Model activation (hot swap)  — v8.9 B2
+# ---------------------------------------------------------------------------
+
+class ActivateModelRequest(BaseModel):
+    version: str
+    filePath: str
+
+
+class ActivateModelResponse(BaseModel):
+    ok: bool
+    activeVersion: Optional[str] = None
+    error: Optional[ErrorPayload] = None
+
+
+@app.post("/ml/models/activate", response_model=ActivateModelResponse)
+def activate_model(payload: ActivateModelRequest) -> ActivateModelResponse:
+    try:
+        new_model, _ = load_model_from_path(payload.filePath)
+        registry.swap(payload.version, new_model, payload.filePath)
+        logging.info(
+            "ml.model.activate.success",
+            extra={"version": payload.version, "filePath": payload.filePath},
+        )
+        return ActivateModelResponse(ok=True, activeVersion=payload.version)
+    except Exception as exc:  # noqa: BLE001
+        logging.error(
+            "ml.model.activate.failed",
+            extra={
+                "version": payload.version,
+                "filePath": payload.filePath,
+                "error": f"{type(exc).__name__}: {exc}",
+            },
+        )
+        return ActivateModelResponse(
+            ok=False,
+            error=ErrorPayload(code="load_failed", message=f"{type(exc).__name__}: {exc}"),
+        )
 
 
 def is_numeric_value(text: str) -> bool:

@@ -19,9 +19,10 @@
   - ocrw.Dockerfile (python:3.10-slim build, apt deps, uvicorn main:app --host 0.0.0.0 --port 4000)
 - apps/ml-service (FastAPI inference microservice for ML suggestions; internal-only)
   - main.py (FastAPI app; GET /health returns {status: "ok"})
-  - model.py (loads sentence-transformers model and provides embedding helpers)
+  - model.py (loads sentence-transformers model and provides embedding helpers; load_model_from_path for hot-swap)
+  - model_registry.py (ModelRegistry singleton: holds activeVersion, model, modelPath in memory; thread-safe swap; v8.9 B2)
   - requirements.txt (fastapi, uvicorn, sentence-transformers, torch, numpy)
-  - ml.Dockerfile (python:3.10-slim build, installs requirements.txt, uvicorn main:app on port 5000)
+  - ml.Dockerfile (python:3.14-slim build, installs requirements.txt, copies main.py/model.py/model_registry.py/table_detect.py, uvicorn main:app on port 5000; internal only — no host port mapping)
 - docker-compose.yml (to wire ml-service container on backend network)
 - Shared/utils: apps/web/app/lib/{api.ts,categories.ts,constants.ts,dateTime.ts,durationSettings.ts}; hooks as client data layer
 - db/schema: apps/api/src/db/schema.ts (Drizzle models)
@@ -141,6 +142,12 @@
         - calculate_token_overlap_boost(segment, field): Computes 0.0-0.30 boost for token matches
         - matches_label(segment, field): Checks if segment contains all field label tokens
         - find_value_near_label(label, segments, type): Finds value near label using spatial proximity
+    - POST /ml/models/activate
+      - Request: { version: string, filePath: string }
+      - Response: { ok: boolean, activeVersion?: string, error?: { code: string, message: string } }
+      - Loads model from filePath via SentenceTransformer, runs warm-up embedding, swaps active if load succeeds
+      - On failure: keeps prior model active, returns { ok: false, error: { code: "load_failed" } }
+      - Logs: ml.model.activate.success or ml.model.activate.failed with version and filePath
     - POST /ml/detect-tables
       - Request: { attachmentId: string, segments: [{ id: string, text: string, boundingBox: {x, y, width, height}, pageNumber?: number, confidence?: number }], threshold?: number }
       - Response: { ok: boolean, attachmentId: string, threshold: number, tables: [{ regionId: string, rowCount: number, columnCount: number, confidence: number, boundingBox: {x, y, width, height}, cells: [{ rowIndex, columnIndex, text, segmentId }], suggestedLabel: string }], processingTimeMs: number, error?: {code, message} }
@@ -225,16 +232,17 @@
   - Guards/errors: JwtAuthGuard + AdminGuard class-wide; NotFoundException on unknown user; AuditService.log called after reset
 - Module: MlModule
   - Path: apps/api/src/ml/ml.module.ts
-  - Purpose: ML service client module for field suggestions, table detection, and admin metrics
+  - Purpose: ML service client module for field suggestions, table detection, admin metrics, and training data export
   - Imports: DbModule, AuditModule, CommonModule, BaselineModule
-  - Controllers: FieldSuggestionController, TableSuggestionController, MlMetricsController
-  - Providers: MlService, FieldSuggestionService, TableSuggestionService, FieldAssignmentValidatorService, MlMetricsService
+  - Controllers: FieldSuggestionController, TableSuggestionController, MlMetricsController, MlTrainingDataController, MlModelsController
+  - Providers: MlService, FieldSuggestionService, TableSuggestionService, FieldAssignmentValidatorService, MlMetricsService, MlTrainingDataService, MlModelsService
 - Service: MlService
   - Path: apps/api/src/ml/ml.service.ts
   - Purpose: HTTP client wrapper for ML service with timeouts, error handling, and graceful degradation
   - Methods:
     - suggestFields(payload): Calls POST /ml/suggest-fields with 5s timeout
     - detectTables(payload): Calls POST /ml/detect-tables with 5s timeout
+    - activateModel({version, filePath}): Calls POST /ml/models/activate with 5s timeout; returns { ok, activeVersion?, error? } (v8.9 B3)
   - Error handling: Normalizes errors to { ok: false, error: { code, message } }
   - Logging: Logs failures with service, endpoint, statusCode, errorType fields
   - Config: Reads ML_SERVICE_URL from env (defaults to http://ml-service:5000)
@@ -274,6 +282,41 @@
 - Service: MlMetricsService
   - Path: apps/api/src/ml/ml-metrics.service.ts
   - Purpose: Computes acceptance/modify/clear rates, top-1 accuracy, and field confusion from assignments/audit logs
+- Controller: MlTrainingDataController
+  - Path: apps/api/src/ml/ml-training-data.controller.ts
+  - Base route: /admin/ml
+  - Purpose: Admin-only training data export endpoint (v8.9 A1)
+  - Endpoints:
+    - GET /admin/ml/training-data → getTrainingData() → MlTrainingDataService.getTrainingData()
+  - Guards/errors: JwtAuthGuard + CsrfGuard + AdminGuard; requires startDate and endDate (ISO); optional minCorrections (default 10)
+  - Audit: emits action="ml.training-data.export" with count, startDate, endDate
+- Controller: MlModelsController
+  - Path: apps/api/src/ml/ml-models.controller.ts
+  - Base route: /admin/ml
+  - Purpose: Admin-only model version registry and activation endpoints (v8.9 B1+B3)
+  - Endpoints:
+    - POST /admin/ml/models → createModel() → MlModelsService.createModel(); emits audit log ml.model.register
+    - GET /admin/ml/models → listModels() → MlModelsService.listModels(); returns all versions sorted by trainedAt desc
+    - POST /admin/ml/models/activate → activateModel() → MlModelsService.activateModel(version); calls ML service, transactionally swaps isActive; emits audit log ml.model.activate with version and previousVersion
+  - Guards/errors: JwtAuthGuard + CsrfGuard + AdminGuard; 409 on duplicate modelName+version; 404 on unknown version; 502 if ML service activation fails
+- Service: MlModelsService
+  - Path: apps/api/src/ml/ml-models.service.ts
+  - Purpose: Insert, list, and activate ml_model_versions rows; new records always have isActive=false; activateModel resolves record, calls MlService.activateModel, transactionally deactivates previous and activates target (v8.9 B1+B3)
+- DTO: CreateMlModelDto
+  - Path: apps/api/src/ml/dto/create-ml-model.dto.ts
+  - Purpose: Validates modelName, version, filePath (required strings) and optional metrics object for model registration
+- Service: MlTrainingDataService
+  - Path: apps/api/src/ml/ml-training-data.service.ts
+  - Purpose: Queries baseline_field_assignments joined to extracted_text_segments, extraction_baselines, and users; applies A2 quality filters before returning training data rows (v8.9 A1+A2)
+  - Quality Filters (v8.9 A2):
+    - Typo filter: Excludes rows where correctionReason = 'typo' (case-insensitive trim); count logged as filteredOutTypos
+    - Early-user filter: Excludes rows where assignedAt < users.createdAt + 30 days; count logged as filteredOutEarlyUsers
+    - Single-user filter: Excludes rows where only one distinct assignedBy corrected the same (fieldKey, LOWER(TRIM(textSegment))) pair within the export window; count logged as filteredOutSingleUser
+    - minCorrections threshold: If filtered count < minCorrections, throws BadRequestException with code="insufficient_corrections"
+  - Audit log details include filteredOutTypos, filteredOutEarlyUsers, filteredOutSingleUser, count
+- DTO: MlTrainingDataQueryDto
+  - Path: apps/api/src/ml/dto/ml-training-data.query.dto.ts
+  - Purpose: Validates required startDate and endDate (ISO date strings) and optional minCorrections (int, default 10) for training data export
 - Service: FieldSuggestionService
   - Path: apps/api/src/ml/field-suggestion.service.ts
   - Purpose: Orchestrates ML field suggestion generation and persistence for baselines

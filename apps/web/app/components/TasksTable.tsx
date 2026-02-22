@@ -44,6 +44,7 @@ export default function TasksTable({
   const [modalLoading, setModalLoading] = useState(false);
   const [modalData, setModalData] = useState<Todo | Todo[] | null>(null);
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; right: number } | null>(null);
 
   const { getCategoryNames } = useCategories(userId);
   const categoryNames = getCategoryNames();
@@ -81,7 +82,8 @@ export default function TasksTable({
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (target.closest(`[data-actions-id="${openActionsId}"]`)) return;
-      setOpenActionsId(null);
+      setOpenActionsId(null); setDropdownPos(null);
+      setDropdownPos(null);
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
@@ -160,9 +162,8 @@ export default function TasksTable({
       background: 'var(--surface)',
       borderRadius: 12,
       border: '1px solid var(--border)',
-      overflow: 'hidden',
     }}>
-      <div style={{ overflowX: 'auto' }}>
+      <div style={{ overflowX: 'auto', borderRadius: 12 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: 'var(--surface-secondary)', borderBottom: '1px solid var(--border)' }}>
@@ -641,11 +642,23 @@ export default function TasksTable({
                     <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Not scheduled</span>
                   )}
                 </td>
-                <td style={{ padding: '16px', textAlign: 'right', position: 'relative' }}>
+                <td style={{ padding: '16px', textAlign: 'right', position: 'relative', whiteSpace: 'nowrap' }}>
                   {editingId !== t.id && (
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }} data-actions-id={t.id}>
                       <button
-                        onClick={() => setOpenActionsId(openActionsId === t.id ? null : t.id)}
+                        onClick={(e) => {
+                          if (openActionsId === t.id) {
+                            setOpenActionsId(null);
+                            setDropdownPos(null);
+                          } else {
+                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                            setDropdownPos({
+                              top: rect.bottom + 4,
+                              right: window.innerWidth - rect.right,
+                            });
+                            setOpenActionsId(t.id);
+                          }
+                        }}
                         style={{
                           padding: '6px 10px',
                           fontSize: 12,
@@ -676,19 +689,19 @@ export default function TasksTable({
                           ▾
                         </span>
                       </button>
-                      {openActionsId === t.id && (
+                      {openActionsId === t.id && dropdownPos && (
                         <div
                           style={{
-                            position: 'absolute',
-                            marginTop: 8,
-                            right: 0,
+                            position: 'fixed',
+                            top: dropdownPos.top,
+                            right: dropdownPos.right,
                             background: 'var(--surface)',
                             border: '1px solid var(--border)',
                             borderRadius: 12,
                             minWidth: 180,
                             boxShadow: '0 16px 32px rgba(0,0,0,0.18)',
                             padding: '6px 0',
-                            zIndex: 20,
+                            zIndex: 9999,
                           }}
                         >
                           <Link
@@ -713,7 +726,7 @@ export default function TasksTable({
                           </Link>
                           <button
                             onClick={() => {
-                              setOpenActionsId(null);
+                              setOpenActionsId(null); setDropdownPos(null);
                               startEditing(t);
                             }}
                             style={{
@@ -738,7 +751,7 @@ export default function TasksTable({
                           </button>
                           <button
                             onClick={() => {
-                              setOpenActionsId(null);
+                              setOpenActionsId(null); setDropdownPos(null);
                               onSchedule(t.id, t.startAt, t.durationMin);
                             }}
                             data-testid={`task-schedule-${t.id}`}
@@ -765,7 +778,7 @@ export default function TasksTable({
                           {t.startAt && (
                             <button
                               onClick={() => {
-                                setOpenActionsId(null);
+                                setOpenActionsId(null); setDropdownPos(null);
                                 onUnschedule(t.id, t.title);
                               }}
                               style={{
@@ -791,7 +804,7 @@ export default function TasksTable({
                           )}
                           <button
                             onClick={() => {
-                              setOpenActionsId(null);
+                              setOpenActionsId(null); setDropdownPos(null);
                               onDelete(t.id, t.title);
                             }}
                             data-testid={`task-delete-${t.id}`}
