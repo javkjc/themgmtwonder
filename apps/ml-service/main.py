@@ -1,18 +1,22 @@
 import logging
+import re
 import time
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 
 import numpy as np
+import torch
 from fastapi import FastAPI
+from PIL import Image
 from pydantic import BaseModel, Field
 
-from model import MODEL_VERSION, embed_texts, get_model_error, load_model, load_model_from_path
+from model import MODEL_VERSION, get_model_error, load_model, load_model_from_path
 from model_registry import registry
 from table_detect import detect_tables
+import zone_classifier
 
 logging.basicConfig(level=logging.INFO)
 
-app = FastAPI(title="ML Service", version="0.2.0")
+app = FastAPI(title="ML Service", version="0.3.0")
 
 
 class SegmentBoundingBoxInput(BaseModel):
@@ -26,13 +30,11 @@ class SegmentInput(BaseModel):
     id: str
     text: str
     boundingBox: Optional[SegmentBoundingBoxInput] = None
-    pageNumber: Optional[int] = None
 
 
 class FieldInput(BaseModel):
     fieldKey: str
     label: str
-    characterType: Optional[str] = None  # varchar, int, decimal, date, currency
 
 
 class PairCandidateInput(BaseModel):
@@ -51,6 +53,9 @@ class SegmentContextInput(BaseModel):
 
 class SuggestFieldsRequest(BaseModel):
     baselineId: str
+    pageWidth: int
+    pageHeight: int
+    pageType: Literal["digital", "scanned"]
     segments: List[SegmentInput]
     fields: List[FieldInput]
     pairCandidates: Optional[List[PairCandidateInput]] = Field(default=None)
@@ -62,6 +67,9 @@ class Suggestion(BaseModel):
     segmentId: str
     fieldKey: str
     confidence: float
+    zone: str
+    boundingBox: SegmentBoundingBoxInput
+    extractionMethod: Literal["layoutlmv3"]
 
 
 class ErrorPayload(BaseModel):
@@ -133,17 +141,13 @@ class DetectTablesResponse(BaseModel):
 
 @app.on_event("startup")
 def startup_event() -> None:
-    load_model(timeout_seconds=120.0)
+    load_model(timeout_seconds=180.0)
 
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
-
-# ---------------------------------------------------------------------------
-# Model activation (hot swap)  — v8.9 B2
-# ---------------------------------------------------------------------------
 
 class ActivateModelRequest(BaseModel):
     version: str
@@ -159,11 +163,15 @@ class ActivateModelResponse(BaseModel):
 @app.post("/ml/models/activate", response_model=ActivateModelResponse)
 def activate_model(payload: ActivateModelRequest) -> ActivateModelResponse:
     try:
-        new_model, _ = load_model_from_path(payload.filePath)
-        registry.swap(payload.version, new_model, payload.filePath)
+        processor, new_model, warmup_shape = load_model_from_path(payload.filePath)
+        registry.swap(payload.version, processor, new_model, payload.filePath)
         logging.info(
             "ml.model.activate.success",
-            extra={"version": payload.version, "filePath": payload.filePath},
+            extra={
+                "version": payload.version,
+                "filePath": payload.filePath,
+                "warmupOutputShape": warmup_shape,
+            },
         )
         return ActivateModelResponse(ok=True, activeVersion=payload.version)
     except Exception as exc:  # noqa: BLE001
@@ -181,211 +189,75 @@ def activate_model(payload: ActivateModelRequest) -> ActivateModelResponse:
         )
 
 
-def is_numeric_value(text: str) -> bool:
-    """Check if text looks like a numeric value (not a label)"""
-    text = text.strip()
-
-    # Quick check: if no digits, definitely not numeric
-    if not any(c.isdigit() for c in text):
-        return False
-
-    # Check for currency symbols - strong indicator it's a value
-    if any(symbol in text for symbol in ["$", "€", "£", "¥", "₹"]):
-        return True
-
-    # Check for number patterns with decimals/commas
-    # Remove currency symbols, whitespace, and common numeric formatting
-    cleaned = text.replace("$", "").replace("€", "").replace("£", "").replace("¥", "").replace("₹", "")
-    cleaned = cleaned.replace(",", "").replace(" ", "")
-
-    # Split on common delimiters to extract the main numeric part
-    # This handles cases like "$27.54 (1 item)" -> "$27.54"
-    for delimiter in ["(", ")", "[", "]", "{", "}"]:
-        if delimiter in cleaned:
-            parts = cleaned.split(delimiter)
-            # Take the first part that contains digits
-            for part in parts:
-                if any(c.isdigit() for c in part):
-                    cleaned = part.strip()
-                    break
-
-    # Now check if what remains is mostly numeric
-    # Remove decimal points and dashes (for negative numbers)
-    numeric_check = cleaned.replace(".", "").replace("-", "")
-
-    if numeric_check:
-        digit_ratio = sum(c.isdigit() for c in numeric_check) / len(numeric_check)
-        # More lenient threshold: 40% instead of 50%
-        if digit_ratio > 0.4:
-            return True
-
-    return False
+def _clamp(value: float, min_value: float, max_value: float) -> float:
+    return max(min_value, min(value, max_value))
 
 
-def normalize_text(text: str) -> str:
-    return (
-        text.lower()
-        .replace(",", " ")
-        .replace(".", " ")
-        .replace(":", " ")
-        .replace("-", " ")
-        .replace("/", " ")
-        .replace("  ", " ")
-        .strip()
-    )
+def normalize_bbox(box: SegmentBoundingBoxInput, page_width: int, page_height: int) -> SegmentBoundingBoxInput:
+    if page_width <= 0 or page_height <= 0:
+        raise ValueError("pageWidth and pageHeight must be positive")
+    if box.width <= 0 or box.height <= 0:
+        raise ValueError("boundingBox width and height must be positive")
+
+    x = float(box.x)
+    y = float(box.y)
+    w = float(box.width)
+    h = float(box.height)
+    right = x + w
+    bottom = y + h
+
+    # Validate coordinate scale before normalization:
+    # - fractional [0,1]
+    # - page-space [0,pageWidth/pageHeight]
+    # - already normalized [0,1000]
+    if right <= 1.0 and bottom <= 1.0:
+        x0 = _clamp(x * 1000.0, 0.0, 1000.0)
+        y0 = _clamp(y * 1000.0, 0.0, 1000.0)
+        x1 = _clamp((x + w) * 1000.0, 0.0, 1000.0)
+        y1 = _clamp((y + h) * 1000.0, 0.0, 1000.0)
+    elif right <= (page_width * 1.05) and bottom <= (page_height * 1.05):
+        x0 = _clamp((x / page_width) * 1000.0, 0.0, 1000.0)
+        y0 = _clamp((y / page_height) * 1000.0, 0.0, 1000.0)
+        x1 = _clamp(((x + w) / page_width) * 1000.0, 0.0, 1000.0)
+        y1 = _clamp(((y + h) / page_height) * 1000.0, 0.0, 1000.0)
+    elif right <= 1000.0 and bottom <= 1000.0:
+        x0 = _clamp(x, 0.0, 1000.0)
+        y0 = _clamp(y, 0.0, 1000.0)
+        x1 = _clamp(x + w, 0.0, 1000.0)
+        y1 = _clamp(y + h, 0.0, 1000.0)
+    else:
+        x0 = _clamp((x / page_width) * 1000.0, 0.0, 1000.0)
+        y0 = _clamp((y / page_height) * 1000.0, 0.0, 1000.0)
+        x1 = _clamp(((x + w) / page_width) * 1000.0, 0.0, 1000.0)
+        y1 = _clamp(((y + h) / page_height) * 1000.0, 0.0, 1000.0)
+
+    width = max(0.0, x1 - x0)
+    height = max(0.0, y1 - y0)
+    return SegmentBoundingBoxInput(x=x0, y=y0, width=width, height=height)
 
 
-def label_tokens(label: str) -> List[str]:
-    tokens = [t for t in normalize_text(label).split() if t]
-    # Normalize common synonyms/abbreviations
-    normalized = []
-    for token in tokens:
-        if token in ["#", "no", "num", "number"]:
-            normalized.append("number")
-        else:
-            normalized.append(token)
-    return normalized
+def _norm_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
 
 
-def matches_label(segment_text: str, field_label: str) -> bool:
-    tokens = label_tokens(field_label)
-    if not tokens:
-        return False
-    seg = normalize_text(segment_text)
-    # Normalize segment text with same synonym rules
-    seg_tokens = normalize_text(seg).split()
-    seg_tokens = ["number" if t in ["#", "no", "num", "number"] else t for t in seg_tokens]
+def _resolve_field_key(class_id: int, label_name: str, fields: List[FieldInput]) -> Optional[str]:
+    by_key = {_norm_key(field.fieldKey): field.fieldKey for field in fields}
+    by_label = {_norm_key(field.label): field.fieldKey for field in fields}
 
-    # For multi-word labels, require at least one significant token match
-    # (not just generic words like "total", "date", "number")
-    if len(tokens) > 1:
-        # Check if any distinctive (non-generic) token matches
-        distinctive_field_tokens = [t for t in tokens if t not in {"date", "number", "total", "amount", "name", "id"}]
-        distinctive_seg_tokens = [t for t in seg_tokens if t not in {"date", "number", "total", "amount", "name", "id"}]
+    cleaned_label = re.sub(r"^[BILUS]-", "", label_name)
+    cleaned_label = cleaned_label.replace("_", " ").strip()
 
-        # If there are distinctive tokens in the field label, require at least one to match
-        if distinctive_field_tokens:
-            has_distinctive_match = any(t in seg_tokens for t in distinctive_field_tokens)
-            if has_distinctive_match:
-                # Also require at least one common token to match
-                common_matches = sum(1 for t in tokens if t in seg_tokens)
-                return common_matches >= 1
-        else:
-            # All tokens are generic (e.g., "total amount"), require majority match
-            matches = sum(1 for t in tokens if t in seg_tokens)
-            return matches >= len(tokens) / 2
+    for candidate in (cleaned_label, label_name):
+        norm = _norm_key(candidate)
+        if norm in by_key:
+            return by_key[norm]
+        if norm in by_label:
+            return by_label[norm]
 
-    # For single-word labels, require exact match
-    return all(token in seg_tokens for token in tokens)
+    if 0 <= class_id < len(fields):
+        return fields[class_id].fieldKey
 
-
-def calculate_token_overlap_boost(segment_text: str, field_label: str) -> float:
-    """
-    Calculate a boost score based on exact token matches between segment and field label.
-    Returns a value between 0.0 and 0.3 to add to the similarity score.
-
-    Examples:
-    - "Receive Date" segment vs "Receive Date" field → high boost (0.3)
-    - "Order Date" segment vs "Receive Date" field → low boost (0.1, only "date" matches)
-    - "Jul 28, 2023" segment vs "Receive Date" field → no boost (0.0)
-    """
-    field_tokens = set(label_tokens(field_label))
-    seg_tokens = set(label_tokens(segment_text))
-
-    if not field_tokens or not seg_tokens:
-        return 0.0
-
-    # Calculate overlap ratio
-    overlap = field_tokens & seg_tokens  # Intersection
-    overlap_ratio = len(overlap) / len(field_tokens)
-
-    # Special boost for distinctive tokens (not common words like "date", "number")
-    distinctive_matches = overlap - {"date", "number", "total", "amount", "name", "id"}
-
-    # Base boost from overlap ratio (up to 0.15)
-    base_boost = overlap_ratio * 0.15
-
-    # Additional boost for distinctive token matches (up to 0.15)
-    distinctive_boost = min(len(distinctive_matches) / max(len(field_tokens), 1), 1.0) * 0.15
-
-    return base_boost + distinctive_boost
-
-
-def is_date_value(text: str) -> bool:
-    # Basic heuristics: contains month name or date-like digits
-    lower = text.strip().lower()
-    if any(month in lower for month in [
-        "jan", "feb", "mar", "apr", "may", "jun",
-        "jul", "aug", "sep", "oct", "nov", "dec"
-    ]):
-        return True
-    # Date patterns like 2023-07-28, 07/28/2023, 28/07/2023
-    digits = [c for c in lower if c.isdigit()]
-    return len(digits) >= 6 and any(sep in lower for sep in ["-", "/"])
-
-
-def is_value_for_field(text: str, field_type: Optional[str]) -> bool:
-    if field_type in ["int", "decimal", "currency"]:
-        return is_numeric_value(text)
-    if field_type == "date":
-        return is_date_value(text)
-    return True
-
-
-def find_value_near_label(
-    label_segment: SegmentInput,
-    all_segments: List[SegmentInput],
-    field_type: Optional[str],
-) -> Optional[SegmentInput]:
-    """Find a value segment near a label segment based on layout proximity"""
-    if not label_segment.boundingBox:
-        return None
-
-    label_box = label_segment.boundingBox
-    label_page = label_segment.pageNumber or 1
-
-    # Find candidates on same page, to the right or below the label
-    candidates = []
-    for seg in all_segments:
-        if seg.id == label_segment.id:
-            continue
-        if not seg.boundingBox:
-            continue
-        if (seg.pageNumber or 1) != label_page:
-            continue
-
-        seg_box = seg.boundingBox
-
-        # Calculate relative position
-        is_to_right = seg_box.x > label_box.x
-        is_below = seg_box.y > label_box.y
-
-        # Prefer value-looking segments based on field type
-        if not is_value_for_field(seg.text, field_type):
-            continue
-
-        # Calculate proximity score (closer is better)
-        horizontal_dist = abs(seg_box.x - (label_box.x + label_box.width))
-        vertical_dist = abs(seg_box.y - label_box.y)
-
-        # Prefer right-aligned values (common in forms)
-        # Accept values on approximately the same row (within 20px vertical tolerance)
-        # This handles cases where value appears slightly above OR below the label
-        if is_to_right and vertical_dist < 20:  # Same row (value can be above or below)
-            proximity = horizontal_dist
-        elif is_below and abs(horizontal_dist) < 50:  # Below, aligned
-            proximity = vertical_dist + 50  # Penalty for not being on same row
-        else:
-            continue
-
-        candidates.append((seg, proximity))
-
-    if not candidates:
-        return None
-
-    # Return closest candidate
-    candidates.sort(key=lambda x: x[1])
-    return candidates[0][0]
+    return None
 
 
 @app.post("/ml/suggest-fields", response_model=SuggestFieldsResponse)
@@ -393,18 +265,16 @@ def suggest_fields(payload: SuggestFieldsRequest) -> SuggestFieldsResponse:
     threshold = payload.threshold if payload.threshold is not None else 0.5
     threshold = float(np.clip(threshold, 0.0, 1.0))
 
-    model_error = get_model_error()
-    if model_error is not None:
-        load_model(timeout_seconds=120.0)
-        model_error = get_model_error()
+    if registry.model is None or registry.processor is None:
+        load_model(timeout_seconds=180.0)
 
-    if model_error is not None:
+    if registry.model is None or registry.processor is None:
+        model_error = get_model_error() or "Model registry not initialized"
         logging.error(
             "ml_suggest_fields_unavailable",
             extra={
                 "baselineId": payload.baselineId,
                 "modelVersion": MODEL_VERSION,
-                "suggestionCount": 0,
                 "error": model_error,
             },
         )
@@ -413,211 +283,176 @@ def suggest_fields(payload: SuggestFieldsRequest) -> SuggestFieldsResponse:
             modelVersion=MODEL_VERSION,
             threshold=threshold,
             suggestions=[],
-            error=ErrorPayload(code="MODEL_UNAVAILABLE", message=model_error),
+            error=ErrorPayload(code="model_not_ready", message=model_error),
         )
 
     if not payload.fields or not payload.segments:
-        logging.info(
-            "ml_suggest_fields",
-            extra={
-                "baselineId": payload.baselineId,
-                "modelVersion": MODEL_VERSION,
-                "suggestionCount": 0,
-            },
-        )
         return SuggestFieldsResponse(
             ok=True,
-            modelVersion=MODEL_VERSION,
+            modelVersion=registry.active_version or MODEL_VERSION,
             threshold=threshold,
             suggestions=[],
         )
 
+    normalized_segment_boxes: Dict[str, SegmentBoundingBoxInput] = {}
+    ordered_segment_ids: List[str] = []
+    words: List[str] = []
+    boxes_xyxy: List[List[int]] = []
+    word_segment_ids: List[str] = []
+
+    # I2: sort segments into human reading order before zone classification and
+    # LayoutLMv3 inference.  Segments without a boundingBox sort last within each
+    # page so they are still processed (zone = 'unknown').
+    def _reading_order_key(seg: SegmentInput):
+        page = getattr(seg, 'pageNumber', None) or 0
+        bb = seg.boundingBox
+        y = float(bb.y) if bb is not None else float('inf')
+        x = float(bb.x) if bb is not None else float('inf')
+        return (page, y, x)
+
+    sorted_segments = sorted(payload.segments, key=_reading_order_key)
+
+    # Track which segments have a real bbox (for zone = 'unknown' when absent).
+    segment_has_bbox: Dict[str, bool] = {}
+    # Zero-bbox placeholder for segments without a bounding box (LayoutLMv3 requires a bbox).
+    _ZERO_BBOX = SegmentBoundingBoxInput(x=0.0, y=0.0, width=0.0, height=0.0)
+
+    for segment in sorted_segments:
+        if not segment.text.strip():
+            continue
+
+        if segment.boundingBox is not None:
+            try:
+                normalized_box = normalize_bbox(segment.boundingBox, payload.pageWidth, payload.pageHeight)
+            except ValueError:
+                continue
+            segment_has_bbox[segment.id] = True
+        else:
+            # No bbox — use zero placeholder; zone will be 'unknown'.
+            normalized_box = _ZERO_BBOX
+            segment_has_bbox[segment.id] = False
+
+        normalized_segment_boxes[segment.id] = normalized_box
+        ordered_segment_ids.append(segment.id)
+
+        token_words = [token for token in segment.text.split() if token]
+        if not token_words:
+            continue
+
+        x0 = int(round(normalized_box.x))
+        y0 = int(round(normalized_box.y))
+        x1 = int(round(normalized_box.x + normalized_box.width))
+        y1 = int(round(normalized_box.y + normalized_box.height))
+
+        for token in token_words:
+            words.append(token)
+            boxes_xyxy.append([x0, y0, x1, y1])
+            word_segment_ids.append(segment.id)
+
+    if not words:
+        return SuggestFieldsResponse(
+            ok=True,
+            modelVersion=registry.active_version or MODEL_VERSION,
+            threshold=threshold,
+            suggestions=[],
+        )
+
+    image_width = max(1, min(int(payload.pageWidth), 2048))
+    image_height = max(1, min(int(payload.pageHeight), 2048))
+    image = Image.new("RGB", (image_width, image_height), color=(255, 255, 255))
+
+    processor = registry.processor
+    model = registry.model
+
     try:
-        field_texts = [field.label for field in payload.fields]
-        segment_texts = [segment.text for segment in payload.segments]
+        with torch.no_grad():
+            encoded = processor(
+                image,
+                words,
+                boxes=boxes_xyxy,
+                truncation=True,
+                padding="max_length",
+                return_tensors="pt",
+            )
 
-        field_embeddings = embed_texts(field_texts)
-        segment_embeddings = embed_texts(segment_texts)
+            inputs = {
+                "input_ids": encoded["input_ids"],
+                "attention_mask": encoded["attention_mask"],
+                "bbox": encoded["bbox"],
+                "pixel_values": encoded["pixel_values"],
+            }
 
-        similarity_matrix = segment_embeddings @ field_embeddings.T
+            outputs = model(**inputs)
+            probabilities = torch.softmax(outputs.logits, dim=-1)
+            class_ids = torch.argmax(probabilities, dim=-1)
 
-        # Apply token overlap boost to similarity scores
-        for seg_idx, segment in enumerate(payload.segments):
-            for field_idx, field in enumerate(payload.fields):
-                boost = calculate_token_overlap_boost(segment.text, field.label)
-                if boost > 0:
-                    similarity_matrix[seg_idx, field_idx] = min(
-                        similarity_matrix[seg_idx, field_idx] + boost, 1.0
-                    )
+        token_word_ids = encoded.word_ids(batch_index=0)
+
+        segment_field_scores: Dict[str, Dict[str, List[float]]] = {}
+        for token_index, word_index in enumerate(token_word_ids):
+            if word_index is None:
+                continue
+            if word_index < 0 or word_index >= len(word_segment_ids):
+                continue
+
+            segment_id = word_segment_ids[word_index]
+            class_id = int(class_ids[0, token_index].item())
+            confidence = float(probabilities[0, token_index, class_id].item())
+            label_name = model.config.id2label.get(class_id, str(class_id))
+            field_key = _resolve_field_key(class_id, label_name, payload.fields)
+            if field_key is None:
+                continue
+
+            segment_field_scores.setdefault(segment_id, {}).setdefault(field_key, []).append(confidence)
 
         suggestions: List[Suggestion] = []
-        processed_segments = set()  # Track which segments we've used
-        suggested_field_keys = set()
+        for segment_id in ordered_segment_ids:
+            field_scores = segment_field_scores.get(segment_id)
+            if not field_scores:
+                continue
 
-        # First pass: try label-to-value proximity using text match (for numeric/date)
-        for field in payload.fields:
-            if field.characterType not in ["int", "decimal", "currency", "date"]:
+            best_field_key = ""
+            best_confidence = 0.0
+            for field_key, scores in field_scores.items():
+                score = float(sum(scores) / len(scores))
+                if score > best_confidence:
+                    best_confidence = score
+                    best_field_key = field_key
+
+            if best_confidence < threshold:
                 continue
-            if field.fieldKey in suggested_field_keys:
-                continue
-            logging.info(
-                "ml_suggest_fields_first_pass_field",
-                extra={
-                    "baselineId": payload.baselineId,
-                    "fieldKey": field.fieldKey,
-                    "fieldLabel": field.label,
-                    "fieldType": field.characterType,
-                },
+
+            normalized_bbox = normalized_segment_boxes[segment_id]
+            has_bbox = segment_has_bbox.get(segment_id, True)
+            zone = zone_classifier.classify(
+                bbox_y=normalized_bbox.y if has_bbox else None,
+                bbox_height=normalized_bbox.height if has_bbox else None,
+                page_height=float(payload.pageHeight),
             )
-            for segment in payload.segments:
-                if segment.id in processed_segments:
-                    logging.info(
-                        "ml_suggest_fields_first_pass_skip_segment",
-                        extra={
-                            "baselineId": payload.baselineId,
-                            "fieldKey": field.fieldKey,
-                            "segmentId": segment.id,
-                            "segmentText": segment.text,
-                            "reason": "processed_segment",
-                        },
-                    )
-                    continue
-                if not segment.boundingBox:
-                    logging.info(
-                        "ml_suggest_fields_first_pass_skip_segment",
-                        extra={
-                            "baselineId": payload.baselineId,
-                            "fieldKey": field.fieldKey,
-                            "segmentId": segment.id,
-                            "segmentText": segment.text,
-                            "reason": "missing_bounding_box",
-                        },
-                    )
-                    continue
-                if not matches_label(segment.text, field.label):
-                    logging.info(
-                        "ml_suggest_fields_first_pass_no_label_match",
-                        extra={
-                            "baselineId": payload.baselineId,
-                            "fieldKey": field.fieldKey,
-                            "fieldLabel": field.label,
-                            "segmentId": segment.id,
-                            "segmentText": segment.text,
-                        },
-                    )
-                    continue
-
-                value_segment = find_value_near_label(
-                    segment,
-                    payload.segments,
-                    field.characterType,
+            suggestions.append(
+                Suggestion(
+                    segmentId=segment_id,
+                    fieldKey=best_field_key,
+                    confidence=best_confidence,
+                    zone=zone,
+                    boundingBox=normalized_bbox,
+                    extractionMethod="layoutlmv3",
                 )
-                if value_segment:
-                    logging.info(
-                        "ml_suggest_fields_first_pass_match",
-                        extra={
-                            "baselineId": payload.baselineId,
-                            "fieldKey": field.fieldKey,
-                            "fieldLabel": field.label,
-                            "labelSegmentId": segment.id,
-                            "labelSegmentText": segment.text,
-                            "valueSegmentId": value_segment.id,
-                            "valueSegmentText": value_segment.text,
-                        },
-                    )
-                    suggestions.append(
-                        Suggestion(
-                            segmentId=value_segment.id,
-                            fieldKey=field.fieldKey,
-                            confidence=0.9,
-                        )
-                    )
-                    processed_segments.add(segment.id)
-                    processed_segments.add(value_segment.id)
-                    suggested_field_keys.add(field.fieldKey)
-                    break
-                else:
-                    logging.info(
-                        "ml_suggest_fields_first_pass_no_value_near_label",
-                        extra={
-                            "baselineId": payload.baselineId,
-                            "fieldKey": field.fieldKey,
-                            "fieldLabel": field.label,
-                            "labelSegmentId": segment.id,
-                            "labelSegmentText": segment.text,
-                        },
-                    )
-
-        for row_index, segment in enumerate(payload.segments):
-            if segment.id in processed_segments:
-                continue
-
-            scores = similarity_matrix[row_index]
-            best_index = int(np.argmax(scores))
-            best_score = float(scores[best_index])
-            confidence = float(np.clip(best_score, 0.0, 1.0))
-
-            if confidence >= threshold:
-                matched_field = payload.fields[best_index]
-                if matched_field.fieldKey in suggested_field_keys:
-                    continue
-
-                # Check if this segment looks like a label (not a value)
-                is_likely_label = not is_numeric_value(segment.text) and len(segment.text.split()) <= 5
-
-                # For numeric/date fields, try to find nearby value
-                if (
-                    is_likely_label
-                    and matched_field.characterType in ["int", "decimal", "currency", "date"]
-                    and segment.boundingBox
-                ):
-                    value_segment = find_value_near_label(
-                        segment,
-                        payload.segments,
-                        matched_field.characterType,
-                    )
-                    if value_segment:
-                        # Use the nearby value instead
-                        suggestions.append(
-                            Suggestion(
-                                segmentId=value_segment.id,
-                                fieldKey=matched_field.fieldKey,
-                                confidence=confidence * 0.9,  # Slight penalty for proximity match
-                            )
-                        )
-                        processed_segments.add(segment.id)
-                        processed_segments.add(value_segment.id)
-                        suggested_field_keys.add(matched_field.fieldKey)
-                        continue
-
-                # Use the segment directly
-                suggestions.append(
-                    Suggestion(
-                        segmentId=segment.id,
-                        fieldKey=matched_field.fieldKey,
-                        confidence=confidence,
-                    )
-                )
-                processed_segments.add(segment.id)
-                suggested_field_keys.add(matched_field.fieldKey)
-
-        pair_candidate_count = len(payload.pairCandidates) if payload.pairCandidates else 0
-        context_segment_count = len(payload.segmentContext) if payload.segmentContext else 0
+            )
 
         logging.info(
             "ml_suggest_fields",
             extra={
                 "baselineId": payload.baselineId,
-                "modelVersion": MODEL_VERSION,
+                "modelVersion": registry.active_version or MODEL_VERSION,
+                "pageType": payload.pageType,
                 "suggestionCount": len(suggestions),
-                "pairCandidateCount": pair_candidate_count,
-                "contextSegmentCount": context_segment_count,
             },
         )
 
         return SuggestFieldsResponse(
             ok=True,
-            modelVersion=MODEL_VERSION,
+            modelVersion=registry.active_version or MODEL_VERSION,
             threshold=threshold,
             suggestions=suggestions,
         )
@@ -626,13 +461,13 @@ def suggest_fields(payload: SuggestFieldsRequest) -> SuggestFieldsResponse:
             "ml_suggest_fields_failed",
             extra={
                 "baselineId": payload.baselineId,
-                "modelVersion": MODEL_VERSION,
+                "modelVersion": registry.active_version or MODEL_VERSION,
                 "error": f"{type(exc).__name__}: {exc}",
             },
         )
         return SuggestFieldsResponse(
             ok=False,
-            modelVersion=MODEL_VERSION,
+            modelVersion=registry.active_version or MODEL_VERSION,
             threshold=threshold,
             suggestions=[],
             error=ErrorPayload(

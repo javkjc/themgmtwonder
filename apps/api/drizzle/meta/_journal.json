@@ -50,6 +50,13 @@
       "when": 1771821524712,
       "tag": "0006_lean_blur",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1771849881566,
+      "tag": "0007_wooden_prodigy",
+      "breakpoints": true
     }
   ]
 }

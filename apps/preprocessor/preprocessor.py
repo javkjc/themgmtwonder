@@ -23,8 +23,6 @@ def correct_orientation(img: np.ndarray) -> np.ndarray:
     M = cv2.moments(thresh)
     if M["m00"] == 0:
         return img
-    cx = M["m10"] / M["m00"]
-    cy = M["m01"] / M["m00"]
     mu20 = M["mu20"] / M["m00"]
     mu02 = M["mu02"] / M["m00"]
     mu11 = M["mu11"] / M["m00"]
@@ -36,9 +34,22 @@ def correct_orientation(img: np.ndarray) -> np.ndarray:
     if rotation == 0:
         return img
     h, w = img.shape[:2]
+    # Guard: a 90° or 270° rotation on a portrait image (h > w) would swap the
+    # long and short axes inside the same canvas, cropping ~50% of the content.
+    # Portrait images are almost always already upright — skip 90/270 rotations.
+    if abs(rotation) in (90, 270) and h > w:
+        return img
     center = (w // 2, h // 2)
+    # For 90° rotations expand the canvas to preserve all content
+    if abs(rotation) in (90, 270):
+        new_w, new_h = h, w
+    else:
+        new_w, new_h = w, h
     M_rot = cv2.getRotationMatrix2D(center, rotation, 1.0)
-    rotated = cv2.warpAffine(img, M_rot, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+    if new_w != w or new_h != h:
+        M_rot[0, 2] += (new_w - w) / 2
+        M_rot[1, 2] += (new_h - h) / 2
+    rotated = cv2.warpAffine(img, M_rot, (new_w, new_h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
     logger.info("Orientation correction applied: %.1f degrees", rotation)
     return rotated
 
@@ -78,21 +89,45 @@ def deskew(img: np.ndarray) -> tuple[np.ndarray, float]:
 
 
 def remove_shadow(img: np.ndarray) -> np.ndarray:
-    """Shadow removal using morphological opening to estimate background, divide, normalise."""
+    """Shadow removal using morphological opening to estimate background, divide, normalise.
+
+    Only applied when the image has meaningful uneven illumination (shadow content).
+    Skipped for clean digital/screen-captured images where the background already
+    matches the original — in those cases, ch/bg ≈ 1.0 everywhere and normalisation
+    would destroy the image by compressing all pixels to near-zero.
+
+    Shadow is detected by comparing the 95th-percentile brightness of the estimated
+    background against the 5th-percentile brightness of the original. A large gap
+    indicates shadow regions that benefit from correction.
+    """
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
+    h, w = img.shape[:2]
+    # Kernel: large enough to span inter-character gaps but capped at 8% of the
+    # smallest dimension so it doesn't dwarf small images.
+    min_dim = min(h, w)
+    k = max(15, min(51, int(min_dim * 0.08)))
+    if k % 2 == 0:
+        k += 1
+    kernel = np.ones((k, k), np.uint8)
+
+    # Shadow presence check: the divide-and-normalise approach only helps when
+    # illumination is uneven (i.e. the estimated background varies significantly
+    # across the image). For well-lit images — where ≥70% of pixels are bright
+    # (≥180) — the background is already uniform and division maps the majority
+    # population to near-zero. Skip in that case.
+    bright_fraction = float((gray >= 180).sum()) / float(gray.size)
+    if bright_fraction >= 0.70:
+        return img
+
     if len(img.shape) == 2:
-        # Grayscale
-        kernel = np.ones((51, 51), np.uint8)
         bg = cv2.morphologyEx(img, cv2.MORPH_OPEN, kernel)
-        # Avoid division by zero
         bg = np.where(bg == 0, 1, bg).astype(np.float32)
-        img_f = img.astype(np.float32)
-        divided = img_f / bg
+        divided = img.astype(np.float32) / bg
         normalized = cv2.normalize(divided, None, 0, 255, cv2.NORM_MINMAX)
         return normalized.astype(np.uint8)
     else:
         channels = cv2.split(img)
         result_channels = []
-        kernel = np.ones((51, 51), np.uint8)
         for ch in channels:
             bg = cv2.morphologyEx(ch, cv2.MORPH_OPEN, kernel)
             bg = np.where(bg == 0, 1, bg).astype(np.float32)

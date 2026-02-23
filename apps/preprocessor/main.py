@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
-from PIL import Image
+from PIL import Image, ImageOps
 
 from preprocessor import QUALITY_THRESHOLD, run_pipeline
 
@@ -61,9 +61,11 @@ async def preprocess(
     if not contents:
         return JSONResponse(status_code=400, content={"ok": False, "reason": "empty_file"})
 
-    # Decode image via PIL then convert to OpenCV BGR
+    # Decode image via PIL then convert to OpenCV BGR.
+    # exif_transpose applies the EXIF orientation tag (e.g. phone photos taken
+    # sideways) before any processing, so the pipeline always sees upright pixels.
     try:
-        pil_img = Image.open(BytesIO(contents)).convert("RGB")
+        pil_img = ImageOps.exif_transpose(Image.open(BytesIO(contents))).convert("RGB")
         img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
     except Exception as exc:
         logger.error("Failed to decode image: %s", exc)

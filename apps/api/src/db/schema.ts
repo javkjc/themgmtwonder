@@ -342,6 +342,9 @@ export const baselineFieldAssignments = pgTable(
     extractionMethod: text('extraction_method'),
     llmReviewed: boolean('llm_reviewed'),
     llmReasoning: text('llm_reasoning'),
+    // I4 — Value Normalization Layer
+    normalizedValue: text('normalized_value'),
+    normalizationError: text('normalization_error'),
     // ML suggestion metadata (v8.8)
     suggestionConfidence: decimal('suggestion_confidence', {
       precision: 3,

@@ -24,9 +24,9 @@ This file captures patterns that caused issues and rules to prevent repeating mi
 ---
 
 ## Review Log
-- Last reviewed: 2026-02-05
-- Sessions since last review: 0
-- Total patterns captured: 0
+- Last reviewed: 2026-02-23
+- Sessions since last review: 3
+- Total patterns captured: 6
 
 ---
 
@@ -65,3 +65,21 @@ This file captures patterns that caused issues and rules to prevent repeating mi
 - **Root Cause**: The local journal was regenerated at some point, producing new snapshot UUIDs/hashes that differ from the SHA-256 hashes Drizzle recorded when migrations were originally applied.
 - **Rule**: Before running any migration, check `SELECT hash FROM drizzle.__drizzle_migrations ORDER BY created_at DESC LIMIT 3` to confirm the DB's hash scheme matches the local journal. If mismatched: apply new migration SQL directly via psql, compute its hash with `node -e "require('crypto').createHash('sha256').update(require('fs').readFileSync('/app/drizzle/<file>.sql','utf8')).digest('hex')"` inside the container, then insert that hash into `drizzle.__drizzle_migrations` manually.
 - **Related Feature**: v8.9 D3 — Global Volume Trigger
+
+### 2026-02-23 - Docker Hot Reload Does Not Work
+- **Problem**: Code changes to NestJS (API) and Next.js (web) were not picked up despite `nest start --watch` and Turbopack running — containers showed stale behaviour.
+- **Root Cause**: Docker volume mounts on Windows do not reliably trigger file-watch events inside containers. `inotify` events are not propagated through the Docker Desktop VM layer.
+- **Rule**: After any code change to API or web, always `docker restart todo-api` / `docker restart todo-web` and wait ~35–45s for NestJS recompilation or Next.js rebuild before testing. Never assume hot reload worked without confirming via `docker logs --tail 5`.
+- **Related Feature**: All in-container development
+
+### 2026-02-23 - Date Validator UTC Timezone Shift
+- **Problem**: `new Date("August 1, 2023").toISOString().split('T')[0]` returned `2023-07-31` instead of `2023-08-01` in environments with a positive UTC offset.
+- **Root Cause**: Native `Date` parsing of locale strings treats them as local time midnight, but `toISOString()` converts back to UTC — in UTC+X timezones this rolls back one day.
+- **Rule**: Never use `date.toISOString().split('T')[0]` to extract a calendar date from a locally-parsed Date object. Always use `date.getFullYear() + '-' + String(date.getMonth()+1).padStart(2,'0') + '-' + String(date.getDate()).padStart(2,'0')` to get the local date parts.
+- **Related Feature**: v8.10 field-assignment-validator date handling
+
+### 2026-02-23 - normalizedValue Missing from Frontend Type Caused Blank Input
+- **Problem**: Input field displayed blank after dragging `$27.54 (1 item)` onto a decimal field even though `normalizedValue=27.54` was correctly stored in the DB.
+- **Root Cause**: `FieldAssignmentPanel.tsx` imports `Assignment` from `@/app/types`, not `@/app/lib/api/baselines.ts`. `normalizedValue` was only added to `baselines.ts` — the types file was missed, so TypeScript silently dropped the field.
+- **Rule**: When adding a new field to an API response type, check ALL type definition files that model the same shape. In this project `Assignment` is defined independently in both `apps/web/app/types.ts` and `apps/web/app/lib/api/baselines.ts` — both must be updated together.
+- **Related Feature**: v8.10 normalizedValue display

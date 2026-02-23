@@ -11,6 +11,9 @@ interface FieldSuggestion {
   segmentId: string;
   fieldKey: string;
   confidence: number;
+  zone?: string;
+  boundingBox?: { x: number; y: number; width: number; height: number } | null;
+  extractionMethod?: string;
 }
 
 interface TableDetection {
@@ -32,6 +35,9 @@ interface SuggestFieldsPayload {
   baselineId: string;
   modelVersionId?: string;
   filePath?: string;
+  pageWidth?: number;
+  pageHeight?: number;
+  pageType?: 'digital' | 'scanned';
   segments: Array<{
     id: string;
     text: string;

@@ -108,12 +108,11 @@ export default function ExtractedTextPool({
                         style={{
                             padding: '12px 16px',
                             borderRadius: 12,
-                            border: `2px solid ${isSelected ? '#F43F5E' : '#e5e5e5'}`,
-                            background: isSelected ? '#eff6ff' : '#ffffff',
+                            border: `2px solid ${isSelected ? '#F43F5E' : 'var(--border)'}`,
+                            background: isSelected ? 'var(--surface-secondary)' : 'var(--surface)',
                             cursor: 'default',
                             transition: 'all 0.2s',
                             position: 'relative',
-                            boxShadow: isSelected ? '0 4px 6px -1px rgba(59, 130, 246, 0.1)' : '0 2px 4px rgba(0,0,0,0.02)',
                         }}
                     >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, gap: 12 }}>
@@ -128,8 +127,8 @@ export default function ExtractedTextPool({
                                             width: 18,
                                             height: 18,
                                             borderRadius: 4,
-                                            border: `2px solid ${isSelected ? '#E11D48' : '#d4d4d4'}`,
-                                            background: isSelected ? '#E11D48' : '#ffffff',
+                                            border: `2px solid ${isSelected ? '#E11D48' : 'var(--border)'}`,
+                                            background: isSelected ? '#E11D48' : 'var(--surface)',
                                             cursor: 'pointer',
                                             display: 'flex',
                                             alignItems: 'center',

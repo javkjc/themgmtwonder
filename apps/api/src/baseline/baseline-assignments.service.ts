@@ -11,6 +11,7 @@ import {
   attachments,
   baselineFieldAssignments,
   baselineTables,
+  extractionTrainingExamples,
   extractedTextSegments,
   extractionBaselines,
   ocrResults,
@@ -23,6 +24,7 @@ import { AssignBaselineFieldDto } from './dto/assign-baseline-field.dto';
 import { DeleteAssignmentDto } from './dto/delete-assignment.dto';
 import { AuthorizationService } from '../common/authorization.service';
 import { BaselineManagementService } from './baseline-management.service';
+import { normalizeFieldValue } from '../ml/field-value-normalizer';
 
 type BaselineContext = {
   id: string;
@@ -44,7 +46,7 @@ export class BaselineAssignmentsService {
     private readonly fieldLibraryService: FieldLibraryService,
     private readonly authService: AuthorizationService,
     private readonly baselineManagementService: BaselineManagementService,
-  ) {}
+  ) { }
 
   async getAggregatedBaseline(attachmentId: string, userId: string) {
     await this.authService.ensureUserOwnsAttachment(userId, attachmentId);
@@ -190,6 +192,16 @@ export class BaselineAssignmentsService {
         suggestionConfidence: baselineFieldAssignments.suggestionConfidence,
         suggestionAccepted: baselineFieldAssignments.suggestionAccepted,
         modelVersionId: baselineFieldAssignments.modelVersionId,
+        // Spatial + validation fields (v8.10 - I3)
+        confidenceScore: baselineFieldAssignments.confidenceScore,
+        zone: baselineFieldAssignments.zone,
+        boundingBox: baselineFieldAssignments.boundingBox,
+        extractionMethod: baselineFieldAssignments.extractionMethod,
+        llmReviewed: baselineFieldAssignments.llmReviewed,
+        llmReasoning: baselineFieldAssignments.llmReasoning,
+        // I4 — Value Normalization
+        normalizedValue: baselineFieldAssignments.normalizedValue,
+        normalizationError: baselineFieldAssignments.normalizationError,
       })
       .from(baselineFieldAssignments)
       .where(eq(baselineFieldAssignments.baselineId, baselineId));
@@ -199,16 +211,30 @@ export class BaselineAssignmentsService {
       validation:
         row.validationValid !== null
           ? {
-              valid: row.validationValid,
-              error: row.validationError ?? undefined,
-              suggestedCorrection: row.validationSuggestion ?? undefined,
-            }
+            valid: row.validationValid,
+            error: row.validationError ?? undefined,
+            suggestedCorrection: row.validationSuggestion ?? undefined,
+          }
           : undefined,
       suggestionConfidence:
         row.suggestionConfidence === null ||
-        row.suggestionConfidence === undefined
+          row.suggestionConfidence === undefined
           ? null
           : Number(row.suggestionConfidence),
+      confidenceScore:
+        row.confidenceScore === null || row.confidenceScore === undefined
+          ? null
+          : Number(row.confidenceScore),
+      llmReasoning:
+        row.llmReasoning !== null && row.llmReasoning !== undefined
+          ? (() => {
+            try {
+              return JSON.parse(row.llmReasoning);
+            } catch {
+              return row.llmReasoning;
+            }
+          })()
+          : null,
     }));
   }
 
@@ -235,11 +261,14 @@ export class BaselineAssignmentsService {
       });
     }
 
-    // Auto-normalize valid values that have suggestions (dates and decimals)
-    const normalizedValue =
-      validation.valid && validation.suggestedCorrection
-        ? validation.suggestedCorrection
-        : dto.assignedValue;
+    // I4: Run field value normalizer for manual assignments (after type validation)
+    // We pass the raw user-provided value to the normalizer.
+    // We no longer overwrite assignedValue with auto-normalization results from validation,
+    // as per the I4 requirement to preserve the raw string.
+    const normResult = normalizeFieldValue({
+      rawValue: dto.assignedValue ?? null,
+      fieldType: field.characterType,
+    });
 
     const [existing] = await this.dbs.db
       .select()
@@ -256,7 +285,7 @@ export class BaselineAssignmentsService {
     const isOverwrite = !!existing;
 
     const valueChanged = existing
-      ? (existing.assignedValue ?? null) !== (normalizedValue ?? null)
+      ? (existing.assignedValue ?? null) !== (dto.assignedValue ?? null)
       : false;
 
     if (context.status === 'reviewed' && isOverwrite) {
@@ -283,7 +312,7 @@ export class BaselineAssignmentsService {
     // Convert confidence to string for decimal column
     const suggestionConfidence =
       dto.suggestionConfidence !== undefined &&
-      dto.suggestionConfidence !== null
+        dto.suggestionConfidence !== null
         ? String(dto.suggestionConfidence)
         : (existing?.suggestionConfidence ?? null);
     const existingModelVersionId = existing?.modelVersionId ?? null;
@@ -324,7 +353,7 @@ export class BaselineAssignmentsService {
       .values({
         baselineId,
         fieldKey: dto.fieldKey,
-        assignedValue: normalizedValue ?? null,
+        assignedValue: dto.assignedValue ?? null,
         sourceSegmentId: dto.sourceSegmentId ?? null,
         assignedBy: userId,
         assignedAt: new Date(),
@@ -337,6 +366,9 @@ export class BaselineAssignmentsService {
         suggestionConfidence: suggestionConfidence,
         suggestionAccepted: suggestionAccepted,
         modelVersionId: modelVersionId,
+        // I4 — Value Normalization
+        normalizedValue: normResult.normalizedValue,
+        normalizationError: normResult.normalizationError,
       })
       .onConflictDoUpdate({
         target: [
@@ -344,7 +376,7 @@ export class BaselineAssignmentsService {
           baselineFieldAssignments.fieldKey,
         ],
         set: {
-          assignedValue: normalizedValue ?? null,
+          assignedValue: dto.assignedValue ?? null,
           sourceSegmentId: dto.sourceSegmentId ?? null,
           assignedBy: userId,
           assignedAt: new Date(),
@@ -357,9 +389,34 @@ export class BaselineAssignmentsService {
           suggestionConfidence: suggestionConfidence,
           suggestionAccepted: suggestionAccepted,
           modelVersionId: modelVersionId,
+          // I4 — Value Normalization
+          normalizedValue: normResult.normalizedValue,
+          normalizationError: normResult.normalizationError,
         },
       })
       .returning();
+
+    const savedBoundingBox = assignment.boundingBox;
+    const savedZone = assignment.zone;
+    const savedExtractionMethod = assignment.extractionMethod;
+    const savedAssignedValue = assignment.assignedValue;
+    if (
+      savedBoundingBox !== null &&
+      savedZone !== null &&
+      savedExtractionMethod !== null &&
+      savedAssignedValue !== null
+    ) {
+      await this.dbs.db.insert(extractionTrainingExamples).values({
+        baselineId: assignment.baselineId as string,
+        fieldKey: assignment.fieldKey as string,
+        assignedValue: savedAssignedValue as string,
+        zone: savedZone,
+        boundingBox: savedBoundingBox,
+        extractionMethod: savedExtractionMethod as string,
+        confidence: assignment.confidenceScore,
+        isSynthetic: false,
+      });
+    }
 
     await this.auditService.log({
       userId,
@@ -422,7 +479,7 @@ export class BaselineAssignmentsService {
     if (dto?.suggestionRejected) {
       const suggestionConfidence =
         dto.suggestionConfidence !== undefined &&
-        dto.suggestionConfidence !== null
+          dto.suggestionConfidence !== null
           ? String(dto.suggestionConfidence)
           : (existing.suggestionConfidence ?? null);
       const modelVersionId = dto.modelVersionId ?? existing.modelVersionId;

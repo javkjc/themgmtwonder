@@ -18,11 +18,11 @@
   - requirements.txt (fastapi, uvicorn, paddleocr, paddlepaddle, Pillow, numpy, PyMuPDF)
   - ocrw.Dockerfile (python:3.10-slim build, apt deps, uvicorn main:app --host 0.0.0.0 --port 4000)
 - apps/ml-service (FastAPI inference microservice for ML suggestions; internal-only)
-  - main.py (FastAPI app; GET /health returns {status: "ok"})
-  - model.py (loads sentence-transformers model and provides embedding helpers; load_model_from_path for hot-swap)
-  - model_registry.py (ModelRegistry singleton: holds activeVersion, model, modelPath in memory; thread-safe swap; v8.9 B2)
-  - requirements.txt (fastapi, uvicorn, sentence-transformers, torch, numpy)
-  - ml.Dockerfile (python:3.14-slim build, installs requirements.txt, copies main.py/model.py/model_registry.py/table_detect.py, uvicorn main:app on port 5000; internal only — no host port mapping)
+  - main.py (FastAPI app; GET /health returns {status: "ok"}; /ml/suggest-fields runs LayoutLMv3 token classification with bbox normalization and segment-level aggregation)
+  - model.py (loads LayoutLMv3Processor + LayoutLMv3ForTokenClassification; supports startup load and hot-swap load from path)
+  - model_registry.py (ModelRegistry singleton: holds activeVersion, processor, model, modelPath in memory; thread-safe swap; includes LayoutLMv3 warm-up forward pass validation)
+  - requirements.txt (fastapi, uvicorn, transformers, torch, numpy, Pillow)
+  - ml.Dockerfile (python:3.14-slim build, installs requirements.txt, copies main.py/model.py/model_registry.py/table_detect.py, preloads microsoft/layoutlmv3-base, uvicorn main:app on port 5000; internal only — no host port mapping)
 - docker-compose.yml (to wire ml-service container on backend network)
 - Shared/utils: apps/web/app/lib/{api.ts,categories.ts,constants.ts,dateTime.ts,durationSettings.ts}; hooks as client data layer
 - db/schema: apps/api/src/db/schema.ts (Drizzle models)
@@ -127,26 +127,19 @@
   - Base route: /
   - Endpoints:
     - POST /ml/suggest-fields
-      - Request: { baselineId: string, segments: [{ id: string, text: string, boundingBox?: {x, y, width, height}, pageNumber?: number }], fields: [{ fieldKey: string, label: string, characterType?: string }], threshold?: number, pairCandidates?: [{ labelSegmentId, valueSegmentId, pairConfidence, relation, pageNumber }], segmentContext?: [{ segmentId, contextText, contextSegmentIds: string[] }] }
-      - Response: { ok: boolean, modelVersion: string, threshold: number, suggestions: [{ segmentId: string, fieldKey: string, confidence: number, labelSegmentId?: string, contextSegmentIds?: string[], pairConfidence?: number, pairStrategy?: string }], error?: { code: string, message: string } }
-      - Model: all-MiniLM-L6-v2 (sentence-transformers)
-      - Algorithm: Three-pass strategy combining spatial layout, token matching, semantic embeddings, and pairing/context enrichment
-        1. Token overlap boost: Adds 0.0-0.30 to similarity scores for exact label token matches (distinctive tokens weighted higher)
-        2. Pairing confidence boost: Adds up to 0.15 to similarity scores for segments with high-confidence pairing candidates
-        3. Context enrichment: Embeds "segment text + contextText" when segmentContext is provided for richer semantic matching
-        4. Label-to-value proximity (first pass): For numeric/date fields, finds label segments, then locates nearby value segments using bounding boxes
-        5. Semantic matching (fallback): Uses ML embeddings for remaining segments
-      - Provenance: Each suggestion includes labelSegmentId, contextSegmentIds, pairConfidence, and pairStrategy (api_pairing/proximity/semantic)
-      - Key Functions:
-        - is_numeric_value(text): Detects numeric values; recognizes currency symbols, strips parenthetical content, 40% digit threshold
-        - is_date_value(text): Detects date values via month names or date patterns
-        - calculate_token_overlap_boost(segment, field): Computes 0.0-0.30 boost for token matches
-        - matches_label(segment, field): Checks if segment contains all field label tokens
-        - find_value_near_label(label, segments, type): Finds value near label using spatial proximity
+      - Request: { baselineId: string, pageWidth: int, pageHeight: int, pageType: "digital"|"scanned", segments: [{ id: string, text: string, boundingBox?: {x, y, width, height} }], fields: [{ fieldKey: string, label: string }], threshold?: number, pairCandidates?: [{ labelSegmentId, valueSegmentId, pairConfidence, relation, pageNumber }], segmentContext?: [{ segmentId, contextText, contextSegmentIds: string[] }] }
+      - Response: { ok: boolean, modelVersion: string, threshold: number, suggestions: [{ segmentId: string, fieldKey: string, confidence: number, zone: string, boundingBox: {x,y,width,height}, extractionMethod: "layoutlmv3" }], error?: { code: string, message: string } }
+      - Model: LayoutLMv3ForTokenClassification (default checkpoint `microsoft/layoutlmv3-base`)
+      - Algorithm:
+        1. Validate and normalize segment bounding boxes to 0–1000 scale (supports fractional, page-space, and pre-normalized inputs).
+        2. Tokenize words + bboxes with LayoutLMv3Processor and run forward pass with `{input_ids, attention_mask, bbox, pixel_values}`.
+        3. Argmax per-token class logits and aggregate token confidences to segment-level field predictions.
+        4. Emit per-suggestion `zone`, normalized `boundingBox`, and `extractionMethod="layoutlmv3"`.
+      - Graceful degradation: if model is not ready, returns `{ ok: false, error: { code: "model_not_ready" } }`.
     - POST /ml/models/activate
       - Request: { version: string, filePath: string }
       - Response: { ok: boolean, activeVersion?: string, error?: { code: string, message: string } }
-      - Loads model from filePath via SentenceTransformer, runs warm-up embedding, swaps active if load succeeds
+      - Loads model from filePath via LayoutLMv3 processor+model, runs warm-up forward pass, swaps active if load succeeds
       - On failure: keeps prior model active, returns { ok: false, error: { code: "load_failed" } }
       - Logs: ml.model.activate.success or ml.model.activate.failed with version and filePath
     - POST /ml/detect-tables
@@ -157,7 +150,30 @@
       - Audit: logs `ignoredOverlapFiltered` count in `ml.table.detect` details
   - Utilities:
     - apps/ml-service/table_detect.py - Rule-based table detection heuristics
-    - apps/ml-service/model.py - Sentence transformer model loading and embedding generation
+    - apps/ml-service/model.py - LayoutLMv3 model loading + warm-up helpers
+    - apps/ml-service/zone_classifier.py - Rule-based zone classifier: assigns header/addresses/line_items/instructions/footer zone to each segment by normalised y-midpoint ratio (y_ratio = (bbox.y + bbox.height/2) / pageHeight); returns 'unknown' for segments without a bounding box
+- Utility: FieldTypeValidator
+  - Path: apps/api/src/ml/field-type-validator.ts
+  - Purpose: DSPP cleaning pass, type-safe validation, conflicting-field detection, and weighted FinalScore computation for ML suggestions.
+  - Exports: dsppClean(), typeValidate(), computeFinalScore(), processSuggestion(), detectConflictingZones()
+  - ValidationOverride: `type_mismatch | conflicting_zones | conflicting_pages | null` (`conflicting_pages` added for I5 multi-page disagreement handling)
+  - I6 override note: `math_reconciliation_failed` is applied as a final pipeline override in `field-suggestion.service.ts` after normalization and math checks; it is persisted in `llm_reasoning.validationOverride` and suggestion response metadata.
+  - DSPP: currency/number/decimal/int fields get glyph substitutions (S→5, O→0, l→1, I→1, B→8) + decimal normalisation; date fields get O→0/Il→1 + format normalisation; other types pass-through
+  - Validation: currency/number/decimal/int must parse as finite number; date must parse as valid Date; text/unknown always pass; failure zeros confidence and sets validationOverride='type_mismatch'
+  - FinalScore: 0.7*modelConfidence + 0.2*ragAgreement + 0.1*(rawOcrConfidence??modelConfidence), clamped [0,1], -0.10 penalty for dsppApplied, force 0.0 for type_mismatch, conflicting_zones, or conflicting_pages
+  - Conflict detection: scans all suggestions for same fieldKey in multiple zones with finalScore>=0.50; zeros out losers with validationOverride='conflicting_zones'
+- Utility: FieldValueNormalizer (I4)
+  - Path: apps/api/src/ml/field-value-normalizer.ts
+  - Purpose: Normalize raw OCR strings to machine-readable scalars for downstream analytics, search, and cross-document comparisons.
+  - Exports: normalizeFieldValue({ rawValue, fieldType, locale? }) → { normalizedValue: string|null, normalizationError: 'unparseable_date'|'unparseable_boolean'|null }
+  - Currency: strips currency symbols, detects decimal separator (last . or , with 1–2 trailing digits), normalizes to plain decimal string (e.g. "$1,200.50" → "1200.50", "1.200,50" → "1200.50")
+  - Date: parses in priority order: ISO 8601, DD/MM/YYYY, MM/DD/YYYY, DD-Mon-YYYY, YYYY/MM/DD; stores as YYYY-MM-DD; sets normalizationError='unparseable_date' on failure
+  - Boolean: maps yes/true/checked/1/on → 'true', no/false/unchecked/0/off → 'false'; sets normalizationError='unparseable_boolean' on no match
+  - Number/Decimal/Int: same separator detection as currency, no symbol stripping
+  - Text/varchar/unknown: pass-through (normalizedValue = rawValue)
+  - Non-fatal: failures never block persistence; normalizationError surfaced in llmReasoning alongside validationOverride
+  - Integration: called in baseline-assignments.service.ts (manual upsert path) and field-suggestion.service.ts (ML suggestion persistence path)
+
 - Controller: AppController
   - Path: apps/api/src/app.controller.ts
   - Base route: /
@@ -236,7 +252,7 @@
   - Purpose: ML service client module for field suggestions, table detection, admin metrics, training data export, and assisted training job orchestration
   - Imports: DbModule, AuditModule, CommonModule, BaselineModule
   - Controllers: FieldSuggestionController, TableSuggestionController, MlMetricsController, MlTrainingDataController, MlModelsController, MlTrainingJobsController
-  - Providers: MlService, FieldSuggestionService, TableSuggestionService, FieldAssignmentValidatorService, MlMetricsService, MlTrainingDataService, MlModelsService, MlTrainingJobsService, MlTrainingAutomationService
+  - Providers: MlService, FieldSuggestionService, TableSuggestionService, FieldAssignmentValidatorService, MlMetricsService, MlTrainingDataService, MlModelsService, MlTrainingJobsService, MlTrainingAutomationService, MathReconciliationService
 - Service: MlTrainingAutomationService
   - Path: apps/api/src/ml/ml-training-automation.service.ts
   - Purpose: Polls qualified correction volume and enqueues global training jobs when threshold (>=1000) is reached
@@ -342,11 +358,25 @@
   - Purpose: Orchestrates ML field suggestion generation and persistence for baselines
   - Methods:
     - generateSuggestions(baselineId, userId): Loads segments and active fields, calls MlService, persists suggestions with metadata, enforces rate limits
+    - I6 math wire-up: after I4 normalization, calls MathReconciliationService with `currentOcr.documentTypeId` + normalized values, then applies final confidence override (`1.0` pass, `0.0` fail + `math_reconciliation_failed`) before DB upsert
+    - applyMultiPageFieldConflictPolicy(suggestions, segmentById): I5 post-aggregation scan grouped by fieldKey; Strategy A (strict) flags all occurrences with `validationOverride='conflicting_pages'` and `finalScore=0.0` when normalized values disagree across pages, or deduplicates to the highest-confidence occurrence when values are consistent
+    - normalizeForPageConflictComparison(value): lowercases and strips whitespace for case-insensitive cross-page value comparison
   - Rate limit: 10 requests per hour per user (counts audit_logs with action='ml.suggest.generate')
   - Suggestion logic: Only creates assignments for unassigned fields or fields without manual values (suggestionConfidence null)
+  - I5 policy note: Strategy B (confidence winner on disagreement) and Strategy C (frequency vote) are not implemented in v8.10 and are future configurable policies
   - Model routing (v8.9 C1): Reads `ML_MODEL_AB_TEST` (default false), resolves active model A (`isActive=true`), resolves candidate model B (same `modelName`, most recent `isActive=false` by `trainedAt`), deterministically selects by baseline-id parity, and passes selected `modelVersionId` + `filePath` to ML service
   - Audit details (v8.9 C1): `ml.suggest.generate` now includes `abGroup` (`A`/`B`), `modelVersionId`, and `modelVersion`
   - Graceful degradation: Returns empty suggestions if ML service fails
+- Service: MathReconciliationService
+  - Path: apps/api/src/ml/math-reconciliation.service.ts
+  - Purpose: Document-type-aware line-item arithmetic reconciliation using integer-cents fixed-point math (no floats)
+  - Inputs: `documentTypeId` + per-field normalized value strings from I4
+  - Role resolution: reads `document_type_fields.zone_hint` (`role:line_item_amount`, `role:subtotal`, `role:tax`, `role:total`)
+  - Checks: A) sum(line items) ~= subtotal (±0.02), B) subtotal + tax ~= total (±0.02)
+  - Output patches:
+    - pass: `mathReconciliation='pass'`, `confidenceScore=1.0` on participating fields
+    - fail: `mathReconciliation='fail'`, `confidenceScore=0.0`, `validationOverride='math_reconciliation_failed'`, `mathDelta`
+    - skipped: `mathReconciliation='skipped'` when document type/roles/normalized values are insufficient
 - Controller: AttachmentsController
   - Path: apps/api/src/attachments/attachments.controller.ts
   - Base route: /attachments
@@ -459,7 +489,7 @@
     - Validation rules: varchar (length), int (no decimals/commas), decimal (numeric with normalization), date (ISO 8601), currency (ISO 4217 3-letter codes)
 - Service: BaselineAssignmentsService
   - Path: apps/api/src/baseline/baseline-assignments.service.ts
-  - Responsibilities: enforce ownership + not-archived/not-utilized guards, validate via FieldAssignmentValidatorService, upsert/delete/list baseline_field_assignments (including suggestionContext), require correctionReason on overwrite/delete (only for reviewed baselines), enforce C2 suggestion outcome integrity (`true` accept, `false` modify/clear, `NULL` manual no-suggestion), emit baseline.assignment.upsert/delete audits with correctedFrom/correctionReason details
+  - Responsibilities: enforce ownership + not-archived/not-utilized guards, validate via FieldAssignmentValidatorService, upsert/delete/list baseline_field_assignments (including suggestionContext), require correctionReason on overwrite/delete (only for reviewed baselines), enforce C2 suggestion outcome integrity (`true` accept, `false` modify/clear, `NULL` manual no-suggestion), silently append to `extraction_training_examples` on upsert when saved assignment has non-null `boundingBox` + `zone` + `extractionMethod` (`isSynthetic=false`), emit baseline.assignment.upsert/delete audits with correctedFrom/correctionReason details
   - Methods:
     - getAggregatedBaseline(attachmentId, userId): Returns baseline with assignments + segments in single payload (excludes archived baselines, returns latest non-archived)
     - upsertAssignment(baselineId, fieldKey, value, userId, confirmInvalid, correctionReason): Validates value, requires correctionReason for overwrite on reviewed baselines, stores correctedFrom/sourceSegmentId

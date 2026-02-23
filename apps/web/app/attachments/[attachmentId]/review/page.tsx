@@ -310,7 +310,7 @@ export default function AttachmentOcrReviewPage() {
           <SuggestionTrigger disabled={!baseline?.id || isFieldBuilderReadOnly || baselineLoading} onGenerate={fields.handleGenerateSuggestions} />
         )}
         {tables.sidebarTab === 'tables' && (
-          <button onClick={tables.handleDetectTables} disabled={tables.detectingTables || !baseline?.id || isFieldBuilderReadOnly} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #d4d4d4', background: '#ffffff', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, cursor: tables.detectingTables || !baseline?.id || isFieldBuilderReadOnly ? 'not-allowed' : 'pointer', opacity: tables.detectingTables || !baseline?.id || isFieldBuilderReadOnly ? 0.6 : 1 }}>
+          <button onClick={tables.handleDetectTables} disabled={tables.detectingTables || !baseline?.id || isFieldBuilderReadOnly} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, cursor: tables.detectingTables || !baseline?.id || isFieldBuilderReadOnly ? 'not-allowed' : 'pointer', opacity: tables.detectingTables || !baseline?.id || isFieldBuilderReadOnly ? 0.6 : 1 }}>
             {tables.detectingTables ? 'Detecting...' : 'Get Suggestions'}
           </button>
         )}
@@ -354,7 +354,7 @@ export default function AttachmentOcrReviewPage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>Suggested Tables ({tableSuggestions.length})</div>
                 {tableSuggestions.map((suggestion) => (
-                  <div key={suggestion.id} style={{ padding: '12px 14px', borderRadius: 10, background: '#dbeafe', border: '1px solid #93c5fd', display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div key={suggestion.id} style={{ padding: '12px 14px', borderRadius: 6, background: 'var(--surface-secondary)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12 }}>
                     <span style={{ fontSize: 20 }}>Table</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2 }}>{suggestion.suggestedLabel || `Table ${suggestion.rowCount}x${suggestion.columnCount}`}</div>
@@ -364,8 +364,8 @@ export default function AttachmentOcrReviewPage() {
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => tables.handlePreviewTableSuggestion(suggestion)} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #E11D48', background: '#ffffff', color: '#E11D48', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>Preview</button>
-                      <button onClick={() => tables.handleIgnoreTableSuggestion(suggestion)} style={{ padding: '6px', borderRadius: 6, border: '1px solid #d4d4d4', background: '#ffffff', color: 'var(--text-muted)', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28 }} title="Ignore suggestion">x</button>
+                      <button onClick={() => tables.handlePreviewTableSuggestion(suggestion)} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #E11D48', background: 'var(--surface)', color: '#E11D48', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>Preview</button>
+                      <button onClick={() => tables.handleIgnoreTableSuggestion(suggestion)} style={{ padding: '6px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28 }} title="Ignore suggestion">x</button>
                     </div>
                   </div>
                 ))}
@@ -420,12 +420,12 @@ export default function AttachmentOcrReviewPage() {
             </div>
             <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
               {taskId && (
-                <button onClick={() => window.location.href = `/task/${taskId}`} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, background: '#ffffff', border: '1px solid var(--border)', color: 'var(--text-secondary)', fontSize: 14, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }} onMouseOver={(e) => { e.currentTarget.style.background = '#fafafa'; e.currentTarget.style.borderColor = '#d4d4d4'; }} onMouseOut={(e) => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.borderColor = '#e5e5e5'; }}>
+                <button onClick={() => window.location.href = `/task/${taskId}`} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-secondary)', fontSize: 14, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }} onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-secondary)'; }} onMouseOut={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}>
                   <span>{'<-'}</span> Back to Task
                 </button>
               )}
               {baseline?.status === 'draft' && (
-                <button onClick={baselineActions.handleMarkReviewed} disabled={baselineLoading || baselineActions.reviewingBaseline} style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid #bfdbfe', cursor: baselineLoading || baselineActions.reviewingBaseline ? 'not-allowed' : 'pointer' }}>
+                <button onClick={baselineActions.handleMarkReviewed} disabled={baselineLoading || baselineActions.reviewingBaseline} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 14, fontWeight: 600, cursor: baselineLoading || baselineActions.reviewingBaseline ? 'not-allowed' : 'pointer' }}>
                   {baselineActions.reviewingBaseline ? 'Marking...' : 'Mark as Reviewed'}
                 </button>
               )}
@@ -527,7 +527,7 @@ export default function AttachmentOcrReviewPage() {
       <OcrCorrectionHistoryModal field={ocr.historyField} isOpen={Boolean(ocr.historyField)} loading={ocr.historyLoading} history={ocr.historyEntries} error={ocr.historyError} onClose={ocr.handleHistoryClose} />
       {baselineActions.isConfirmModalOpen && baseline && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-          <div style={{ background: '#ffffff', borderRadius: 12, padding: 24, width: 'min(520px, 92vw)', boxShadow: '0 20px 70px rgba(15, 23, 42, 0.15)', border: '1px solid var(--border)' }}>
+          <div style={{ background: 'var(--surface)', borderRadius: 6, padding: 24, width: 'min(520px, 92vw)', border: '1px solid var(--border)' }}>
             <h3 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>Confirm Baseline</h3>
             <p style={{ marginTop: 12, marginBottom: 12, color: 'var(--text-secondary)', lineHeight: 1.6, fontSize: 14 }}>
               You are about to confirm this baseline. Once confirmed, this baseline becomes <strong>read-only</strong>. You cannot edit fields or delete assignments after confirmation.
@@ -541,7 +541,7 @@ export default function AttachmentOcrReviewPage() {
             </div>
             <p style={{ margin: '0 0 20px', fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>Previous confirmed baseline (if exists) will be automatically archived.</p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-              <button onClick={() => baselineActions.setIsConfirmModalOpen(false)} disabled={baselineActions.confirmingBaseline} style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid var(--border)', background: '#ffffff', color: 'var(--text-secondary)', fontSize: 14, fontWeight: 600, cursor: baselineActions.confirmingBaseline ? 'not-allowed' : 'pointer' }}>Cancel</button>
+              <button onClick={() => baselineActions.setIsConfirmModalOpen(false)} disabled={baselineActions.confirmingBaseline} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', fontSize: 14, fontWeight: 600, cursor: baselineActions.confirmingBaseline ? 'not-allowed' : 'pointer' }}>Cancel</button>
               <button onClick={baselineActions.handleConfirmBaseline} disabled={hasDraftTables || baselineActions.confirmingBaseline} title={hasDraftTables ? 'All tables must be confirmed first' : 'Confirm baseline'} style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid #16a34a', background: baselineActions.confirmingBaseline || hasDraftTables ? '#bbf7d0' : '#22c55e', color: '#065f46', fontSize: 14, fontWeight: 700, cursor: baselineActions.confirmingBaseline || hasDraftTables ? 'not-allowed' : 'pointer' }}>
                 {baselineActions.confirmingBaseline ? 'Confirming...' : 'Confirm Baseline'}
               </button>

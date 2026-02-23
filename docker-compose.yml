@@ -41,6 +41,8 @@ services:
       context: ./apps/ocr-worker
       dockerfile: ocrw.Dockerfile
     container_name: todo-ocr-worker
+    env_file:
+      - ./.env
     networks:
       - backend
     expose:

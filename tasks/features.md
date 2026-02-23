@@ -3382,10 +3382,11 @@ Maximise extraction accuracy on both scanned and digital documents by replacing 
 
 ### Capability G — Training Data Capture from Corrections
 
-**Milestone 8.10.16: Populate extraction_training_examples**
+**Milestone 8.10.16: Populate extraction_training_examples** ✅ Complete (2026-02-23, L4)
 - When a field assignment is saved (via `BaselineAssignmentsService.upsertAssignment`), if `bounding_box`, `zone`, and `extraction_method` are present, insert a row into `extraction_training_examples`.
 - No mutation of existing audit or correction flows.
 - `isSynthetic=false` for all user-sourced examples.
+- **What was built:** Silent append-only insert in `upsertAssignment()` post-upsert spatial check. `apps/api/src/baseline/baseline-assignments.service.ts` modified.
 
 ---
 
@@ -3417,11 +3418,78 @@ Maximise extraction accuracy on both scanned and digital documents by replacing 
 - **No background automation:** Training-worker runs only when triggered by `training_runs` job record; activation always manual
 
 **Status**
-📋 Planned — depends on v8.9 completion (✅ done)
+🚧 In Progress — 8.10.16 (training data capture) complete. Preprocessor container (B/C/D), LayoutLMv3 (E/F/G), verification UI (H) built and operational. Fine-tuning pipeline (training-worker, 8.10.12–8.10.15) and confirm→training-examples bridge (confirmBaseline not yet wiring examples) remain.
 
 ---
 
-## v8.11 — Multi-Language OCR Support 📋 (To be confirmed)
+## v8.11 — RAG + Semantic Search + Data Governance Hardening 📋
+
+**What this is**
+- pgvector on existing Postgres — HNSW index, `embedding_model_version` column for vector versioning, `document_type_id` for metadata-filtered retrieval
+- Embed confirmed baselines (document-level + field-level + bbox centroid) using `all-MiniLM-L6-v2` loaded alongside LayoutLMv3 in `ml-service` (embedding only, not field extraction)
+- Semantic search over confirmed extraction data — metadata-filtered by document type, version-filtered to exclude stale embeddings
+- Flattened JSON manifest for review page — single page-load request, zero-request hover/highlight interactions
+- Reviewer context panel — similar past confirmed values pre-fetched in manifest, shown inline on flag/verify fields
+- Extraction confidence RAG — feature-flagged, metadata-filtered by document type, adjusts confidence score only
+- Golden Set — git-based, air-gapped benchmark dataset; D5 activation gate enforces Golden Set regression check
+- Field library similarity check — warns on ≥0.85 cosine similarity at field creation to prevent label noise
+
+**What this is not**
+- Not a replacement for LayoutLMv3 field extraction
+- Not a new database or vector service — pgvector is a Postgres extension
+- RAG does not change suggested values, only confidence scores
+- Golden Set is not created through the confirm flow — admin-only PR governance
+
+**Tasks**
+- F3 — pgvector migration + `baseline_embeddings` table with HNSW index + versioning columns (P0)
+- M1 — Embed on confirm with `embedding_model_version`, bbox centroid, document type (P0, blocks M2/M3/M4)
+- M2 — Semantic search endpoint + UI with metadata filtering (P1)
+- M3 — Reviewer context panel pre-fetched in manifest (P1)
+- M4 — Extraction confidence RAG with metadata filtering, feature-flagged (P2)
+- K1 — Flattened JSON manifest + zero-request review UI (P1, amends v8.10 K1)
+- N1 — Golden Set repository + D5 gate integration (P0, amends v8.10 D5)
+- N2 — Field library similarity check at creation (P1)
+
+**Capability detail**
+
+*F3 — pgvector Migration*
+Postgres image → `pgvector/pgvector:pg16`. `baseline_embeddings` table: `id`, `baseline_id` (fk, cascade delete), `field_key`, `embedding vector(384)`, `embedding_model_version` (e.g. `'all-MiniLM-L6-v2'`), `bbox_centroid_x/y` (normalised 0–1000, nullable), `document_type_id` (fk, nullable), `confirmed_at`. HNSW index (`m=16, ef_construction=64`). drizzle-orm custom `vector(n)` column type via `customType`.
+
+*M1 — Embed on Confirm*
+`all-MiniLM-L6-v2` loaded in `ml-service` + warm-up on startup. `POST /ml/embed` accepts `documentText` + `fields[]`; returns embeddings. Stored with `embedding_model_version`, `bbox_centroid_x/y` (median of confirmed bboxes), `document_type_id`. Fire-and-forget — confirm never blocked. Vector versioning: stale rows identifiable by `embedding_model_version` mismatch.
+
+*M2 — Semantic Search*
+`GET /search/extractions?q=&documentType=&dateFrom=&dateTo=&limit=`. Metadata-filtered pgvector query scoped by `document_type_id` (when provided) and `embedding_model_version`. Stale embeddings automatically excluded. Search UI with document type filter dropdown.
+
+*M3 — Reviewer Context Panel*
+Similar past extractions pre-fetched in review manifest (not on hover). Rendered as collapsed section on flag/verify field cards. Read-only, informational.
+
+*M4 — Extraction Confidence RAG*
+`RAG_CONFIDENCE_ENABLED` env flag (default `false`). Metadata-filtered retrieval by `document_type_id` + `embedding_model_version`. Agreement ratio → boost (max +0.10) or penalty (max -0.15). `ragAdjustment` + `documentTypeScoped` persisted in `llm_reasoning`.
+
+*K1 — Flattened JSON Manifest*
+`GET /baselines/:id/review-manifest` returns all fields, bboxes, tiers, similarContext (top-3 per field), tierCounts in one response. Review page is zero-request after load — all hover/highlight driven by local state.
+
+*N1 — Golden Set*
+`golden_set/*.json` in repo root — admin-only PR governance, never written by automated process. D5 gate runs candidate + active model against Golden Set; regression on Golden Set auto-kills activation. Empty Golden Set → gate skipped with warning.
+
+*N2 — Field Library Similarity Check*
+On field create: embed new field label via `POST /ml/embed`; query existing field embeddings; warn if similarity ≥ 0.85. Admin confirmation modal required to proceed. `forceCreate=true` flag + audit log on override.
+
+**Governance Alignment**
+- Explicit Intent: Search read-only; RAG adjusts confidence only; Golden Set never auto-updated; field similarity is a warning not a block
+- Auditability: `ragAdjustment` + `documentTypeScoped` per assignment; search queries logged; field similarity overrides audited
+- Backend authority: `RAG_CONFIDENCE_ENABLED` server-side only; activation gates server-enforced
+- Resilience: embed failure never blocks confirm; field create never blocked by embed failure; Golden Set empty → gate skipped not crashed
+
+**REQUIRES:** v8.10 complete. `RAG_CONFIDENCE_ENABLED` must not be set to `true` until ≥200 confirmed baselines exist. N1 (Golden Set) must be populated before first production model activation.
+
+**Status**
+📋 Planned — depends on v8.10 completion
+
+---
+
+## v8.12 — Multi-Language OCR Support 📋 (To be confirmed)
 What this is
 
 Support OCR for non-English documents (Spanish, French, German, Chinese, etc.)
@@ -3436,7 +3504,7 @@ Not cross-language field matching (Spanish text → English fields)
 
 
 Capability A: Language Detection
-Milestone 8.11.1: Language Detection Service
+Milestone 8.12.1: Language Detection Service
 
 Integrate language detection library (langdetect or fasttext)
 NEW SERVICE: LanguageDetectionService
@@ -3448,14 +3516,14 @@ Confidence score (0-100%)
 
 
 
-Milestone 8.11.2: Language Field in Data Model
+Milestone 8.12.2: Language Field in Data Model
 
 EXTEND extracted_text_segments: add detected_language VARCHAR(5)
 EXTEND extraction_baselines: add primary_language VARCHAR(5)
 Store detected language for each text segment
 Baseline primary language = most common language in segments
 
-Milestone 8.11.3: Language Detection UI
+Milestone 8.12.3: Language Detection UI
 
 On OCR retrieval: automatically detect language
 Display detected language in Review Page header
@@ -3464,7 +3532,7 @@ If confidence <80%: show warning + manual language selector
 
 
 Capability B: Multi-Language OCR Engine
-Milestone 8.11.4: PaddleOCR Multi-Language Support
+Milestone 8.12.4: PaddleOCR Multi-Language Support
 
 PaddleOCR already supports 80+ languages
 Configure language models in FastAPI service:
@@ -3479,7 +3547,7 @@ python  ocr_engines = {
 
 On OCR request: detect language → select appropriate engine
 
-Milestone 8.11.5: Language-Specific Model Loading
+Milestone 8.12.5: Language-Specific Model Loading
 
 Lazy load language models (don't preload all 80 languages)
 Cache loaded models in memory (30 min TTL)
@@ -3487,14 +3555,14 @@ If language not cached: download model (one-time), then load
 
 
 Capability C: Language-Specific Field Matching
-Milestone 8.11.6: Multi-Language Embeddings
+Milestone 8.12.6: Multi-Language Embeddings
 
 Use multilingual Sentence-BERT model: paraphrase-multilingual-MiniLM-L12-v2
 Supports 50+ languages in same vector space
 Replace monolingual model in FastAPI service
 No code changes needed (API stays same)
 
-Milestone 8.11.7: Language-Aware Field Suggestions
+Milestone 8.12.7: Language-Aware Field Suggestions
 
 When suggesting field assignments:
 
@@ -3507,14 +3575,14 @@ Example: Spanish text "Número de factura" matches field "invoice_number"
 
 
 Capability D: Organization Language Settings
-Milestone 8.11.8: Org Default Language
+Milestone 8.12.8: Org Default Language
 
 EXTEND organizations.settings: add default_language VARCHAR(5)
 Admin can set default language in org settings
 Used as fallback if language detection fails
 Applied to new attachments automatically
 
-Milestone 8.11.9: User Language Preference
+Milestone 8.12.9: User Language Preference
 
 EXTEND users table: add preferred_language VARCHAR(5)
 User can set in profile settings
@@ -3522,7 +3590,7 @@ Affects UI language (labels, messages)
 Does not affect OCR language (OCR uses detected language)
 
 
-## v8.12 — Batch Extraction & Processing 📋 (Planned)
+## v8.13 — Batch Extraction & Processing 📋 (Planned)
 What this is
 
 Upload multiple documents at once
@@ -3542,14 +3610,14 @@ Not a complete redesign of queue UI (v8.6.add1 established the target UX)
 
 
 Capability A: Bulk Upload
-Milestone 8.12.1: Multi-File Upload UI
+Milestone 8.13.1: Multi-File Upload UI
 
 On Task detail page: "Upload Multiple Files" button
 File picker: allow selecting multiple files (Ctrl+Click or Drag-drop)
 Display upload queue: list of files with progress bars
 Validation: check file types, max size (20MB each), max count (50 files)
 
-Milestone 8.12.2: Bulk Upload API
+Milestone 8.13.2: Bulk Upload API
 
 POST /attachments/bulk/upload
 
@@ -3562,7 +3630,7 @@ Backend: handle concurrent uploads (use async/await, rate limit per user)
 
 
 Capability B: Batch OCR Processing
-Milestone 8.12.3: OCR Job Queue
+Milestone 8.13.3: OCR Job Queue
 
 **REPLACES:** v8.6.add1 database polling with BullMQ infrastructure
 **PRESERVES:** API endpoints and UI components from v8.6.add1
@@ -3572,7 +3640,7 @@ NEW QUEUE: ocr-processing-queue
 Job structure: { attachmentId, userId, priority }
 Worker: processes jobs concurrently (5 workers, configurable)
 
-Milestone 8.12.4: Queue Job Lifecycle
+Milestone 8.13.4: Queue Job Lifecycle
 
 On bulk upload: create OCR job for each attachment
 Job states: pending → processing → completed → failed
@@ -3592,7 +3660,7 @@ Track retries: max 3 attempts, exponential backoff
   - Ability to adjust worker count dynamically
 - **Graceful Degradation:** If Redis is down, fall back to database polling (v8.6.add1 mode)
 
-Milestone 8.12.5: Capacity Planning & Configuration
+Milestone 8.13.5: Capacity Planning & Configuration
 
 **System Settings Table:**
 - `ocr_queue_max_global`: INT DEFAULT 100 (total jobs allowed system-wide)
@@ -3613,7 +3681,7 @@ Milestone 8.12.5: Capacity Planning & Configuration
   - "Bulk upload limit: 50 files maximum"
   - "Please wait 30 seconds before next bulk upload"
 
-Milestone 8.12.6: Progress Tracking UI
+Milestone 8.13.6: Progress Tracking UI
 
 **BUILDS ON v8.6.add1 OcrQueuePanel - Adds Enhanced Features:**
 
@@ -3639,7 +3707,7 @@ Milestone 8.12.6: Progress Tracking UI
 
 
 Capability C: Bulk Baseline Review
-Milestone 8.12.6: Batch Review UI
+Milestone 8.13.6: Batch Review UI
 
 New page: /tasks/:id/batch-review
 Display: grid view of all attachments (thumbnails)
@@ -3652,7 +3720,7 @@ Field assignment count (e.g., "5/10 fields assigned")
 
 Click thumbnail → opens Review Page (v8.6)
 
-Milestone 8.12.7: Bulk Confirmation
+Milestone 8.13.7: Bulk Confirmation
 
 On Batch Review page: "Confirm All Reviewed" button
 Enabled only if all baselines in "Reviewed" state
@@ -3667,7 +3735,7 @@ Action: loop through baselines, confirm each (atomic transaction)
 
 
 Capability D: Error Handling & Retry
-Milestone 8.12.8: Failed OCR Handling
+Milestone 8.13.8: Failed OCR Handling
 
 If OCR job fails (API timeout, invalid file, etc.):
 
@@ -3678,7 +3746,7 @@ Button: "Retry OCR" (re-queues job)
 
 
 
-Milestone 8.12.9: Partial Batch Completion
+Milestone 8.13.9: Partial Batch Completion
 
 If batch processing partially fails (some succeed, some fail):
 

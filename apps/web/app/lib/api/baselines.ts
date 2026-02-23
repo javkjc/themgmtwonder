@@ -18,6 +18,7 @@ export interface Assignment {
   id: string;
   fieldKey: string;
   assignedValue: string | null;
+  normalizedValue: string | null;
   sourceSegmentId: string | null;
   assignedBy: string;
   assignedAt: string;

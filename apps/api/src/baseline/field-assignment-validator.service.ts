@@ -108,11 +108,14 @@ export class FieldAssignmentValidatorService {
   }
 
   private validateDecimal(value: string): ValidationResult {
-    // Allow common currency decorations ($, commas, spaces) but store/compare on sanitized value
-    const sanitized = value.replace(/\$/g, '').replace(/,/g, '').trim();
+    // Extract the first numeric token to handle values like "$27.54 (1 item)".
+    const firstToken = value.match(/[+\-]?[$€£¥]?\s*[\d,]+(?:[.,]\d+)?/);
+    const sanitized = firstToken
+      ? firstToken[0].replace(/[$€£¥,\s]/g, '').trim()
+      : value.replace(/\$/g, '').replace(/,/g, '').trim();
     const parsed = parseFloat(sanitized);
 
-    if (isNaN(parsed) || isNaN(Number(sanitized))) {
+    if (isNaN(parsed)) {
       return { valid: false, error: 'Invalid decimal format.' };
     }
 
@@ -258,19 +261,29 @@ export class FieldAssignmentValidatorService {
       }
     }
 
+    // Natural language date extraction:
+    // Strip weekday prefix (e.g. "Tuesday, ") and time suffix (e.g. " by 10pm", " at 3:00pm", " 15:00")
+    // then retry native Date parsing on the core date portion.
+    const nlStripped = trimmed
+      .replace(/^(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday),?\s*/i, '')
+      .replace(/\s+(?:by|at)\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?$/i, '')
+      .replace(/\s+\d{2}:\d{2}(?::\d{2})?(?:\s*[zZ]|[+-]\d{2}:?\d{2})?$/, '')
+      .trim();
+
+    if (nlStripped !== trimmed) {
+      const nlDate = new Date(nlStripped);
+      if (!isNaN(nlDate.getTime())) {
+        const correction = `${nlDate.getFullYear()}-${String(nlDate.getMonth() + 1).padStart(2, '0')}-${String(nlDate.getDate()).padStart(2, '0')}`;
+        return { valid: true, suggestedCorrection: correction };
+      }
+    }
+
     // Last resort: Try native Date parsing
     const date = new Date(trimmed);
     if (!isNaN(date.getTime())) {
-      try {
-        const correction = date.toISOString().split('T')[0];
-        // Valid date but wrong format - auto-normalize
-        return {
-          valid: true,
-          suggestedCorrection: correction,
-        };
-      } catch {
-        // Fall through
-      }
+      // Use local date parts to avoid UTC timezone shift (e.g. "August 1, 2023" → 2023-07-31 in UTC+X)
+      const correction = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      return { valid: true, suggestedCorrection: correction };
     }
 
     return { valid: false, error: 'Invalid date format. Expected YYYY-MM-DD.' };

@@ -324,7 +324,7 @@ export default function FieldAssignmentPanel({
             justifyContent: 'space-between',
             alignItems: 'center',
             padding: '8px 12px',
-            background: '#f5f5f5',
+            background: 'var(--surface-secondary)',
             borderRadius: 12,
             border: '1px solid var(--border)',
           }}
@@ -340,11 +340,10 @@ export default function FieldAssignmentPanel({
               fontSize: 12,
               fontWeight: 700,
               cursor: 'pointer',
-              border: showOnlySuggested ? '1px solid #E11D48' : '1px solid #d4d4d4',
-              background: showOnlySuggested ? '#E11D48' : '#ffffff',
-              color: showOnlySuggested ? '#ffffff' : '#525252',
+              border: showOnlySuggested ? '1px solid #E11D48' : '1px solid var(--border)',
+              background: showOnlySuggested ? '#E11D48' : 'var(--surface)',
+              color: showOnlySuggested ? '#ffffff' : 'var(--text-secondary)',
               transition: 'all 0.2s ease',
-              boxShadow: showOnlySuggested ? '0 2px 4px rgba(37, 99, 235, 0.2)' : 'none',
             }}
           >
             {showOnlySuggested ? 'Show All Fields' : 'Show Suggested Only'}
@@ -355,7 +354,7 @@ export default function FieldAssignmentPanel({
       {filteredFields.map((field) => {
         const assignment = assignmentMap[field.fieldKey];
         const hasLocalValue = localValues[field.fieldKey] !== undefined;
-        const value = localValues[field.fieldKey] ?? assignment?.assignedValue ?? '';
+        const value = localValues[field.fieldKey] ?? assignment?.normalizedValue ?? assignment?.assignedValue ?? '';
         const status = getStatusLabel(assignment);
         const validation = assignment?.validation;
         const validationMessage = getValidationMessage(validation);
@@ -374,20 +373,15 @@ export default function FieldAssignmentPanel({
             style={{
               padding: '16px',
               borderRadius: 16,
-              border: isHighlighted ? '2px solid #fb923c' : hasValidationError ? '2px solid #fecaca' : '1px solid #e5e5e5',
-              background: isHighlighted ? '#fff7ed' : hasValidationError ? '#fef2f2' : '#ffffff',
-              transition: 'box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease',
-              boxShadow: isHighlighted
-                ? '0 6px 18px -4px rgba(251, 146, 60, 0.35)'
-                : hasValidationError
-                  ? '0 4px 10px -2px rgba(220, 38, 38, 0.15)'
-                  : '0 4px 10px -2px rgba(15, 23, 42, 0.08)',
+              border: isHighlighted ? '2px solid #fb923c' : hasValidationError ? '2px solid #fecaca' : '1px solid var(--border)',
+              background: isHighlighted ? 'var(--surface-secondary)' : hasValidationError ? 'var(--surface-secondary)' : 'var(--surface)',
+              transition: 'border-color 0.2s ease, background 0.2s ease',
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 {hasValidationError && <span style={{ fontSize: 16 }}>⚠️</span>}
-                <div style={{ fontSize: 13, fontWeight: 700, color: hasValidationError ? '#b91c1c' : '#111111' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: hasValidationError ? '#b91c1c' : 'var(--text-primary)' }}>
                   {field.label}
                 </div>
               </div>
@@ -400,7 +394,7 @@ export default function FieldAssignmentPanel({
                   color: 'var(--text-secondary)',
                   borderRadius: 99,
                   padding: '2px 8px',
-                  background: '#f5f5f5',
+                  background: 'var(--surface-secondary)',
                 }}
               >
                 {typeLabels[field.characterType] || field.characterType}
@@ -440,12 +434,12 @@ export default function FieldAssignmentPanel({
                     justifyContent: 'center',
                     width: '24px',
                     height: '24px',
-                    background: '#f5f5f5',
+                    background: 'var(--surface-secondary)',
                     borderRadius: 6,
                     transition: 'background 0.2s ease',
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#e5e5e5')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = '#f5f5f5')}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--surface-secondary)')}
                   title="Pick a date"
                 >
                   <span style={{ fontSize: 14 }}>📅</span>
@@ -515,7 +509,7 @@ export default function FieldAssignmentPanel({
                   fontSize: 12,
                   padding: validation?.valid ? '4px 8px' : '8px 10px',
                   borderRadius: 8,
-                  background: validation?.valid ? '#f0fdf4' : '#fee2e2',
+                  background: 'var(--surface-secondary)',
                   border: validation?.valid ? '1px solid #bbf7d0' : '1px solid #fecaca',
                   color: validation?.valid ? '#166534' : '#991b1b',
                   fontWeight: validation?.valid ? 500 : 600,

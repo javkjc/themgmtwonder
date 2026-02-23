@@ -1,4 +1,4 @@
-import {
+﻿import {
   Injectable,
   NotFoundException,
   BadRequestException,
@@ -15,6 +15,7 @@ import {
   attachmentOcrOutputs,
   baselineFieldAssignments,
   mlModelVersions,
+  extractionModels,
   auditLogs,
 } from '../db/schema';
 import { fieldLibrary } from '../field-library/schema';
@@ -22,6 +23,13 @@ import { MlService } from './ml.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthorizationService } from '../common/authorization.service';
 import { FieldAssignmentValidatorService } from '../baseline/field-assignment-validator.service';
+import {
+  processSuggestion,
+  detectConflictingZones,
+  ProcessedSuggestion,
+} from './field-type-validator';
+import { normalizeFieldValue } from './field-value-normalizer';
+import { MathReconciliationService } from './math-reconciliation.service';
 
 export interface SuggestionSummary {
   suggestedAssignments: Array<{
@@ -29,6 +37,12 @@ export interface SuggestionSummary {
     assignedValue: string;
     confidence: number;
     sourceSegmentId: string;
+    pageNumber?: number | null;
+    zone?: string;
+    boundingBox?: Record<string, number> | null;
+    extractionMethod?: string;
+    finalScore?: number;
+    validationOverride?: string | null;
   }>;
   modelVersionId: string;
   suggestionCount: number;
@@ -41,6 +55,18 @@ interface SelectedModel {
   version: string;
   filePath: string;
   abGroup: AbGroup;
+}
+
+interface ProcessedSuggestionWithPage extends ProcessedSuggestion {
+  pageNumber: number | null;
+}
+
+interface PreparedSuggestionForPersistence {
+  processed: ProcessedSuggestion;
+  assignedValue: string;
+  pageNumber: number | null;
+  normalizedValue: string | null;
+  normalizationError: string | null;
 }
 
 @Injectable()
@@ -56,7 +82,8 @@ export class FieldSuggestionService {
     private readonly authService: AuthorizationService,
     private readonly validator: FieldAssignmentValidatorService,
     private readonly configService: ConfigService,
-  ) {}
+    private readonly mathReconciliationService: MathReconciliationService,
+  ) { }
 
   async generateSuggestions(
     baselineId: string,
@@ -138,11 +165,21 @@ export class FieldSuggestionService {
       };
     }
 
-    // 5. Call ML service with bounding boxes and field types
+    // 5. Resolve active model (Step 1 of I3: extraction_models first, fallback to ml_model_versions)
     const selectedModel = await this.selectModelForBaseline(baselineId);
+
+    // 6. Extract page metadata from OCR output metadata for ML request (Step 2 of I3)
+    const ocrMeta = this.parseOcrMetadata(currentOcr.metadata);
+    const pageWidth: number = ocrMeta.pageWidth ?? 1000;
+    const pageHeight: number = ocrMeta.pageHeight ?? 1000;
+    const pageType: 'digital' | 'scanned' =
+      currentOcr.extractionPath === 'text_layer' ? 'digital' : 'scanned';
 
     const mlPayload = {
       baselineId,
+      pageWidth,
+      pageHeight,
+      pageType,
       segments: segments.map((s) => {
         const segment: any = {
           id: s.id,
@@ -161,7 +198,7 @@ export class FieldSuggestionService {
         label: f.label,
         characterType: f.characterType,
       })),
-      threshold: 0.5,
+      threshold: 0.75,
       pairCandidates: [],
       segmentContext: [],
       modelVersionId: selectedModel.id,
@@ -183,23 +220,19 @@ export class FieldSuggestionService {
       };
     }
 
-    const suggestions = mlResult.data;
+    const rawSuggestions = mlResult.data;
 
-    // 6. Use selected model version record
+    // 7. Use selected model version record
     const modelVersionId = selectedModel.id;
 
-    // 7. Load existing assignments
+    // 8. Load existing assignments
     const existingAssignments = await this.dbs.db
       .select()
       .from(baselineFieldAssignments)
       .where(eq(baselineFieldAssignments.baselineId, baselineId));
 
-    const existingFieldKeys = new Set(
-      existingAssignments.map((a) => a.fieldKey),
-    );
-
-    // 8. Filter suggestions: only suggest for unassigned fields or fields without manual value
-    const newSuggestions = suggestions.filter((s) => {
+    // 9. Filter suggestions: only suggest for unassigned fields or fields without manual value
+    const filteredRaw = rawSuggestions.filter((s) => {
       const existing = existingAssignments.find(
         (a) => a.fieldKey === s.fieldKey,
       );
@@ -210,7 +243,6 @@ export class FieldSuggestionService {
         existing.assignedValue !== null &&
         String(existing.assignedValue).trim() !== '';
 
-      // Skip only if a manual value already exists
       if (hasManualValue) {
         return false;
       }
@@ -219,45 +251,144 @@ export class FieldSuggestionService {
     });
 
     const fieldByKey = new Map(activeFields.map((f) => [f.fieldKey, f]));
+    const segmentById = new Map(segments.map((s) => [s.id, s]));
 
-    // 9. Persist suggestions as assignments
-    const suggestedAssignments: SuggestionSummary['suggestedAssignments'] = [];
+    // 10. Run DSPP + type validation + weighted FinalScore per suggestion (Steps 3-5 of I3)
+    const processedSuggestions: ProcessedSuggestion[] = [];
 
-    for (const suggestion of newSuggestions) {
-      const segment = segments.find((s) => s.id === suggestion.segmentId);
+    for (const rawSug of filteredRaw) {
+      const segment = segmentById.get(rawSug.segmentId);
       if (!segment) continue;
 
       const segmentText = segment.text ?? '';
-      if (!segmentText.trim()) {
-        continue;
-      }
+      if (!segmentText.trim()) continue;
 
-      const field = fieldByKey.get(suggestion.fieldKey);
+      const field = fieldByKey.get(rawSug.fieldKey);
       if (!field) continue;
 
-      const validation = this.validator.validate(
-        field.characterType,
-        segmentText,
-        field.characterLimit,
+      const processed = processSuggestion(
+        {
+          segmentId: rawSug.segmentId,
+          fieldKey: rawSug.fieldKey,
+          confidence: rawSug.confidence,
+          zone: rawSug.zone ?? 'unknown',
+          boundingBox: rawSug.boundingBox ?? null,
+          extractionMethod: rawSug.extractionMethod ?? 'layoutlmv3',
+        },
+        {
+          text: segmentText,
+          confidence:
+            segment.confidence !== null && segment.confidence !== undefined
+              ? Number(segment.confidence)
+              : null,
+        },
+        {
+          fieldKey: field.fieldKey,
+          characterType: field.characterType,
+        },
       );
 
-      const normalizedValue =
-        validation.valid && validation.suggestedCorrection
-          ? validation.suggestedCorrection
-          : segmentText;
+      processedSuggestions.push(processed);
+    }
+
+    // 11. Conflicting field detection (Step 6 of I3)
+    detectConflictingZones(processedSuggestions);
+
+    // 12. I5 post-aggregation multi-page conflict scan
+    const processedForPersistence = this.applyMultiPageFieldConflictPolicy(
+      processedSuggestions,
+      segmentById,
+    );
+
+    // 13. Drop any suggestion whose finalScore was zeroed by type validation or
+    //     conflict detection — these are known-bad matches and should not be
+    //     persisted or shown to the user. Manual drag-to-assign captures ground
+    //     truth for those fields instead.
+    const validSuggestions = processedForPersistence.filter(
+      (s) => s.finalScore > 0,
+    );
+
+    // Normalize first (I4), then run math reconciliation (I6), then persist.
+    const suggestedAssignments: SuggestionSummary['suggestedAssignments'] = [];
+    const preparedSuggestions: PreparedSuggestionForPersistence[] = [];
+
+    for (const processed of validSuggestions) {
+      // Preserve the raw OCR value for human review, do not use cleanedValue as assignedValue.
+      const assignedValue = processed.originalValue;
+      const sourceSegment = segmentById.get(processed.segmentId);
+      const pageNumber = sourceSegment?.pageNumber ?? null;
+
+      const field = fieldByKey.get(processed.fieldKey);
+      const normResult = normalizeFieldValue({
+        rawValue: assignedValue,
+        fieldType: field?.characterType ?? 'text',
+      });
+
+      if (normResult.normalizationError) {
+        this.logger.warn(
+          `Normalization error for fieldKey=${processed.fieldKey} type=${field?.characterType}: ${normResult.normalizationError}`,
+        );
+      }
+
+      preparedSuggestions.push({
+        processed,
+        assignedValue,
+        pageNumber,
+        normalizedValue: normResult.normalizedValue,
+        normalizationError: normResult.normalizationError,
+      });
+    }
+
+    const mathReconciliation = await this.mathReconciliationService.reconcile(
+      currentOcr.documentTypeId,
+      preparedSuggestions.map((item) => ({
+        fieldKey: item.processed.fieldKey,
+        normalizedValue: item.normalizedValue,
+      })),
+    );
+
+    for (const item of preparedSuggestions) {
+      const { processed, assignedValue, pageNumber, normalizedValue, normalizationError } = item;
+      const mathPatch = mathReconciliation.get(processed.fieldKey);
+      const finalScore = mathPatch?.confidenceScore ?? processed.finalScore;
+      const finalValidationOverride: string | null =
+        mathPatch?.validationOverride ?? processed.validationOverride;
+
+      const llmReasoningWithNorm: Record<string, unknown> = {
+        ...processed.llmReasoning,
+        normalizationError,
+        finalScore,
+      };
+
+      if (mathPatch) {
+        llmReasoningWithNorm.mathReconciliation = mathPatch.mathReconciliation;
+        if (mathPatch.mathDelta) {
+          llmReasoningWithNorm.mathDelta = mathPatch.mathDelta;
+        }
+        if (mathPatch.validationOverride) {
+          llmReasoningWithNorm.validationOverride = mathPatch.validationOverride;
+        }
+      }
 
       await this.dbs.db
         .insert(baselineFieldAssignments)
         .values({
           baselineId,
-          fieldKey: suggestion.fieldKey,
-          assignedValue: normalizedValue,
-          sourceSegmentId: suggestion.segmentId,
+          fieldKey: processed.fieldKey,
+          assignedValue,
+          sourceSegmentId: processed.segmentId,
           assignedBy: userId,
           assignedAt: new Date(),
-          suggestionConfidence: suggestion.confidence.toFixed(2),
-          suggestionAccepted: null, // Not yet accepted or rejected
+          suggestionConfidence: processed.confidence.toFixed(2),
+          suggestionAccepted: null,
           modelVersionId,
+          confidenceScore: finalScore.toFixed(4),
+          zone: processed.zone,
+          boundingBox: processed.boundingBox as any,
+          extractionMethod: processed.extractionMethod,
+          llmReasoning: JSON.stringify(llmReasoningWithNorm),
+          normalizedValue,
+          normalizationError,
         })
         .onConflictDoUpdate({
           target: [
@@ -265,25 +396,38 @@ export class FieldSuggestionService {
             baselineFieldAssignments.fieldKey,
           ],
           set: {
-            assignedValue: normalizedValue,
-            sourceSegmentId: suggestion.segmentId,
+            assignedValue,
+            sourceSegmentId: processed.segmentId,
             assignedBy: userId,
             assignedAt: new Date(),
-            suggestionConfidence: suggestion.confidence.toFixed(2),
+            suggestionConfidence: processed.confidence.toFixed(2),
             suggestionAccepted: null,
             modelVersionId,
+            confidenceScore: finalScore.toFixed(4),
+            zone: processed.zone,
+            boundingBox: processed.boundingBox as any,
+            extractionMethod: processed.extractionMethod,
+            llmReasoning: JSON.stringify(llmReasoningWithNorm),
+            normalizedValue,
+            normalizationError,
           },
         });
 
       suggestedAssignments.push({
-        fieldKey: suggestion.fieldKey,
-        assignedValue: segment.text,
-        confidence: suggestion.confidence,
-        sourceSegmentId: suggestion.segmentId,
+        fieldKey: processed.fieldKey,
+        assignedValue,
+        confidence: processed.confidence,
+        sourceSegmentId: processed.segmentId,
+        pageNumber,
+        zone: processed.zone,
+        boundingBox: processed.boundingBox,
+        extractionMethod: processed.extractionMethod,
+        finalScore,
+        validationOverride: finalValidationOverride,
       });
     }
 
-    // 10. Log audit event
+    // 14. Log audit event
     await this.auditService.log({
       userId,
       action: 'ml.suggest.generate',
@@ -298,6 +442,9 @@ export class FieldSuggestionService {
         count: suggestedAssignments.length,
         totalSegments: segments.length,
         totalFields: activeFields.length,
+        pageWidth,
+        pageHeight,
+        pageType,
       },
     });
 
@@ -306,6 +453,128 @@ export class FieldSuggestionService {
       modelVersionId,
       suggestionCount: suggestedAssignments.length,
     };
+  }
+
+  /**
+   * Parse OCR output metadata JSON string for page dimensions.
+   */
+  private parseOcrMetadata(
+    metadata: string | null | undefined,
+  ): { pageWidth?: number; pageHeight?: number } {
+    if (!metadata) return {};
+    try {
+      const parsed = JSON.parse(metadata);
+      return {
+        pageWidth: parsed.pageWidth ?? parsed.page_width ?? undefined,
+        pageHeight: parsed.pageHeight ?? parsed.page_height ?? undefined,
+      };
+    } catch {
+      return {};
+    }
+  }
+
+  private applyMultiPageFieldConflictPolicy(
+    suggestions: ProcessedSuggestion[],
+    segmentById: Map<string, typeof extractedTextSegments.$inferSelect>,
+  ): ProcessedSuggestion[] {
+    const withPage: ProcessedSuggestionWithPage[] = suggestions.map((s) => {
+      const segment = segmentById.get(s.segmentId);
+      return {
+        ...s,
+        pageNumber: segment?.pageNumber ?? null,
+      };
+    });
+
+    const byField = new Map<string, ProcessedSuggestionWithPage[]>();
+    for (const suggestion of withPage) {
+      if (!byField.has(suggestion.fieldKey)) {
+        byField.set(suggestion.fieldKey, []);
+      }
+      byField.get(suggestion.fieldKey)!.push(suggestion);
+    }
+
+    const resolved: ProcessedSuggestion[] = [];
+
+    for (const [fieldKey, group] of byField) {
+      if (group.length <= 1) {
+        resolved.push(...group);
+        continue;
+      }
+
+      const pageNumbers = Array.from(
+        new Set(
+          group
+            .map((s) => s.pageNumber)
+            .filter((page): page is number => typeof page === 'number'),
+        ),
+      );
+
+      if (pageNumbers.length <= 1) {
+        resolved.push(...group);
+        continue;
+      }
+
+      const normalizedValues = Array.from(
+        new Set(
+          group.map((s) =>
+            this.normalizeForPageConflictComparison(
+              s.cleanedValue || s.originalValue || '',
+            ),
+          ),
+        ),
+      );
+
+      if (normalizedValues.length > 1) {
+        for (const suggestion of group) {
+          suggestion.finalScore = 0.0;
+          suggestion.validationOverride = 'conflicting_pages';
+          suggestion.llmReasoning = {
+            ...suggestion.llmReasoning,
+            validationOverride: 'conflicting_pages',
+            finalScore: 0.0,
+          };
+        }
+
+        const distinctValues = Array.from(
+          new Set(group.map((s) => String(s.originalValue ?? '').trim())),
+        );
+        const sortedPages = [...pageNumbers].sort((a, b) => a - b);
+
+        this.logger.warn(
+          `Multi-page conflict detected for fieldKey="${fieldKey}" pages=[${sortedPages.join(', ')}] values=[${distinctValues.join(' | ')}]`,
+        );
+
+        // Strategy A (strict): any disagreement is flagged and all occurrences are preserved.
+        resolved.push(...group);
+        continue;
+      }
+
+      let winner = group[0];
+      for (const suggestion of group) {
+        if (suggestion.finalScore > winner.finalScore) {
+          winner = suggestion;
+          continue;
+        }
+
+        if (
+          suggestion.finalScore === winner.finalScore &&
+          suggestion.confidence > winner.confidence
+        ) {
+          winner = suggestion;
+        }
+      }
+
+      // Consistent value across pages: keep only the strongest occurrence.
+      resolved.push(winner);
+    }
+
+    return resolved;
+  }
+
+  private normalizeForPageConflictComparison(value: string): string {
+    return String(value ?? '')
+      .toLowerCase()
+      .replace(/\s+/g, '');
   }
 
   private async enforceRateLimit(userId: string): Promise<void> {
@@ -363,6 +632,8 @@ export class FieldSuggestionService {
   }
 
   private async selectModelForBaseline(baselineId: string): Promise<SelectedModel> {
+    // Step 1 of I3: Resolve active model from extraction_models first,
+    // fall back to ml_model_versions for backward compatibility.
     const modelA = await this.resolveActiveModel();
     const modelB = await this.resolveCandidateModel(modelA.modelName);
     const abTestEnabled = this.isAbTestEnabled();
@@ -378,18 +649,54 @@ export class FieldSuggestionService {
     };
   }
 
-  private async resolveActiveModel() {
-    const [activeModel] = await this.dbs.db
+  /**
+   * Resolve the active model following I3 step 1:
+   * 1. Check extraction_models where isActive=true
+   * 2. Fall back to ml_model_versions where isActive=true
+   * 3. Fall back to creating a legacy bootstrap record
+   */
+  private async resolveActiveModel(): Promise<{
+    id: string;
+    version: string;
+    filePath: string;
+    modelName: string;
+  }> {
+    // Primary: extraction_models (new table from F1)
+    const [activeExtractionModel] = await this.dbs.db
+      .select()
+      .from(extractionModels)
+      .where(eq(extractionModels.isActive, true))
+      .orderBy(desc(extractionModels.trainedAt))
+      .limit(1);
+
+    if (activeExtractionModel) {
+      this.logger.debug(
+        `Resolved active model from extraction_models: ${activeExtractionModel.modelName} v${activeExtractionModel.version}`,
+      );
+      return {
+        id: activeExtractionModel.id,
+        version: activeExtractionModel.version,
+        filePath: activeExtractionModel.filePath,
+        modelName: activeExtractionModel.modelName,
+      };
+    }
+
+    // Fallback: ml_model_versions (backward compatibility)
+    const [activeMlModel] = await this.dbs.db
       .select()
       .from(mlModelVersions)
       .where(eq(mlModelVersions.isActive, true))
       .orderBy(desc(mlModelVersions.trainedAt))
       .limit(1);
 
-    if (activeModel) {
-      return activeModel;
+    if (activeMlModel) {
+      this.logger.debug(
+        `Resolved active model from ml_model_versions (fallback): ${activeMlModel.modelName} v${activeMlModel.version}`,
+      );
+      return activeMlModel;
     }
 
+    // Last resort: bootstrap legacy record
     return this.getOrCreateDefaultActiveModel();
   }
 
@@ -411,7 +718,7 @@ export class FieldSuggestionService {
 
   private async getOrCreateDefaultActiveModel() {
     // Fallback bootstrap record for legacy environments without an active model row.
-    const modelName = 'all-MiniLM-L6-v2';
+    const modelName = 'layoutlmv3-base';
     const version = '1.0.0';
 
     const [existing] = await this.dbs.db
@@ -435,8 +742,8 @@ export class FieldSuggestionService {
       .values({
         modelName,
         version,
-        filePath: 'sentence-transformers/all-MiniLM-L6-v2',
-        metrics: { type: 'embedding', dimensions: 384 },
+        filePath: 'microsoft/layoutlmv3-base',
+        metrics: { type: 'token_classification', architecture: 'layoutlmv3' },
         trainedAt: new Date(),
         isActive: true,
         createdBy: 'system',
@@ -446,3 +753,4 @@ export class FieldSuggestionService {
     return newModel;
   }
 }
+
