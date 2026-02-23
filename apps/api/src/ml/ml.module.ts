@@ -10,6 +10,9 @@ import { MlTrainingDataService } from './ml-training-data.service';
 import { MlTrainingDataController } from './ml-training-data.controller';
 import { MlModelsService } from './ml-models.service';
 import { MlModelsController } from './ml-models.controller';
+import { MlTrainingAutomationService } from './ml-training-automation.service';
+import { MlTrainingJobsService } from './ml-training-jobs.service';
+import { MlTrainingJobsController } from './ml-training-jobs.controller';
 import { AuditModule } from '../audit/audit.module';
 import { CommonModule } from '../common/common.module';
 import { DbModule } from '../db/db.module';
@@ -24,6 +27,7 @@ import { FieldAssignmentValidatorService } from '../baseline/field-assignment-va
     MlMetricsController,
     MlTrainingDataController,
     MlModelsController,
+    MlTrainingJobsController,
   ],
   providers: [
     MlService,
@@ -33,6 +37,8 @@ import { FieldAssignmentValidatorService } from '../baseline/field-assignment-va
     MlMetricsService,
     MlTrainingDataService,
     MlModelsService,
+    MlTrainingJobsService,
+    MlTrainingAutomationService,
   ],
   exports: [
     MlService,

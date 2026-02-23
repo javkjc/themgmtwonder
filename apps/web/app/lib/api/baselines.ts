@@ -62,10 +62,10 @@ export interface AssignPayload {
   sourceSegmentId?: string;
   correctionReason?: string;
   confirmInvalid?: boolean;
-  suggestionAccepted?: boolean;
+  suggestionAccepted?: boolean | null;
   correctedFrom?: string;
   suggestionConfidence?: number;
-  modelVersionId?: string;
+  modelVersionId?: string | null;
 }
 
 export interface AssignmentUpsertResponse {
@@ -102,7 +102,7 @@ export interface DeleteAssignmentPayload {
   reason?: string;
   suggestionRejected?: boolean;
   suggestionConfidence?: number;
-  modelVersionId?: string;
+  modelVersionId?: string | null;
 }
 
 export async function deleteAssignment(

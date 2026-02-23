@@ -9,7 +9,7 @@ import OcrFieldCreateModal from '@/app/components/ocr/OcrFieldCreateModal';
 import Layout from '@/app/components/Layout';
 import BaselineStatusBadge from '@/app/components/baseline/BaselineStatusBadge';
 import { API_BASE_URL, apiFetchJson } from '@/app/lib/api';
-import type { Segment } from '@/app/lib/api/baselines';
+import type { AssignPayload, DeleteAssignmentPayload, Segment } from '@/app/lib/api/baselines';
 import ExtractedTextPool from '@/app/components/ocr/ExtractedTextPool';
 import FieldAssignmentPanel from '@/app/components/FieldAssignmentPanel';
 import SuggestionTrigger from '@/app/components/suggestions/SuggestionTrigger';
@@ -91,6 +91,69 @@ export default function AttachmentOcrReviewPage() {
   const fields = useFieldAssignments({
     baseline, loadBaseline, libraryFields, fieldLabelMap, addNotification,
   });
+
+  const handleTrackedAssignmentUpdate = useCallback(
+    async (
+      fieldKey: string,
+      value: string,
+      sourceSegmentId?: string,
+      metadata?: (Partial<AssignPayload> & {
+        suggestionAccepted?: boolean | null;
+        modelVersionId?: string | null;
+      }),
+    ) => {
+      const existing = baseline?.assignments?.find((item) => item.fieldKey === fieldKey);
+      const existingModelVersionId = existing?.modelVersionId ?? null;
+      const existingSuggestionAccepted = existing?.suggestionAccepted ?? null;
+      const hasSuggestionContext =
+        existingModelVersionId !== null ||
+        existingSuggestionAccepted !== null ||
+        (existing?.suggestionConfidence !== null && existing?.suggestionConfidence !== undefined);
+
+      const resolvedMetadata: (Partial<AssignPayload> & {
+        suggestionAccepted?: boolean | null;
+        modelVersionId?: string | null;
+      }) = { ...(metadata ?? {}) };
+
+      if (metadata?.suggestionAccepted === true || metadata?.suggestionAccepted === false) {
+        if (resolvedMetadata.modelVersionId === undefined) {
+          resolvedMetadata.modelVersionId = existingModelVersionId;
+        }
+      } else if (metadata?.suggestionAccepted === null) {
+        resolvedMetadata.modelVersionId = null;
+      } else if (hasSuggestionContext) {
+        resolvedMetadata.suggestionAccepted = false;
+        resolvedMetadata.modelVersionId = existingModelVersionId;
+      } else {
+        resolvedMetadata.suggestionAccepted = null;
+        resolvedMetadata.modelVersionId = null;
+      }
+
+      await fields.handleAssignmentUpdate(
+        fieldKey,
+        value,
+        sourceSegmentId,
+        resolvedMetadata as Partial<AssignPayload>,
+      );
+    },
+    [baseline?.assignments, fields],
+  );
+
+  const handleTrackedAssignmentDelete = useCallback(
+    async (fieldKey: string, metadata?: DeleteAssignmentPayload) => {
+      if (!metadata?.suggestionRejected) {
+        await fields.handleAssignmentDelete(fieldKey, metadata);
+        return;
+      }
+
+      const existing = baseline?.assignments?.find((item) => item.fieldKey === fieldKey);
+      await fields.handleAssignmentDelete(fieldKey, {
+        ...metadata,
+        modelVersionId: metadata.modelVersionId ?? existing?.modelVersionId ?? undefined,
+      });
+    },
+    [baseline?.assignments, fields],
+  );
 
   // ---------- Field change log (audit history) ----------
   useEffect(() => {
@@ -262,8 +325,8 @@ export default function AttachmentOcrReviewPage() {
                 assignments={baseline?.assignments || []}
                 isReadOnly={isFieldBuilderReadOnly}
                 readOnlyReason={readOnlyReason}
-                onUpdate={fields.handleAssignmentUpdate}
-                onDelete={fields.handleAssignmentDelete}
+                onUpdate={handleTrackedAssignmentUpdate}
+                onDelete={handleTrackedAssignmentDelete}
                 onAccept={fields.handleAccept}
                 onLocalValuesChange={fields.setPendingLocalValues}
                 resetLocalField={fields.resetLocalField}

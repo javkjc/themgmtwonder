@@ -132,6 +132,7 @@ export function useFieldAssignments({
         assignedValue: existing.assignedValue,
         sourceSegmentId: existing.sourceSegmentId || undefined,
         suggestionAccepted: true,
+        modelVersionId: existing.modelVersionId ?? undefined,
       });
       await loadBaseline();
       addNotification(notifySuccess('Suggestion accepted', `${fieldLabelMap[fieldKey] || fieldKey} verified`));

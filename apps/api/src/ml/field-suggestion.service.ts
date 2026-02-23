@@ -6,7 +6,8 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-import { and, eq, gte } from 'drizzle-orm';
+import { ConfigService } from '@nestjs/config';
+import { and, desc, eq, gte } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import {
   extractionBaselines,
@@ -33,6 +34,15 @@ export interface SuggestionSummary {
   suggestionCount: number;
 }
 
+type AbGroup = 'A' | 'B';
+
+interface SelectedModel {
+  id: string;
+  version: string;
+  filePath: string;
+  abGroup: AbGroup;
+}
+
 @Injectable()
 export class FieldSuggestionService {
   private readonly logger = new Logger(FieldSuggestionService.name);
@@ -45,6 +55,7 @@ export class FieldSuggestionService {
     private readonly auditService: AuditService,
     private readonly authService: AuthorizationService,
     private readonly validator: FieldAssignmentValidatorService,
+    private readonly configService: ConfigService,
   ) {}
 
   async generateSuggestions(
@@ -128,6 +139,8 @@ export class FieldSuggestionService {
     }
 
     // 5. Call ML service with bounding boxes and field types
+    const selectedModel = await this.selectModelForBaseline(baselineId);
+
     const mlPayload = {
       baselineId,
       segments: segments.map((s) => {
@@ -149,6 +162,10 @@ export class FieldSuggestionService {
         characterType: f.characterType,
       })),
       threshold: 0.5,
+      pairCandidates: [],
+      segmentContext: [],
+      modelVersionId: selectedModel.id,
+      filePath: selectedModel.filePath,
     };
 
     const mlResult = await this.mlService.suggestFields(mlPayload);
@@ -168,8 +185,8 @@ export class FieldSuggestionService {
 
     const suggestions = mlResult.data;
 
-    // 6. Get or create model version record
-    const modelVersionId = await this.getOrCreateModelVersion();
+    // 6. Use selected model version record
+    const modelVersionId = selectedModel.id;
 
     // 7. Load existing assignments
     const existingAssignments = await this.dbs.db
@@ -275,7 +292,9 @@ export class FieldSuggestionService {
       resourceId: baselineId,
       details: {
         baselineId,
+        abGroup: selectedModel.abGroup,
         modelVersionId,
+        modelVersion: selectedModel.version,
         count: suggestedAssignments.length,
         totalSegments: segments.length,
         totalFields: activeFields.length,
@@ -320,8 +339,78 @@ export class FieldSuggestionService {
     }
   }
 
-  private async getOrCreateModelVersion(): Promise<string> {
-    // For now, use a static model version
+  private isAbTestEnabled(): boolean {
+    return (
+      String(this.configService.get<string>('ML_MODEL_AB_TEST') ?? 'false')
+        .trim()
+        .toLowerCase() === 'true'
+    );
+  }
+
+  private baselineHashParity(baselineId: string): 0 | 1 {
+    const normalizedId = baselineId.replace(/-/g, '');
+    if (!normalizedId) {
+      return 0;
+    }
+
+    try {
+      // UUIDs exceed Number safe range, so use bigint to preserve parity.
+      const parsed = BigInt(`0x${normalizedId}`);
+      return Number(parsed % 2n) as 0 | 1;
+    } catch {
+      return 0;
+    }
+  }
+
+  private async selectModelForBaseline(baselineId: string): Promise<SelectedModel> {
+    const modelA = await this.resolveActiveModel();
+    const modelB = await this.resolveCandidateModel(modelA.modelName);
+    const abTestEnabled = this.isAbTestEnabled();
+    const parity = this.baselineHashParity(baselineId);
+    const useCandidate = abTestEnabled && !!modelB && parity === 1;
+    const selected = useCandidate ? modelB! : modelA;
+
+    return {
+      id: selected.id,
+      version: selected.version,
+      filePath: selected.filePath,
+      abGroup: useCandidate ? 'B' : 'A',
+    };
+  }
+
+  private async resolveActiveModel() {
+    const [activeModel] = await this.dbs.db
+      .select()
+      .from(mlModelVersions)
+      .where(eq(mlModelVersions.isActive, true))
+      .orderBy(desc(mlModelVersions.trainedAt))
+      .limit(1);
+
+    if (activeModel) {
+      return activeModel;
+    }
+
+    return this.getOrCreateDefaultActiveModel();
+  }
+
+  private async resolveCandidateModel(modelName: string) {
+    const [candidateModel] = await this.dbs.db
+      .select()
+      .from(mlModelVersions)
+      .where(
+        and(
+          eq(mlModelVersions.modelName, modelName),
+          eq(mlModelVersions.isActive, false),
+        ),
+      )
+      .orderBy(desc(mlModelVersions.trainedAt))
+      .limit(1);
+
+    return candidateModel;
+  }
+
+  private async getOrCreateDefaultActiveModel() {
+    // Fallback bootstrap record for legacy environments without an active model row.
     const modelName = 'all-MiniLM-L6-v2';
     const version = '1.0.0';
 
@@ -337,10 +426,10 @@ export class FieldSuggestionService {
       .limit(1);
 
     if (existing) {
-      return existing.id;
+      return existing;
     }
 
-    // Create new model version record
+    // Create new active model version record.
     const [newModel] = await this.dbs.db
       .insert(mlModelVersions)
       .values({
@@ -354,6 +443,6 @@ export class FieldSuggestionService {
       })
       .returning();
 
-    return newModel.id;
+    return newModel;
   }
 }

@@ -30,6 +30,8 @@ interface TableDetection {
 
 interface SuggestFieldsPayload {
   baselineId: string;
+  modelVersionId?: string;
+  filePath?: string;
   segments: Array<{
     id: string;
     text: string;
@@ -40,6 +42,18 @@ interface SuggestFieldsPayload {
     fieldKey: string;
     label: string;
     characterType?: string;
+  }>;
+  pairCandidates?: Array<{
+    labelSegmentId: string;
+    valueSegmentId: string;
+    pairConfidence: number;
+    relation: string;
+    pageNumber?: number;
+  }>;
+  segmentContext?: Array<{
+    segmentId: string;
+    contextText: string;
+    contextSegmentIds: string[];
   }>;
   threshold?: number;
 }

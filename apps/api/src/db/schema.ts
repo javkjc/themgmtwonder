@@ -170,6 +170,13 @@ export const attachmentOcrOutputs = pgTable(
     extractedText: text('extracted_text').notNull(),
     metadata: text('metadata'),
     processingStatus: text('processing_status').notNull(),
+    documentTypeId: uuid('document_type_id').references(() => documentTypes.id, {
+      onDelete: 'set null',
+    }),
+    extractionPath: text('extraction_path'),
+    preprocessingApplied: jsonb('preprocessing_applied'),
+    overallConfidence: decimal('overall_confidence', { precision: 5, scale: 4 }),
+    processingDurationMs: integer('processing_duration_ms'),
     status: varchar('status', { length: 20 }).default('draft').notNull(),
 
     confirmedAt: timestamp('confirmed_at'),
@@ -329,6 +336,12 @@ export const baselineFieldAssignments = pgTable(
     validationValid: boolean('validation_valid'),
     validationError: text('validation_error'),
     validationSuggestion: text('validation_suggestion'),
+    confidenceScore: decimal('confidence_score', { precision: 5, scale: 4 }),
+    zone: text('zone'),
+    boundingBox: jsonb('bounding_box'),
+    extractionMethod: text('extraction_method'),
+    llmReviewed: boolean('llm_reviewed'),
+    llmReasoning: text('llm_reasoning'),
     // ML suggestion metadata (v8.8)
     suggestionConfidence: decimal('suggestion_confidence', {
       precision: 3,
@@ -469,6 +482,136 @@ export const auditLogs = pgTable(
     ),
   }),
 );
+
+// ML Model Versions table
+export const mlTrainingJobs = pgTable(
+  'ml_training_jobs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    status: text('status').notNull(),
+    triggerType: text('trigger_type').notNull(),
+    windowStart: timestamp('window_start').notNull(),
+    windowEnd: timestamp('window_end').notNull(),
+    qualifiedCorrectionCount: integer('qualified_correction_count').notNull(),
+    candidateVersion: text('candidate_version'),
+    modelPath: text('model_path'),
+    metrics: jsonb('metrics'),
+    startedAt: timestamp('started_at').defaultNow().notNull(),
+    finishedAt: timestamp('finished_at'),
+    errorMessage: text('error_message'),
+  },
+  (table) => ({
+    statusStartedIdx: index('ml_training_jobs_status_started_idx').on(
+      table.status,
+      table.startedAt,
+    ),
+    triggerStartedIdx: index('ml_training_jobs_trigger_started_idx').on(
+      table.triggerType,
+      table.startedAt,
+    ),
+  }),
+);
+
+export const mlTrainingState = pgTable('ml_training_state', {
+  id: integer('id').primaryKey().notNull().default(1),
+  lastSuccessAssignedAt: timestamp('last_success_assigned_at'),
+  lastAttemptAt: timestamp('last_attempt_at'),
+  lastAttemptThrough: timestamp('last_attempt_through'),
+});
+
+// Document Types table
+export const documentTypes = pgTable('document_types', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 255 }).notNull().unique(),
+  description: text('description'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Document Type Fields table
+export const documentTypeFields = pgTable(
+  'document_type_fields',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    documentTypeId: uuid('document_type_id')
+      .notNull()
+      .references(() => documentTypes.id, { onDelete: 'cascade' }),
+    fieldKey: text('field_key')
+      .notNull()
+      .references(() => fieldLibrary.fieldKey),
+    required: boolean('required').default(false).notNull(),
+    zoneHint: text('zone_hint'),
+    sortOrder: integer('sort_order').default(0).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    documentTypeFieldUnique: unique('document_type_fields_unique').on(
+      table.documentTypeId,
+      table.fieldKey,
+    ),
+  }),
+);
+
+// Extraction Training Examples table
+export const extractionTrainingExamples = pgTable(
+  'extraction_training_examples',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    baselineId: uuid('baseline_id')
+      .notNull()
+      .references(() => extractionBaselines.id, { onDelete: 'cascade' }),
+    fieldKey: text('field_key')
+      .notNull()
+      .references(() => fieldLibrary.fieldKey),
+    assignedValue: text('assigned_value').notNull(),
+    zone: text('zone'),
+    boundingBox: jsonb('bounding_box'),
+    extractionMethod: text('extraction_method').notNull(),
+    confidence: decimal('confidence', { precision: 5, scale: 4 }),
+    isSynthetic: boolean('is_synthetic').default(false).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+);
+
+// Extraction Models table
+export const extractionModels = pgTable(
+  'extraction_models',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    modelName: text('model_name').notNull(),
+    architecture: text('architecture').notNull(),
+    version: text('version').notNull(),
+    filePath: text('file_path').notNull(),
+    documentTypeId: uuid('document_type_id').references(() => documentTypes.id, {
+      onDelete: 'set null',
+    }),
+    metrics: jsonb('metrics').notNull(),
+    trainedAt: timestamp('trained_at').notNull(),
+    isActive: boolean('is_active').default(false).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    modelNameVersionUnique: unique('extraction_models_model_name_version_unique').on(
+      table.modelName,
+      table.version,
+    ),
+  }),
+);
+
+// Training Runs table
+export const trainingRuns = pgTable('training_runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  status: text('status').notNull(),
+  triggerType: text('trigger_type').notNull(),
+  windowStart: timestamp('window_start').notNull(),
+  windowEnd: timestamp('window_end').notNull(),
+  qualifiedExampleCount: integer('qualified_example_count').notNull(),
+  candidateVersion: text('candidate_version').notNull(),
+  modelPath: text('model_path').notNull(),
+  metrics: jsonb('metrics').notNull(),
+  startedAt: timestamp('started_at').notNull(),
+  finishedAt: timestamp('finished_at'),
+  errorMessage: text('error_message'),
+});
 
 // ML Model Versions table
 export const mlModelVersions = pgTable(

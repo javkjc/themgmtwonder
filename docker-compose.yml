@@ -54,6 +54,30 @@ services:
       - backend
     expose:
       - 5000
+  preprocessor:
+    build:
+      context: ./apps/preprocessor
+      dockerfile: preprocessor.Dockerfile
+    container_name: todo-preprocessor
+    networks:
+      - backend
+    expose:
+      - 6000
+
+  training-worker:
+    build:
+      context: ./apps/training-worker
+      dockerfile: training-worker.Dockerfile
+    container_name: todo-training-worker
+    networks:
+      - backend
+    expose:
+      - 7000
+    environment:
+      API_CALLBACK_BASE_URL: http://api:3000/admin/ml/training-jobs
+    volumes:
+      - ./apps/training-worker:/app
+      - ml_models:/app/models
   web:
     build:
       context: ./apps/web
@@ -76,6 +100,7 @@ services:
 
 volumes:
   pgdata:
+  ml_models:
 
 networks:
   frontend:

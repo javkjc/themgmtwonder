@@ -22,6 +22,34 @@
       "when": 1770803444680,
       "tag": "0002_safe_molten_man",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1771811476130,
+      "tag": "0003_fresh_triathlon",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1771819861947,
+      "tag": "0004_blue_jamie_braddock",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1771820808263,
+      "tag": "0005_aberrant_shinobi_shaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1771821524712,
+      "tag": "0006_lean_blur",
+      "breakpoints": true
     }
   ]
 }

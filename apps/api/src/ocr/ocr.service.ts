@@ -60,6 +60,48 @@ type OcrWorkerResult = {
   workerHost: string;
 };
 
+function toMetadataObject(
+  metadata?: Record<string, unknown> | string | null,
+): Record<string, unknown> | null {
+  if (metadata == null) {
+    return null;
+  }
+  if (typeof metadata === 'object') {
+    return metadata;
+  }
+  try {
+    const parsed = JSON.parse(metadata);
+    return parsed && typeof parsed === 'object'
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function toWorkerMeta(
+  metadataObject: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (!metadataObject) {
+    return null;
+  }
+  const candidate = metadataObject.workerMeta;
+  return candidate && typeof candidate === 'object'
+    ? (candidate as Record<string, unknown>)
+    : null;
+}
+
+function toOptionalString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}
+
+function toOptionalInteger(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return null;
+  }
+  return Math.round(value);
+}
+
 const utilizationSeverityRank: Record<OcrUtilizationType, number> = {
   data_export: 1,
   human_approval: 2,
@@ -137,6 +179,15 @@ export class OcrService {
 
     const processingStatus: DerivedOcrProcessingStatus =
       status === 'complete' ? 'completed' : 'failed';
+    const metadataObject = toMetadataObject(metadata);
+    const workerMeta = toWorkerMeta(metadataObject);
+    const extractionPath = toOptionalString(workerMeta?.extractionPath);
+    const preprocessingApplied =
+      workerMeta &&
+      Object.prototype.hasOwnProperty.call(workerMeta, 'preprocessingApplied')
+        ? workerMeta.preprocessingApplied
+        : null;
+    const processingDurationMs = toOptionalInteger(workerMeta?.durationMs);
 
     await this.dbs.db
       .update(attachmentOcrOutputs)
@@ -206,6 +257,9 @@ export class OcrService {
             : typeof metadata === 'string'
               ? metadata
               : JSON.stringify(metadata),
+        extractionPath,
+        preprocessingApplied,
+        processingDurationMs,
         processingStatus,
         status: 'draft',
         isCurrent: true,

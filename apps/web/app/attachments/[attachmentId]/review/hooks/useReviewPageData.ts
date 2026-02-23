@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { apiFetchJson, isUnauthorized } from '@/app/lib/api';
 import {
   fetchBaselineForAttachment,
@@ -16,6 +17,7 @@ import type {
 } from '../types';
 
 export function useReviewPageData(attachmentId: string | undefined) {
+  const searchParams = useSearchParams();
   const [me, setMe] = useState<Me | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [ocrData, setOcrData] = useState<OcrResultsWithCorrectionsResponse | null>(null);
@@ -117,11 +119,7 @@ export function useReviewPageData(attachmentId: string | undefined) {
   }, [attachmentId, me, loadSuggestions]);
 
   // Derived values
-  const taskId = useMemo(() => {
-    if (typeof window === 'undefined') return null;
-    const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get('taskId');
-  }, []);
+  const taskId = searchParams.get('taskId');
 
   const targetTaskId = taskId || ocrData?.attachment?.todoId || null;
 

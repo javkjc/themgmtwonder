@@ -53,3 +53,15 @@ This file captures patterns that caused issues and rules to prevent repeating mi
 - **Root Cause**: Assumed pixel-based coordinates for normalized data and strict grid validation; passed duplicate OCR segments to ML.
 - **Rule**: Validate coordinate scale before tuning tolerances, keep grid validation flexible for form-like layouts, and deduplicate OCR segments before ML processing.
 - **Related Feature**: v8.8 ML-Assisted Field Suggestions
+
+### 2026-02-23 - Windows Migration Commands
+- **Problem**: `npm run drizzle:generate` → `spawn EPERM`; `npm run drizzle:migrate` → `SKIP_BOOTSTRAP not recognized`.
+- **Root Cause**: `drizzle:generate` hits a Windows file-lock on build output; `drizzle:migrate` uses Unix env-var prefix syntax (`SKIP_BOOTSTRAP=true`) which cmd/PowerShell does not support.
+- **Rule**: Always run Drizzle commands inside the container: `docker compose exec api npx drizzle-kit generate` and `docker compose exec api npx drizzle-kit migrate`. If migrate still fails due to journal/DB hash mismatch, apply SQL directly via `docker compose exec db psql -U todo -d todo_db -c "..."` and register the migration hash manually into `drizzle.__drizzle_migrations`.
+- **Related Feature**: v8.9 D3 — Global Volume Trigger
+
+### 2026-02-23 - Drizzle Journal/DB Hash Mismatch
+- **Problem**: `drizzle:migrate` tried to replay all migrations from idx 0 (including `CREATE TYPE baseline_status`) even though the DB already had those objects, because local journal hashes didn't match the 9 rows in `drizzle.__drizzle_migrations`.
+- **Root Cause**: The local journal was regenerated at some point, producing new snapshot UUIDs/hashes that differ from the SHA-256 hashes Drizzle recorded when migrations were originally applied.
+- **Rule**: Before running any migration, check `SELECT hash FROM drizzle.__drizzle_migrations ORDER BY created_at DESC LIMIT 3` to confirm the DB's hash scheme matches the local journal. If mismatched: apply new migration SQL directly via psql, compute its hash with `node -e "require('crypto').createHash('sha256').update(require('fs').readFileSync('/app/drizzle/<file>.sql','utf8')).digest('hex')"` inside the container, then insert that hash into `drizzle.__drizzle_migrations` manually.
+- **Related Feature**: v8.9 D3 — Global Volume Trigger

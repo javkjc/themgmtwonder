@@ -35,10 +35,26 @@ class FieldInput(BaseModel):
     characterType: Optional[str] = None  # varchar, int, decimal, date, currency
 
 
+class PairCandidateInput(BaseModel):
+    labelSegmentId: str
+    valueSegmentId: str
+    pairConfidence: float
+    relation: str
+    pageNumber: Optional[int] = None
+
+
+class SegmentContextInput(BaseModel):
+    segmentId: str
+    contextText: str
+    contextSegmentIds: List[str]
+
+
 class SuggestFieldsRequest(BaseModel):
     baselineId: str
     segments: List[SegmentInput]
     fields: List[FieldInput]
+    pairCandidates: Optional[List[PairCandidateInput]] = Field(default=None)
+    segmentContext: Optional[List[SegmentContextInput]] = Field(default=None)
     threshold: Optional[float] = Field(default=None)
 
 

@@ -1,4 +1,4 @@
-## v8.9 (remainder) + v8.10 — Optimal Extraction Accuracy
+﻿## v8.9 (remainder) + v8.10 — Optimal Extraction Accuracy
 
 **Date:** 2026-02-22
 **Scope:** Complete the remaining v8.9 tasks (C1/C2/D3/D4/D5/E1/E2), then build the full v8.10 Optimal Extraction Accuracy milestone: PyMuPDF PDF ingestion, OpenCV preprocessor container, LayoutLMv3 replacing all-MiniLM-L6-v2, zone classifier, per-field confidence tiers, verification UI, LayoutLMv3 fine-tuning pipeline, and spatially-annotated training data capture.
@@ -44,6 +44,7 @@
 ## 1) A/B Testing & Suggestion Tracking (P0 — blocks E1/E2)
 
 ### C1 — Deterministic A/B Model Selection (Complexity: Medium)
+**Status:** ✅ Completed on 2026-02-22 (Verified)
 
 **Problem statement**
 We need deterministic 50/50 routing between active and candidate models when A/B testing is enabled, so that suggestion outcomes can be compared per model.
@@ -82,6 +83,7 @@ Expected: both model version IDs have non-zero counts when A/B enabled.
 ---
 
 ### C2 — Suggestion Outcome Tracking Integrity (Complexity: Simple)
+**Status:** ✅ Completed on 2026-02-23
 
 **Problem statement**
 Accept/modify/clear outcomes must be recorded consistently on `baseline_field_assignments` so model evaluation data is clean.
@@ -123,6 +125,7 @@ Expected: accepted = true, modified/cleared = false, manual = NULL.
 > D0 (synthetic generator) and D1 (fine-tuning script) from the original v8.9 plan are superseded by v8.10 LayoutLMv3 pipeline. D2 (register trained model) uses the already-built B1 endpoint and requires no new code. Only D3/D4/D5 remain.
 
 ### D3 — Global Volume Trigger + Job State (Complexity: Medium)
+**Status:** ✅ Completed on 2026-02-23
 
 **Problem statement**
 We need a global (system-wide) trigger that runs training automatically when enough qualified corrections have accumulated since the last successful run.
@@ -295,6 +298,7 @@ Admins need a dedicated page showing model performance, trends, gate status, and
 ## 4) Schema Migrations (P0 — all Part 2 work depends on these)
 
 ### F1 — New Tables Migration (Complexity: Simple)
+**Status:** ✅ Completed on 2026-02-23
 
 **Problem statement**
 New schema tables (`document_types`, `document_type_fields`, `extraction_training_examples`, `extraction_models`, `training_runs`) must exist before any service code can reference them.
@@ -323,6 +327,7 @@ New schema tables (`document_types`, `document_type_fields`, `extraction_trainin
 ---
 
 ### F2 — Amend Existing Tables Migration (Complexity: Simple)
+**Status:** ✅ Completed on 2026-02-23
 
 **Problem statement**
 `baseline_field_assignments` and `attachment_ocr_outputs` need new columns for spatial extraction data.
@@ -363,6 +368,7 @@ New schema tables (`document_types`, `document_type_fields`, `extraction_trainin
 ## 5) Preprocessor Container (P0 — blocks G1, H1)
 
 ### G1 — Preprocessor Container Setup (Complexity: Medium)
+**Status:** ✅ Completed on 2026-02-23
 
 **Problem statement**
 A dedicated OpenCV preprocessing service must exist before image-based PDF pages can be cleaned and enhanced for OCR.
@@ -402,6 +408,7 @@ A dedicated OpenCV preprocessing service must exist before image-based PDF pages
 ## 6) PyMuPDF PDF Ingestion (P0 — blocks H1)
 
 ### H1 — PyMuPDF Integration in OCR Pipeline (Complexity: Medium)
+**Status:** ✅ Completed on 2026-02-23
 
 **Problem statement**
 Digital PDFs have a text layer that should be extracted directly. Scanned PDFs must be rendered to images and routed through the preprocessor. The current pipeline treats all PDFs identically.
@@ -641,6 +648,7 @@ Reviewers need keyboard navigation to process fields without switching between m
 ## 10) LayoutLMv3 Fine-Tuning Pipeline (P1 — depends on I1, F1/F2)
 
 ### L1 — training-worker Container Setup (Complexity: Medium)
+**Status:** ✅ Completed on 2026-02-23
 
 **Problem statement**
 Fine-tuning must not block the inference service. A dedicated `training-worker` container handles training runs asynchronously.

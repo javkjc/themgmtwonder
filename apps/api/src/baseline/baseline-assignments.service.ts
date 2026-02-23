@@ -286,12 +286,38 @@ export class BaselineAssignmentsService {
       dto.suggestionConfidence !== null
         ? String(dto.suggestionConfidence)
         : (existing?.suggestionConfidence ?? null);
-    const suggestionAccepted =
-      dto.suggestionAccepted !== undefined
-        ? dto.suggestionAccepted
-        : (existing?.suggestionAccepted ?? null);
-    const modelVersionId =
-      dto.modelVersionId ?? existing?.modelVersionId ?? null;
+    const existingModelVersionId = existing?.modelVersionId ?? null;
+    const isClearedSuggestionPlaceholder =
+      existing?.assignedValue === null &&
+      existing?.suggestionAccepted === false &&
+      existingModelVersionId !== null;
+    let suggestionAccepted: boolean | null;
+    let modelVersionId: string | null;
+    if (dto.suggestionAccepted === true) {
+      suggestionAccepted = true;
+      modelVersionId = dto.modelVersionId ?? existingModelVersionId;
+    } else if (dto.suggestionAccepted === false) {
+      suggestionAccepted = false;
+      modelVersionId = dto.modelVersionId ?? existingModelVersionId;
+    } else if (dto.suggestionAccepted === null) {
+      suggestionAccepted = null;
+      modelVersionId = null;
+    } else if (dto.modelVersionId !== undefined) {
+      suggestionAccepted = existing?.suggestionAccepted ?? null;
+      modelVersionId = dto.modelVersionId;
+    } else if (isClearedSuggestionPlaceholder) {
+      suggestionAccepted = null;
+      modelVersionId = null;
+    } else if (
+      existingModelVersionId !== null ||
+      existing?.suggestionAccepted !== null
+    ) {
+      suggestionAccepted = false;
+      modelVersionId = existingModelVersionId;
+    } else {
+      suggestionAccepted = null;
+      modelVersionId = null;
+    }
 
     const [assignment] = await this.dbs.db
       .insert(baselineFieldAssignments)
@@ -391,6 +417,75 @@ export class BaselineAssignmentsService {
       throw new BadRequestException(
         'correctionReason must be at least 10 characters when provided',
       );
+    }
+
+    if (dto?.suggestionRejected) {
+      const suggestionConfidence =
+        dto.suggestionConfidence !== undefined &&
+        dto.suggestionConfidence !== null
+          ? String(dto.suggestionConfidence)
+          : (existing.suggestionConfidence ?? null);
+      const modelVersionId = dto.modelVersionId ?? existing.modelVersionId;
+
+      const [assignment] = await this.dbs.db
+        .insert(baselineFieldAssignments)
+        .values({
+          baselineId,
+          fieldKey,
+          assignedValue: null,
+          sourceSegmentId: null,
+          assignedBy: userId,
+          assignedAt: new Date(),
+          correctedFrom: existing.assignedValue ?? null,
+          correctionReason: trimmedReason ?? null,
+          validationValid: null,
+          validationError: null,
+          validationSuggestion: null,
+          suggestionConfidence,
+          suggestionAccepted: false,
+          modelVersionId: modelVersionId ?? null,
+        })
+        .onConflictDoUpdate({
+          target: [
+            baselineFieldAssignments.baselineId,
+            baselineFieldAssignments.fieldKey,
+          ],
+          set: {
+            assignedValue: null,
+            sourceSegmentId: null,
+            assignedBy: userId,
+            assignedAt: new Date(),
+            correctedFrom: existing.assignedValue ?? null,
+            correctionReason: trimmedReason ?? null,
+            validationValid: null,
+            validationError: null,
+            validationSuggestion: null,
+            suggestionConfidence,
+            suggestionAccepted: false,
+            modelVersionId: modelVersionId ?? null,
+          },
+        })
+        .returning();
+
+      await this.auditService.log({
+        userId,
+        action: 'baseline.assignment.upsert',
+        module: 'baseline',
+        resourceType: 'baseline_field',
+        resourceId: baselineId,
+        details: {
+          baselineId,
+          assignmentId: assignment.id,
+          fieldKey,
+          assignedBy: userId,
+          correctedFrom: existing.assignedValue ?? null,
+          correctionReason: trimmedReason ?? null,
+          suggestionAccepted: assignment.suggestionAccepted,
+          modelVersionId: assignment.modelVersionId,
+        },
+      });
+
+      return { deleted: true };
     }
 
     await this.dbs.db

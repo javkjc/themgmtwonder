@@ -13,9 +13,9 @@
   - src/attachments (upload/download/delete plus OCR trigger/list/apply via ApplyOcrDto)
   - src/ocr (OcrModule + OcrService that wraps worker calls, derived output storage, ownership checks)
   - drizzle/ (SQL migrations), drizzle.config.ts, api.Dockerfile
-- apps/ocr-worker (PaddleOCR FastAPI worker)
-  - main.py (GET /health + POST /ocr; accepts raw bytes, handles image/PDF conversion via pdf2image, limits PDF output to 10 pages, returns {text,meta} with engine/filename/mime info)
-  - requirements.txt (fastapi, uvicorn, paddleocr, paddlepaddle, Pillow, numpy, pdf2image, pdf2image deps)
+- apps/ocr-worker (PaddleOCR + PyMuPDF FastAPI worker)
+  - main.py (GET /health + POST /ocr; accepts raw bytes, routes PDF pages via PyMuPDF: text-layer pages use direct extraction and scanned pages render to images, call preprocessor, and fall back to unprocessed OCR when quality fails; returns {text, segments, meta} with extractionPath and preprocessingApplied)
+  - requirements.txt (fastapi, uvicorn, paddleocr, paddlepaddle, Pillow, numpy, PyMuPDF)
   - ocrw.Dockerfile (python:3.10-slim build, apt deps, uvicorn main:app --host 0.0.0.0 --port 4000)
 - apps/ml-service (FastAPI inference microservice for ML suggestions; internal-only)
   - main.py (FastAPI app; GET /health returns {status: "ok"})
@@ -94,6 +94,7 @@
   - Purpose: Visual OCR evidence review (attachment viewer + parsed field list + correction/history modals).
   - Uses: PdfDocumentViewer, ExtractedTextPool (apps/web/app/components/ocr/ExtractedTextPool.tsx for truncated confidence badges and hover highlight), FieldAssignmentPanel (apps/web/app/components/FieldAssignmentPanel.tsx renders baseline assignment inputs with validation status and read-only reason banners), TableCreationModal (apps/web/app/components/tables/TableCreationModal.tsx for table structure detection and creation), TableEditorPanel (apps/web/app/components/tables/TableEditorPanel.tsx for inline cell editing, mapping, validation), TableConfirmationModal (apps/web/app/components/tables/TableConfirmationModal.tsx confirm/read-only lock), TableListPanel (apps/web/app/components/tables/TableListPanel.tsx for list + switching), ValidationConfirmationModal (apps/web/app/components/ValidationConfirmationModal.tsx prompts user to confirm invalid values with optional suggested corrections), OcrFieldList, OcrFieldEditModal, OcrCorrectionHistoryModal, CorrectionReasonModal, NotificationToast, lib/api/ocr.ts helpers (fetchAttachmentOcrResults, createOcrCorrection, fetchOcrCorrectionHistory), lib/api/baselines.ts (upsertAssignment, deleteAssignment, fetchBaselineForAttachment, markBaselineReviewed, confirmBaseline), lib/api/tables.ts (createTable, fetchTablesForBaseline, fetchTable, updateCell, deleteRow, assignColumn, confirmTable), API_BASE_URL for downloads and document playback.
   - Mutations at: POST /ocr-results/:ocrResultId/corrections via lib/api/ocr.ts; POST /baselines/:baselineId/assign for field assignments with validation (requires confirmInvalid flag for invalid values); Task detail page links to this route when attachment OCR status is confirmed.
+  - Suggestion outcome tracking (v8.9 C2): review-page assignment handlers send consistent metadata so accept keeps `suggestionAccepted=true`, suggestion modify/clear set `suggestionAccepted=false` with preserved `modelVersionId`, and manual no-suggestion edits clear both to NULL.
 - ROUTE: /admin/fields
   - Path: apps/web/app/admin/fields/page.tsx
   - Purpose: Field library management (CRUD for extraction field definitions)
@@ -232,15 +233,34 @@
   - Guards/errors: JwtAuthGuard + AdminGuard class-wide; NotFoundException on unknown user; AuditService.log called after reset
 - Module: MlModule
   - Path: apps/api/src/ml/ml.module.ts
-  - Purpose: ML service client module for field suggestions, table detection, admin metrics, and training data export
+  - Purpose: ML service client module for field suggestions, table detection, admin metrics, training data export, and assisted training job orchestration
   - Imports: DbModule, AuditModule, CommonModule, BaselineModule
-  - Controllers: FieldSuggestionController, TableSuggestionController, MlMetricsController, MlTrainingDataController, MlModelsController
-  - Providers: MlService, FieldSuggestionService, TableSuggestionService, FieldAssignmentValidatorService, MlMetricsService, MlTrainingDataService, MlModelsService
+  - Controllers: FieldSuggestionController, TableSuggestionController, MlMetricsController, MlTrainingDataController, MlModelsController, MlTrainingJobsController
+  - Providers: MlService, FieldSuggestionService, TableSuggestionService, FieldAssignmentValidatorService, MlMetricsService, MlTrainingDataService, MlModelsService, MlTrainingJobsService, MlTrainingAutomationService
+- Service: MlTrainingAutomationService
+  - Path: apps/api/src/ml/ml-training-automation.service.ts
+  - Purpose: Polls qualified correction volume and enqueues global training jobs when threshold (>=1000) is reached
+  - Scheduling: Starts `setInterval` only when `ML_TRAINING_ASSISTED=true`; interval from `ML_TRAINING_POLL_MS` (default 60000)
+  - Trigger behavior: Uses A2-qualified corrections since last success; no cooldown/schedule logic; no auto-activation
+  - Audit: Emits `ml.training.auto.triggered` with qualified correction count and window bounds
+- Service: MlTrainingJobsService
+  - Path: apps/api/src/ml/ml-training-jobs.service.ts
+  - Purpose: CRUD for `ml_training_jobs` and singleton `ml_training_state`
+  - Methods: listJobs(), hasActiveJob(), enqueueVolumeJob(), completeJob(), failJob(), ensureStateRow()
+- Controller: MlTrainingJobsController
+  - Path: apps/api/src/ml/ml-training-jobs.controller.ts
+  - Base route: /admin/ml
+  - Purpose: Admin visibility and callbacks for assisted training jobs
+  - Endpoints:
+    - GET /admin/ml/training-jobs → MlTrainingJobsService.listJobs()
+    - POST /admin/ml/training-jobs/:id/complete → MlTrainingJobsService.completeJob()
+    - POST /admin/ml/training-jobs/:id/fail → MlTrainingJobsService.failJob()
+  - Guards/errors: JwtAuthGuard + CsrfGuard + AdminGuard
 - Service: MlService
   - Path: apps/api/src/ml/ml.service.ts
   - Purpose: HTTP client wrapper for ML service with timeouts, error handling, and graceful degradation
   - Methods:
-    - suggestFields(payload): Calls POST /ml/suggest-fields with 5s timeout
+    - suggestFields(payload): Calls POST /ml/suggest-fields with 5s timeout; payload can include selected `modelVersionId` and `filePath` (C1 A/B routing)
     - detectTables(payload): Calls POST /ml/detect-tables with 5s timeout
     - activateModel({version, filePath}): Calls POST /ml/models/activate with 5s timeout; returns { ok, activeVersion?, error? } (v8.9 B3)
   - Error handling: Normalizes errors to { ok: false, error: { code, message } }
@@ -324,7 +344,8 @@
     - generateSuggestions(baselineId, userId): Loads segments and active fields, calls MlService, persists suggestions with metadata, enforces rate limits
   - Rate limit: 10 requests per hour per user (counts audit_logs with action='ml.suggest.generate')
   - Suggestion logic: Only creates assignments for unassigned fields or fields without manual values (suggestionConfidence null)
-  - Model version: Creates or reuses ml_model_versions record for 'all-MiniLM-L6-v2' v1.0.0
+  - Model routing (v8.9 C1): Reads `ML_MODEL_AB_TEST` (default false), resolves active model A (`isActive=true`), resolves candidate model B (same `modelName`, most recent `isActive=false` by `trainedAt`), deterministically selects by baseline-id parity, and passes selected `modelVersionId` + `filePath` to ML service
+  - Audit details (v8.9 C1): `ml.suggest.generate` now includes `abGroup` (`A`/`B`), `modelVersionId`, and `modelVersion`
   - Graceful degradation: Returns empty suggestions if ML service fails
 - Controller: AttachmentsController
   - Path: apps/api/src/attachments/attachments.controller.ts
@@ -344,7 +365,7 @@
   - Storage/paths: AttachmentsService writes buffers to `uploads/` under process.cwd() with storedFilename UUID+ext; download streams stored file; upload size capped at 20MB; duplicate filenames (case-insensitive, trimmed) blocked per todo; file types restricted to PDF, PNG, JPG/JPEG, XLSX (Word docs explicitly rejected)
 - Service: OcrService (imported by AttachmentsController and the new OcrController)
   - Path: apps/api/src/ocr/ocr.service.ts
-  - Responsibilities: resolve OCR_WORKER_BASE_URL and POST /ocr to worker with attachment bytes (90s timeout); insert derived records into attachment_ocr_outputs with metadata/status; list outputs per attachment with ownership checks; fetch output+attachment for apply flows; stores extractedText string only (no raw OCR JSON persisted); confirmOcrResult transitions draft outputs to confirmed, prevents re-edits, and emits `OCR_CONFIRMED`
+  - Responsibilities: resolve OCR_WORKER_BASE_URL and POST /ocr to worker with attachment bytes (90s timeout); insert derived records into attachment_ocr_outputs with metadata/status plus mapped worker metadata columns (`extraction_path`, `preprocessing_applied`, `processing_duration_ms`); list outputs per attachment with ownership checks; fetch output+attachment for apply flows; stores extractedText string only (no raw OCR JSON persisted); confirmOcrResult transitions draft outputs to confirmed, prevents re-edits, and emits `OCR_CONFIRMED`
   - Lifecycle: worker completions now write `processing_status='completed'` and lifecycle `status='draft'`, `getCurrentConfirmedOcr()` surfaces the latest confirmed output (archived records excluded), and confirmOcrResult locks drafts into `status='confirmed'`
   - Redo guard: `checkRedoEligibility()` enforces Category A/B blocking, requires Category C outputs to be archived before redo, and drives `OCR_REDO_BLOCKED`/`OCR_REDO_ALLOWED` audit events ahead of worker reruns.
   - Derived data helpers:
@@ -400,8 +421,8 @@
     - POST /baselines/:baselineId/review ? markReviewed() ? BaselineManagementService.markReviewed()
     - POST /baselines/:baselineId/confirm ? confirmBaseline() ? BaselineManagementService.confirmBaseline()
     - GET /baselines/:baselineId/assignments ? listAssignments() ? BaselineAssignmentsService.listAssignments()
-    - POST /baselines/:baselineId/assign ? assignField() ? BaselineAssignmentsService.upsertAssignment() (accepts AssignBaselineFieldDto with ML metadata: suggestionAccepted, suggestionConfidence, modelVersionId, correctedFrom, suggestionContext)
-    - DELETE /baselines/:baselineId/assign/:fieldKey ? deleteAssignment() ? BaselineAssignmentsService.deleteAssignment() (accepts DeleteAssignmentDto with reason and ML rejection metadata: suggestionRejected, suggestionConfidence, modelVersionId)
+    - POST /baselines/:baselineId/assign ? assignField() ? BaselineAssignmentsService.upsertAssignment() (accepts AssignBaselineFieldDto with ML metadata: suggestionAccepted, suggestionConfidence, modelVersionId, correctedFrom, suggestionContext; C2 enforces accept=true preserve modelVersion, modify=false preserve modelVersion, manual=no-suggestion => NULL/NULL)
+    - DELETE /baselines/:baselineId/assign/:fieldKey ? deleteAssignment() ? BaselineAssignmentsService.deleteAssignment() (accepts DeleteAssignmentDto with reason and ML rejection metadata: suggestionRejected, suggestionConfidence, modelVersionId; suggestion clear path is tracked via assignment upsert with `assignedValue=NULL`, `suggestionAccepted=false`, preserved modelVersionId)
   - DTOs: apps/api/src/baseline/dto/{assign-baseline-field.dto.ts,delete-assignment.dto.ts}
   - Guards/errors: JwtAuthGuard; attachment ownership enforced; lifecycle transitions validated (400 on invalid state)
 - Controller: TableController
@@ -438,7 +459,7 @@
     - Validation rules: varchar (length), int (no decimals/commas), decimal (numeric with normalization), date (ISO 8601), currency (ISO 4217 3-letter codes)
 - Service: BaselineAssignmentsService
   - Path: apps/api/src/baseline/baseline-assignments.service.ts
-  - Responsibilities: enforce ownership + not-archived/not-utilized guards, validate via FieldAssignmentValidatorService, upsert/delete/list baseline_field_assignments (including suggestionContext), require correctionReason on overwrite/delete (only for reviewed baselines), emit baseline.assignment.upsert/delete audits with correctedFrom/correctionReason details
+  - Responsibilities: enforce ownership + not-archived/not-utilized guards, validate via FieldAssignmentValidatorService, upsert/delete/list baseline_field_assignments (including suggestionContext), require correctionReason on overwrite/delete (only for reviewed baselines), enforce C2 suggestion outcome integrity (`true` accept, `false` modify/clear, `NULL` manual no-suggestion), emit baseline.assignment.upsert/delete audits with correctedFrom/correctionReason details
   - Methods:
     - getAggregatedBaseline(attachmentId, userId): Returns baseline with assignments + segments in single payload (excludes archived baselines, returns latest non-archived)
     - upsertAssignment(baselineId, fieldKey, value, userId, confirmInvalid, correctionReason): Validates value, requires correctionReason for overwrite on reviewed baselines, stores correctedFrom/sourceSegmentId
@@ -460,19 +481,26 @@ Overlap logic:
   - user_settings — id (uuid pk), userId unique fk users.id, workingHours (json string), workingDays (json array), createdAt, updatedAt
   - categories — id (uuid pk), userId fk users.id, name, color, sortOrder, createdAt
   - attachments — id (uuid pk), todoId fk todos.id, userId fk users.id, filename, storedFilename, mimeType, size, createdAt
-  - attachment_ocr_outputs — id (uuid pk), attachmentId fk attachments.id cascade, extractedText (text), metadata (text, JSON string), processing_status (text), status (enum: draft/confirmed/archived), confirmed_at/confirmed_by (timestamp/uuid fk users), utilized_at/utilization_type/utilization_metadata (utilization tracking), archived_at/archived_by/archive_reason (archive tracking), createdAt; defined in apps/api/src/db/schema.ts
+  - attachment_ocr_outputs — id (uuid pk), attachmentId fk attachments.id cascade, extractedText (text), metadata (text, JSON string), processing_status (text), documentTypeId (uuid fk document_types.id nullable), extractionPath (text nullable), preprocessingApplied (jsonb nullable), overallConfidence (decimal(5,4) nullable), processingDurationMs (int nullable), status (enum: draft/confirmed/archived), confirmed_at/confirmed_by (timestamp/uuid fk users), utilized_at/utilization_type/utilization_metadata (utilization tracking), archived_at/archived_by/archive_reason (archive tracking), createdAt; defined in apps/api/src/db/schema.ts
   - extracted_text_segments — id (uuid pk), attachmentOcrOutputId fk attachment_ocr_outputs.id cascade, text (text), confidence (float), boundingBox (jsonb nullable), pageNumber (int nullable), createdAt; index on attachmentOcrOutputId
   - ocr_results — id (uuid pk), attachmentOcrOutputId fk attachment_ocr_outputs.id, fieldName, fieldType (text|number|date|currency, defaults to text), value, confidence (float), boundingBox (json nullable), pageNumber (int nullable), createdAt
   - ocr_corrections — id (uuid pk), ocrResultId fk ocr_results.id, correctedValue, correctionReason, correctedBy fk users.id, createdAt
   - field_library — id (uuid pk), fieldKey (text unique), label, characterType (enum: varchar/int/decimal/date/boolean), characterLimit (int nullable, varchar only), status (enum: active/hidden/archived), version (int, increments on characterType change), createdAt, updatedAt
   - extraction_baselines — id (uuid pk), attachmentId fk attachments.id (cascade), status (enum: draft/reviewed/confirmed/archived), confirmedAt, confirmedBy fk users.id, utilizedAt, utilizationType (enum: record_created/workflow_committed/data_exported nullable), archivedAt, archivedBy fk users.id, createdAt
-  - baseline_field_assignments — id (uuid pk), baselineId fk extraction_baselines.id (cascade), fieldKey fk field_library.fieldKey, assignedValue, sourceSegmentId (uuid fk extracted_text_segments.id, set null), correctedFrom, correctionReason, assignedBy fk users.id, assignedAt, suggestionConfidence (decimal 3,2), suggestionAccepted (boolean nullable), modelVersionId (uuid fk ml_model_versions.id nullable), suggestionContext (jsonb nullable); unique(baselineId, fieldKey)
+  - document_types — id (uuid pk), name (varchar(255) unique), description (text nullable), createdAt
+  - document_type_fields — id (uuid pk), documentTypeId fk document_types.id (cascade), fieldKey fk field_library.fieldKey, required (boolean default false), zoneHint (text nullable), sortOrder (int default 0), createdAt; unique(documentTypeId, fieldKey)
+  - extraction_training_examples — id (uuid pk), baselineId fk extraction_baselines.id (cascade), fieldKey fk field_library.fieldKey, assignedValue (text), zone (text nullable), boundingBox (jsonb nullable), extractionMethod (text), confidence (decimal(5,4) nullable), isSynthetic (boolean default false), createdAt
+  - extraction_models — id (uuid pk), modelName (text), architecture (text), version (text), filePath (text), documentTypeId (uuid fk document_types.id nullable, set null), metrics (jsonb), trainedAt (timestamp), isActive (boolean default false), createdAt; unique(modelName, version)
+  - training_runs — id (uuid pk), status (text: queued/running/succeeded/failed), triggerType (text), windowStart/windowEnd (timestamp), qualifiedExampleCount (int), candidateVersion (text), modelPath (text), metrics (jsonb), startedAt (timestamp), finishedAt (timestamp nullable), errorMessage (text nullable)
+  - baseline_field_assignments — id (uuid pk), baselineId fk extraction_baselines.id (cascade), fieldKey fk field_library.fieldKey, assignedValue, sourceSegmentId (uuid fk extracted_text_segments.id, set null), correctedFrom, correctionReason, assignedBy fk users.id, assignedAt, confidenceScore (decimal(5,4) nullable), zone (text nullable), boundingBox (jsonb nullable), extractionMethod (text nullable), llmReviewed (boolean nullable), llmReasoning (text nullable), suggestionConfidence (decimal 3,2), suggestionAccepted (boolean nullable), modelVersionId (uuid fk ml_model_versions.id nullable), suggestionContext (jsonb nullable); unique(baselineId, fieldKey)
   - baseline_tables — id (uuid pk), baselineId fk extraction_baselines.id (cascade), tableIndex, tableLabel, status (draft/confirmed), rowCount, columnCount, confirmedAt, confirmedBy, createdAt, updatedAt
   - baseline_table_cells — id (uuid pk), tableId fk baseline_tables.id (cascade), rowIndex, columnIndex, cellValue, validationStatus, errorText, correctionFrom, correctionReason, updatedAt
   - baseline_table_column_mappings — id (uuid pk), tableId fk baseline_tables.id (cascade), columnIndex, fieldKey fk field_library.fieldKey
   - remarks — id (uuid pk), todoId fk todos.id, userId fk users.id, content (text max 150 chars), createdAt
   - audit_logs — id (uuid pk), userId fk users.id nullable, action, resourceType, resourceId, details json string, ipAddress, userAgent, createdAt
   - system_settings — id int pk default 1, minDurationMin, maxDurationMin, defaultDurationMin, createdAt, updatedAt
+  - ml_training_jobs — id (uuid pk), status (text: queued/running/succeeded/failed), triggerType, windowStart, windowEnd, qualifiedCorrectionCount, candidateVersion, modelPath, metrics (jsonb), startedAt, finishedAt nullable, errorMessage nullable
+  - ml_training_state — singleton: id int pk default 1, lastSuccessAssignedAt, lastAttemptAt, lastAttemptThrough
   - ml_model_versions — id (uuid pk), modelName (text), version (text), filePath (text), metrics (jsonb), trainedAt (timestamp), isActive (boolean), createdBy (text); unique(modelName, version)
   - ml_table_suggestions — (id (uuid pk), attachmentId fk attachments.id cascade, regionId uuid, rowCount int, columnCount int, confidence numeric(5,4), boundingBox jsonb, cellMapping jsonb, suggestedLabel text, status (enum: pending/ignored/converted), suggestedAt, ignoredAt, convertedAt); index on (attachmentId, status)
 
@@ -494,3 +522,42 @@ Overlap logic:
 - [VERIFIED] C1: Ignore-Forever Filtering + Threshold Bump
 - [VERIFIED] D1: Admin Metrics API
 - [VERIFIED] D2: Admin Metrics UI
+
+## 6) L1 Training-Worker Container
+- Container: `training-worker` (docker-compose service)
+  - Build: `apps/training-worker/training-worker.Dockerfile`
+  - Network: `backend` only
+  - Port: internal `7000` via `expose` (no host port mapping)
+  - Model volume: `ml_models` mounted at `/app/models`
+  - Source mount: `./apps/training-worker:/app`
+- Files:
+  - `apps/training-worker/main.py` - FastAPI app and async training dispatcher
+  - `apps/training-worker/finetune.py` - L1 LayoutLMv3 fine-tune stub that writes checkpoint artifacts
+  - `apps/training-worker/generate_synthetic.py` - L1 synthetic generator stub
+  - `apps/training-worker/requirements.txt` - runtime deps (`fastapi`, `uvicorn`, `transformers`, `datasets`, `torch`, `Pillow`, `numpy`)
+  - `apps/training-worker/training-worker.Dockerfile` - Python 3.11 container startup on port 7000
+- Endpoints:
+  - `GET /health` -> `{ "status": "ok" }`
+  - `POST /train`
+    - Request body: `{jobId, exportPath, syntheticPath?, syntheticRatio?, candidateVersion, epochs?, batchSize?, learningRate?}`
+    - Behavior: spawns background thread, runs `finetune.py` logic, writes checkpoint to `/app/models/<candidateVersion>/`, then calls API callback `/admin/ml/training-jobs/:id/complete` or `/admin/ml/training-jobs/:id/fail`
+
+## 7) G1 Preprocessor Container
+- Container: `preprocessor` (docker-compose service)
+  - Build: `apps/preprocessor/preprocessor.Dockerfile`
+  - Network: `backend` only
+  - Port: internal `6000` via `expose` (no host port mapping)
+- Files:
+  - `apps/preprocessor/main.py` - FastAPI app; POST /preprocess and GET /health
+  - `apps/preprocessor/preprocessor.py` - OpenCV pipeline steps (orientation, deskew, shadow removal, CLAHE contrast, quality gate)
+  - `apps/preprocessor/requirements.txt` - runtime deps (`fastapi`, `uvicorn`, `opencv-python-headless`, `Pillow`, `numpy`, `python-multipart`)
+  - `apps/preprocessor/preprocessor.Dockerfile` - python:3.11-slim, apt libglib2.0-0/libgl1, uvicorn on port 6000
+- Endpoints:
+  - `GET /health` -> `{ "status": "ok" }`
+  - `POST /preprocess`
+    - Request: multipart `file` (raw image bytes) + optional `steps` JSON field (array of `["orientation","deskew","shadow","contrast"]`; defaults to all)
+    - Response (success): `{ ok: true, imageBase64: string, preprocessingApplied: { steps: string[], deskewAngle: float, qualityScore: float } }`
+    - Response (failure): `{ ok: false, reason: "quality_too_low", qualityScore: float }`
+    - Pipeline order: orientation → deskew → quality gate → shadow → contrast (quality gate runs after geometric steps but before normalisation; shadow removal/CLAHE inflate Laplacian variance on blurry images so gate must precede them; Laplacian variance threshold default 50, overridable via QUALITY_THRESHOLD env)
+- Environment:
+  - `QUALITY_THRESHOLD` (optional, default `50.0`) — Laplacian variance threshold for quality gate
