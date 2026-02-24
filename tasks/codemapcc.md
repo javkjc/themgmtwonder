@@ -24,6 +24,7 @@
   - requirements.txt (fastapi, uvicorn, transformers, torch, numpy, Pillow)
   - ml.Dockerfile (python:3.14-slim build, installs requirements.txt, copies main.py/model.py/model_registry.py/table_detect.py, preloads microsoft/layoutlmv3-base, uvicorn main:app on port 5000; internal only — no host port mapping)
 - docker-compose.yml (to wire ml-service container on backend network)
+- docker-compose.yml (services include Ollama model serving on backend network; named volume `ollama_models`)
 - Shared/utils: apps/web/app/lib/{api.ts,categories.ts,constants.ts,dateTime.ts,durationSettings.ts}; hooks as client data layer
 - db/schema: apps/api/src/db/schema.ts (Drizzle models)
 
@@ -522,6 +523,7 @@ Overlap logic:
   - extraction_training_examples — id (uuid pk), baselineId fk extraction_baselines.id (cascade), fieldKey fk field_library.fieldKey, assignedValue (text), zone (text nullable), boundingBox (jsonb nullable), extractionMethod (text), confidence (decimal(5,4) nullable), isSynthetic (boolean default false), createdAt
   - extraction_models — id (uuid pk), modelName (text), architecture (text), version (text), filePath (text), documentTypeId (uuid fk document_types.id nullable, set null), metrics (jsonb), trainedAt (timestamp), isActive (boolean default false), createdAt; unique(modelName, version)
   - training_runs — id (uuid pk), status (text: queued/running/succeeded/failed), triggerType (text), windowStart/windowEnd (timestamp), qualifiedExampleCount (int), candidateVersion (text), modelPath (text), metrics (jsonb), startedAt (timestamp), finishedAt (timestamp nullable), errorMessage (text nullable)
+  - baseline_embeddings — id (uuid pk), baselineId fk extraction_baselines.id, documentTypeId fk document_types.id, embedding vector(768), serializedText text, confirmedFields jsonb, isSynthetic boolean default false, goldStandard boolean default false, qualityGate text, createdAt timestamp; ivfflat index on embedding (vector_cosine_ops, lists=100)
   - baseline_field_assignments — id (uuid pk), baselineId fk extraction_baselines.id (cascade), fieldKey fk field_library.fieldKey, assignedValue, sourceSegmentId (uuid fk extracted_text_segments.id, set null), correctedFrom, correctionReason, assignedBy fk users.id, assignedAt, confidenceScore (decimal(5,4) nullable), zone (text nullable), boundingBox (jsonb nullable), extractionMethod (text nullable), llmReviewed (boolean nullable), llmReasoning (text nullable), suggestionConfidence (decimal 3,2), suggestionAccepted (boolean nullable), modelVersionId (uuid fk ml_model_versions.id nullable), suggestionContext (jsonb nullable); unique(baselineId, fieldKey)
   - baseline_tables — id (uuid pk), baselineId fk extraction_baselines.id (cascade), tableIndex, tableLabel, status (draft/confirmed), rowCount, columnCount, confirmedAt, confirmedBy, createdAt, updatedAt
   - baseline_table_cells — id (uuid pk), tableId fk baseline_tables.id (cascade), rowIndex, columnIndex, cellValue, validationStatus, errorText, correctionFrom, correctionReason, updatedAt
@@ -591,3 +593,10 @@ Overlap logic:
     - Pipeline order: orientation → deskew → quality gate → shadow → contrast (quality gate runs after geometric steps but before normalisation; shadow removal/CLAHE inflate Laplacian variance on blurry images so gate must precede them; Laplacian variance threshold default 50, overridable via QUALITY_THRESHOLD env)
 - Environment:
   - `QUALITY_THRESHOLD` (optional, default `50.0`) — Laplacian variance threshold for quality gate
+
+## 8) H2 Ollama Container
+- Service: `ollama` — `ollama/ollama:latest`
+- Network: `backend` only
+- Port: `11434` (Ollama API, container-internal on backend network)
+- Volume: `ollama_models:/root/.ollama`
+- Startup behavior: serves Ollama and pulls `qwen2.5:1.5b` and `nomic-embed-text` on container start

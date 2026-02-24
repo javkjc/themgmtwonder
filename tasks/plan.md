@@ -1,7 +1,7 @@
 ﻿## v8.9 (remainder) + v8.10 — Optimal Extraction Accuracy
 
-**Date:** 2026-02-22
-**Scope:** Complete the remaining v8.9 tasks (C1/C2/D3/D4/D5/E1/E2), then build the full v8.10 Optimal Extraction Accuracy milestone: PyMuPDF PDF ingestion, OpenCV preprocessor container, LayoutLMv3 replacing all-MiniLM-L6-v2, zone classifier, per-field confidence tiers, verification UI, LayoutLMv3 fine-tuning pipeline, and spatially-annotated training data capture.
+**Date:** 2026-02-22 (pivot recorded 2026-02-24)
+**Scope:** Complete the remaining v8.9 tasks (C1/C2/D3/D5/E1/E2), then build the full v8.10 Optimal Extraction Accuracy milestone: PyMuPDF PDF ingestion, OpenCV preprocessor container, Qwen 2.5 1.5B via Ollama replacing LayoutLMv3, zone classifier, pgvector RAG few-shot injection, per-field confidence tiers, verification UI, embed-on-confirm learning loop, and seed corpus. Fine-tuning pipeline (D4/L2/L3/L5) dropped per SLM+RAG pivot (ADR 2026-02-24).
 **Principles:** Minimal localized changes. Backend authoritative. Preserve auditability-first. No background automation. No implicit execution. Derived data is never authoritative.
 
 ---
@@ -21,14 +21,13 @@
 **Out of Scope:**
 - [NO] Auto-activation of new models without explicit admin action.
 - [NO] Background cron jobs or schedulers (assisted automation in D3/D4 uses volume-only polling, already designed).
-- [NO] Deploying LayoutLMv3 to production before fine-tuning pipeline is complete (inference container can be updated incrementally).
 - [NO] UI changes outside the review page and `/admin/ml` routes.
 - [NO] Changes to PaddleOCR worker character recognition internals.
 
 **STOP Events (Halt Execution & Request Clarification):**
 - **STOP - Schema Missing:** If `baseline_field_assignments` is missing `confidence_score`, `zone`, `bounding_box`, `extraction_method`, `llm_reviewed`, or `llm_reasoning` after migration runs.
 - **STOP - Schema Missing:** If `attachment_ocr_outputs` is missing `document_type_id`, `extraction_path`, `preprocessing_applied`, `overall_confidence`, or `processing_duration_ms` after migration runs.
-- **STOP - New Dependency Unapproved:** If any new Python package is needed beyond `transformers`, `datasets`, `torch`, `PyMuPDF`, `opencv-python-headless` — stop and request approval.
+- **STOP - New Dependency Unapproved:** If any new Python package is needed beyond `torch`, `PyMuPDF`, `opencv-python-headless`, `httpx` — stop and request approval. Approved additions for the SLM+RAG pivot: `httpx` (Ollama HTTP client), `pgvector` npm package (Drizzle type support for vector columns).
 - **STOP - Missing Codemap Entry:** Any new file path must be added to `tasks/codemapcc.md` before implementation.
 - **STOP - Ambiguous Confidence Tier:** If `ML_TIER_AUTOCONFIRM` or `ML_TIER_VERIFY` env values are not set, use defaults (0.90 / 0.70) and log a warning — do not halt.
 - **STOP - Background Automation:** If asked to add cron/scheduler for any purpose outside the D3 volume-polling service already designed.
@@ -164,98 +163,49 @@ We need a global (system-wide) trigger that runs training automatically when eno
 
 ---
 
-### D4 — Assisted Training Run + Auto-Register Candidate (Complexity: Complex)
-
-**Problem statement**
-When a job is queued, the ML service must run training, register the candidate model, and report back — all without blocking inference.
-
-**Files / Locations**
-- ML Service: `apps/ml-service/main.py` — add `POST /ml/training/run`.
-- ML Service: `apps/ml-service/training/finetune.py` — invoked by service (v8.10 LayoutLMv3 version, built in Part 2).
-- Backend: `apps/api/src/ml/ml-training-jobs.controller.ts` — `POST /admin/ml/training-jobs/:id/complete` and `/fail` callbacks.
-- Backend: `apps/api/src/ml/ml-models.service.ts` — auto-register candidate on completion.
-- Docs: `tasks/codemapcc.md`.
-
-**Implementation plan**
-1. `MlTrainingAutomationService` picks up queued jobs and calls `POST /ml/training/run` with `{jobId, startDate, endDate, minCorrections, candidateVersion, includeZones: true, includeBoundingBoxes: true}`.
-2. **Stratified training buffer** — ML service training data export must apply a 70/30 split before fine-tuning begins:
-   - **70% (700 rows):** Most recent qualified corrections ordered by `correctedAt DESC` — captures new patterns.
-   - **30% (300 rows):** Randomly sampled historic high-confidence anchors from `extraction_training_examples` where `confidence >= 0.90`, sampled across all unique `documentTypeId` values to ensure diversity — prevents catastrophic forgetting on underrepresented document types or vendors.
-   - If fewer than 300 historic high-confidence examples exist, sample whatever is available (do not pad with recent corrections — leave the buffer smaller rather than corrupt the diversity guarantee).
-   - Log `{recentCount, historicCount, uniqueDocTypes}` to the training job record.
-3. ML service runs fine-tuning in a background thread on the stratified dataset; stores model at `/app/models/<candidateVersion>/`; writes `metrics.json`.
-4. On success: ML service calls `POST /admin/ml/training-jobs/:id/complete` with `{metrics, modelPath, candidateVersion}`.
-5. API updates `ml_training_jobs` to `succeeded`; auto-registers model in `ml_model_versions` with `isActive=false`.
-6. On failure: ML service calls `POST /admin/ml/training-jobs/:id/fail` with error; API marks job `failed`.
-7. Emit audit logs `ml.training.run.started` (include `{recentCount, historicCount, uniqueDocTypes}`), `ml.training.run.succeeded`, `ml.training.run.failed`.
-
-**Checkpoint D4 — Verification**
-- Manual: Trigger a training run → `ml_training_jobs` transitions queued → running → succeeded.
-- Manual: Training job log shows `recentCount ≈ 700`, `historicCount ≈ 300`, `uniqueDocTypes ≥ 1`.
-- Manual: If only 50 historic high-confidence examples exist → `historicCount = 50`, training proceeds with smaller buffer — no error.
-- DB: Candidate model registered in `ml_model_versions` with `isActive=false`.
-- Logs: All three audit events present for a complete run; `ml.training.run.started` includes buffer composition.
-
-**Estimated effort:** 4–5 hours
-**Complexity flag:** Complex
+### D4 — Assisted Training Run + Auto-Register Candidate
+**Status:** 🗑️ DELETED — dropped by SLM+RAG pivot (ADR 2026-02-24). This task depended on L2 (LayoutLMv3 fine-tuning script), which has been dropped. The RAG learning loop (M1) replaces this capability without requiring a GPU training pipeline. Do not implement.
 
 ---
 
-### D5 — Activation Gates (Offline + Online + Golden Set) (Complexity: Medium)
+### D5 — Activation Gates (Online Only) (Complexity: Medium)
+**Revised by:** ADR 2026-02-24 — offline gate and Golden Set gate dropped (no fine-tuning pipeline). Online gate retained as the sole activation signal.
 
 **Problem statement**
-Admin activation of a candidate model must be gated by measurable quality thresholds to prevent regressions. Critically, the candidate must also not regress on the static Golden Set — a fixed, manually curated dataset that never changes and is not influenced by production confirmations.
+Admin activation of a candidate model must be gated by a measurable online quality threshold. Activation remains explicit admin action only — no auto-activation.
 
 **Rules**
-1. Offline gate: candidate must beat active by **≥2% accuracy delta** on recent test set.
-2. Online gate: candidate must beat active by **≥5% acceptance delta** and have **≥1000 suggestions**.
-3. **Golden Set gate:** candidate accuracy on the Golden Set must be **≥ active model accuracy on the Golden Set**. Regression on the Golden Set auto-kills the build regardless of offline/online gate results.
-4. Activation remains explicit admin action only.
-5. If Golden Set is empty (not yet populated), gate is skipped with a warning — do not block activation before Golden Set exists.
-
-**Golden Set — Structure and Governance**
-- Stored in `golden_set/` directory in the repository root — JSON files, one per document type.
-- Each file: `[{documentType, fields: [{fieldKey, expectedValue, fieldType}], sourceDescription}]`.
-- **Air-gapped from production UI** — Golden Set entries are never created through the confirm flow. Admin-only PR required to add or modify entries.
-- **Version-controlled** — every addition is a PR with commit message stating what schema/edge case it covers.
-- Read by the D5 gate at benchmark time; never written to by any automated process.
-- Target size: 200–500 entries covering 100% of supported document types and known edge cases.
+1. **Online gate:** candidate must beat active by **≥5% acceptance delta** and have **≥1000 suggestions** served.
+2. Activation remains explicit admin action only.
 
 **Files / Locations**
-- New: `golden_set/` directory in repo root — JSON files per document type.
-- New: `golden_set/README.md` — governance rules (air gap, PR-only updates, entry format).
-- Backend: `apps/api/src/ml/ml-performance.service.ts` — compute gate status per candidate including Golden Set benchmark.
-- Backend: `apps/api/src/ml/ml-models.service.ts` — block `activateModel()` if any gate not met.
-- Frontend: `apps/web/app/admin/ml/performance/page.tsx` — disable Activate button with tooltip showing which gate failed.
+- Backend: `apps/api/src/ml/ml-performance.service.ts` — compute online gate status per candidate.
+- Backend: `apps/api/src/ml/ml-models.service.ts` — block `activateModel()` if online gate not met.
+- Frontend: `apps/web/app/admin/ml/performance/page.tsx` — disable Activate button with tooltip showing gate status.
 - Docs: `tasks/codemapcc.md`.
 
 **Implementation plan**
-1. Create `golden_set/` directory with `README.md` documenting governance rules and entry format.
-2. `MlPerformanceService.getGateStatus(candidateVersionId)`:
-   - Load offline metrics from `ml_model_versions.metrics`.
-   - Load online acceptance from `baseline_field_assignments`.
-   - **Golden Set benchmark**: load Golden Set JSON files from `golden_set/`; run candidate model inference on each entry; compute accuracy (exact match on `expectedValue` after DSPP cleaning); compare to active model accuracy on same set.
-   - Return `{offlineGateMet, onlineGateMet, goldenSetGateMet, goldenSetCandidateAccuracy, goldenSetActiveAccuracy, offlineDelta, onlineDelta, onlineSuggestionCount, goldenSetEmpty}`.
-3. `MlModelsService.activateModel()`: call `getGateStatus`; if any gate not met (and `goldenSetEmpty=false` for Golden Set gate), throw `BadRequestException` with gate failure details.
-4. Frontend: render Activate button disabled with tooltip showing which specific gate failed and the delta values.
-5. Update `tasks/codemapcc.md`.
+1. `MlPerformanceService.getGateStatus(candidateVersionId)`:
+   - Load online acceptance delta from `baseline_field_assignments` (candidate vs active acceptance rate).
+   - Load suggestion count for candidate.
+   - Return `{onlineGateMet, onlineDelta, onlineSuggestionCount}`.
+2. `MlModelsService.activateModel()`: call `getGateStatus`; if `onlineGateMet=false`, throw `BadRequestException` with delta and count details.
+3. Frontend: render Activate button disabled with tooltip showing acceptance delta and suggestion count vs required thresholds.
+4. Update `tasks/codemapcc.md`.
 
 **Checkpoint D5 — Verification**
-- Manual: Register a candidate with accuracy delta <2% → Activate button disabled; tooltip shows offline gate failure.
-- Manual: Candidate with <1000 suggestions → Activate button disabled; tooltip shows online gate failure.
-- Manual: Candidate regressing on Golden Set (lower accuracy than active) → Activate button disabled; tooltip shows Golden Set gate failure with accuracy delta.
-- Manual: Golden Set directory empty → gate skipped; warning logged; other gates still enforced.
-- Manual: Candidate meeting all three gates → Activate button enabled; activation succeeds.
+- Manual: Candidate with <1000 suggestions → Activate button disabled; tooltip shows online gate failure with count.
+- Manual: Candidate with ≥1000 suggestions but <5% acceptance delta → Activate button disabled; tooltip shows delta.
+- Manual: Candidate meeting online gate → Activate button enabled; activation succeeds.
 
-**Estimated effort:** 3–4 hours
+**Estimated effort:** 2–3 hours
 **Complexity flag:** Medium
 
 **D6 — Immutable Baseline Policy (Governance — no code task)**
 Once a baseline reaches `status = 'confirmed'`, it is permanently locked. This is already enforced by the existing state machine (`confirmBaseline()` is a one-way transactional transition; `correctionReason` is required to overwrite assignments on reviewed baselines). The following rules are policy — document them and enforce them operationally:
 - New model versions **never** re-process confirmed baselines. Suggestions only run on `draft` baselines.
 - If backfilling improved extraction is required (e.g. after a significant model upgrade), create a new `draft` baseline on the same attachment and run suggestions. The original confirmed baseline remains the human-verified ground truth.
-- Confirmed baselines are the training signal source (`D3/D4`); they must never be overwritten by machine-generated data. Human correction is the only valid mutation path.
-- The Golden Set (`D5`) is the ultimate expression of this principle — it is the air-gapped, human-curated, immutable reference that no automated process can touch.
+- Confirmed baselines are the RAG corpus source (M1); they must never be overwritten by machine-generated data. Human correction is the only valid mutation path.
 
 ---
 
@@ -488,45 +438,173 @@ Digital PDFs have a text layer that should be extracted directly. Scanned PDFs m
 
 ---
 
-## 7) LayoutLMv3 Model (P0 — blocks I1, J1)
-
-### I1 — LayoutLMv3 Model Loading in ml-worker (Complexity: Complex)
-**Status:** ✅ Completed on 2026-02-23
+### H2 — Ollama Service in docker-compose (Complexity: Simple)
+**Status:** ✅ Completed on 2026-02-24
 
 **Problem statement**
-The ml-worker currently loads SentenceTransformer for text-only embeddings. LayoutLMv3 requires spatial (bbox) + token inputs and produces per-token field classification logits.
+The Qwen 2.5 1.5B model and nomic-embed-text embedding model must be available as a local service. Ollama manages model serving on the backend network.
 
 **Files / Locations**
-- Amend: `apps/ml-service/requirements.txt` — remove `sentence-transformers`; add `transformers>=4.35`, `datasets`.
-- Amend: `apps/ml-service/model.py` — replace SentenceTransformer loading with LayoutLMv3 processor + model.
-- Amend: `apps/ml-service/model_registry.py` — update warm-up to use token+bbox input.
-- Amend: `apps/ml-service/ml.Dockerfile` — ensure `transformers` and `torch` install correctly (torch already present).
-- Amend: `apps/ml-service/main.py` — update `POST /ml/suggest-fields` request/response contract.
-- Docs: `tasks/codemapcc.md` — update ML service section.
+- Amend: `docker-compose.yml` — add `ollama` service, backend network only, port 11434, named model volume.
+- Docs: `tasks/codemapcc.md` — document Ollama service and volume.
+
+**Model pull strategy:** Pull on first start via entrypoint script. Smaller image; requires internet on first run only. Entrypoint pulls `qwen2.5:1.5b` and `nomic-embed-text` before starting the Ollama server. Both models cached in the named volume across restarts.
 
 **Implementation plan**
-1. In `model.py`: replace `SentenceTransformer(model_path)` with:
-   ```python
-   from transformers import LayoutLMv3Processor, LayoutLMv3ForTokenClassification
-   processor = LayoutLMv3Processor.from_pretrained(model_path)
-   model = LayoutLMv3ForTokenClassification.from_pretrained(model_path)
+1. Add to `docker-compose.yml`:
+   ```yaml
+   ollama:
+     image: ollama/ollama:latest
+     networks:
+       - backend
+     volumes:
+       - ollama_models:/root/.ollama
+     entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 5 && ollama pull qwen2.5:1.5b && ollama pull nomic-embed-text && wait"]
+     restart: unless-stopped
    ```
-2. In `model_registry.py`: update warm-up to create a dummy `{input_ids, attention_mask, bbox, pixel_values}` tensor batch; run forward pass; confirm output shape.
-3. Update `POST /ml/suggest-fields` request to accept:
-   - `pageWidth: int`, `pageHeight: int` (for bbox normalisation to 0–1000).
-   - `pageType: 'digital' | 'scanned'`.
-   - Existing fields: `segments[{id, text, boundingBox}]`, `fields[{fieldKey, label}]`.
-4. Inference: normalise bboxes to 0–1000 range; tokenise with `processor`; run model; argmax over field classes per token; aggregate to segment-level predictions.
-5. Response per suggestion: add `zone` (text), `boundingBox` (normalised jsonb), `extractionMethod: 'layoutlmv3'`.
-6. Graceful degradation: if model not loaded (startup race), return `{ok: false, error: {code: "model_not_ready"}}`.
-7. Update `tasks/codemapcc.md`.
+2. Add `ollama_models:` to top-level `volumes:` in `docker-compose.yml`.
+3. Update `tasks/codemapcc.md` with Ollama service, port 11434, and volume name.
 
-**Note:** For the initial deployment, the base `microsoft/layoutlmv3-base` checkpoint from HuggingFace Hub is used. Fine-tuned checkpoints will replace it after K2 (training-worker) completes.
+**Checkpoint H2 — Verification**
+- Manual: `docker compose up ollama` starts; `GET http://ollama:11434/api/tags` from within the backend network returns JSON listing both models.
+- Manual: `curl http://localhost:11434/api/tags` from host (if port exposed for dev) shows models.
+- Logs: entrypoint logs show both model pulls completing.
+- Regression: Other containers unaffected.
+
+**Estimated effort:** 1 hour
+**Complexity flag:** Simple
+
+---
+
+### F3 — pgvector Migration + baseline_embeddings Table (Complexity: Simple)
+**Status:** ✅ Completed on 2026-02-24
+**Note:** Moved from v8.11 (PART 3) to v8.10 (PART 2) by ADR 2026-02-24 pivot. Required for RAG retrieval (M2) in this milestone.
+
+**Problem statement**
+RAG retrieval requires a vector store. pgvector on the existing Postgres instance is sufficient — no new database needed. This migration adds the extension and the baseline_embeddings table.
+
+**Files / Locations**
+- Amend: `docker-compose.yml` — change Postgres image to `pgvector/pgvector:pg16`.
+- Amend: `apps/api/src/db/schema.ts` — add `baseline_embeddings` table definition with vector column type.
+- Amend: `apps/api/drizzle/` — generate and run migration SQL.
+- Docs: `tasks/codemapcc.md` — document new table and index.
+
+**Migration SQL:**
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE baseline_embeddings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  baseline_id UUID REFERENCES extraction_baselines(id),
+  document_type_id UUID REFERENCES document_types(id),
+  embedding vector(768),
+  serialized_text TEXT NOT NULL,
+  confirmed_fields JSONB NOT NULL,
+  is_synthetic BOOLEAN DEFAULT FALSE,
+  gold_standard BOOLEAN DEFAULT FALSE,
+  quality_gate TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX ON baseline_embeddings
+  USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+```
+
+**Implementation plan**
+1. Update `docker-compose.yml`: change `image: postgres:16` to `image: pgvector/pgvector:pg16`.
+2. Add `baseline_embeddings` table to `apps/api/src/db/schema.ts` using the `pgvector` npm package for the vector column type (or raw SQL cast).
+3. Generate and run migration: `docker compose exec api npx drizzle-kit migrate`.
+4. Update `tasks/codemapcc.md`.
+
+**Checkpoint F3 — Verification**
+- DB: `CREATE EXTENSION vector` succeeds; `SELECT * FROM pg_extension WHERE extname = 'vector'` returns one row.
+- DB: `\d baseline_embeddings` shows all columns including `embedding vector(768)`.
+- DB: `\d+ baseline_embeddings` shows ivfflat index on `embedding`.
+- Build: API builds without errors after schema.ts addition.
+
+**Estimated effort:** 1–2 hours
+**Complexity flag:** Simple
+
+---
+
+## 7) SLM Inference via Ollama (P0 — blocks I1, J1)
+
+### I1 — Ollama/RAG Orchestrator in ml-service (Complexity: Complex)
+**Status:** 🔄 REOPEN — REWRITE (previously marked Completed as LayoutLMv3; reopened by ADR 2026-02-24 pivot to Qwen 2.5 1.5B via Ollama)
+
+**Problem statement**
+Replace LayoutLMv3 with a locally-running Qwen 2.5 1.5B model (via Ollama) guided by RAG few-shot context pulled from pgvector-confirmed baselines. The deterministic post-processing pipeline (I2–I6) is preserved unchanged.
+
+**Files / Locations**
+- Amend: `apps/ml-service/model.py` — remove LayoutLMv3Processor + LayoutLMv3ForTokenClassification; replace with Ollama HTTP client (httpx).
+- Amend: `apps/ml-service/model_registry.py` — replace warm-up tensor pass with `GET http://ollama:11434/api/tags` health-check ping.
+- Amend: `apps/ml-service/main.py` — update `POST /ml/suggest-fields` request/response contract.
+- New: `apps/ml-service/prompt_builder.py` — Phase 2 serialization (zone-tagged text blocks) + Ollama prompt assembly.
+- Amend: `apps/ml-service/requirements.txt` — remove `sentence-transformers`, `transformers`, `datasets`; add `httpx`.
+- Docs: `tasks/codemapcc.md` — update ML service section.
+
+**New POST /ml/suggest-fields request shape:**
+```json
+{
+  "baselineId": "uuid",
+  "documentTypeId": "uuid | null",
+  "segments": [{ "id": "", "text": "", "boundingBox": {}, "pageNumber": 0, "confidence": 0.0 }],
+  "fields": [{ "fieldKey": "", "label": "", "fieldType": "" }],
+  "pageWidth": 0,
+  "pageHeight": 0,
+  "pageType": "digital | scanned",
+  "ragExamples": [{ "serializedText": "", "confirmedFields": {} }]
+}
+```
+
+**New POST /ml/suggest-fields response shape (per suggestion):**
+```json
+{
+  "fieldKey": "invoice_total",
+  "suggestedValue": "1200.00",
+  "zone": "footer",
+  "boundingBox": {},
+  "extractionMethod": "qwen-1.5b-rag",
+  "rawOcrConfidence": 0.97,
+  "ragAgreement": 1.0,
+  "modelConfidence": null
+}
+```
+
+**Implementation plan**
+1. **prompt_builder.py — Phase 2 serialization:** Given sorted, zone-tagged segments (from I2), produce structured text:
+   - Merge fragments sharing the same zone and y-band (±5px).
+   - Table rows: sort cells left-to-right within same y-band.
+   - Multi-column: left column first (x < pageWidth/2), then right.
+   - Output format:
+     ```
+     [ZONE: header]
+     Invoice Date: 15/02/2026
+
+     [ZONE: line_items]
+     1 x Widget A  $50.00
+
+     [ZONE: footer]
+     Total: $187.00
+     ```
+2. **prompt_builder.py — prompt assembly:** Combine system prompt + field schema + RAG examples + serialized document into Ollama payload. Every field in the JSON schema passed to `format` MUST be nullable (`type: ["string", "null"]`, `default: null`) — this is the only escape valve when a field is absent from the document.
+3. **model.py:** Replace LayoutLMv3 client with `httpx` POST to `http://ollama:11434/api/generate`:
+   ```python
+   {"model": "qwen2.5:1.5b", "prompt": "...", "format": {<json_schema>}, "stream": False}
+   ```
+4. **model_registry.py:** Replace tensor warm-up with `GET http://ollama:11434/api/tags`; confirm `qwen2.5:1.5b` appears in response.
+5. **Compute ragAgreement:** After I4 normalization (done in the API, not here), compare each field's `suggestedValue` (post-normalization) against the `confirmedFields` from each RAG example for the same `fieldKey`. `ragAgreement = 1.0` if any example matches exactly; `0.0` otherwise. Return raw value; API computes agreement after normalization.
+   - In ml-service: return `ragAgreement` as the pre-normalization string comparison against RAG `confirmedFields`. Mark clearly in response that final ragAgreement is re-evaluated by API post-normalization.
+6. **boundingBox per suggestion:** Use the highest-confidence OCR segment whose text contributed to the extracted value; null if not determinable.
+7. **Graceful degradation:** If Ollama is not reachable → `{ok: false, error: {code: "model_not_ready"}}`. If pgvector RAG unavailable (ragExamples empty): log warning, proceed with zero-shot (empty ragExamples array). Never crash.
+8. Update `tasks/codemapcc.md`.
 
 **Checkpoint I1 — Verification**
-- Manual: `POST /ml/suggest-fields` with a segment that has a valid `boundingBox` returns suggestions that include `zone` and `boundingBox` fields.
-- Manual: `POST /ml/models/activate` with the base LayoutLMv3 checkpoint path succeeds and logs `ml.model.activate.success`.
-- Logs: warm-up in `model_registry.py` completes without error on container start.
+- Manual: `POST /ml/suggest-fields` returns suggestions with `extractionMethod: 'qwen-1.5b-rag'`, `zone`, and `rawOcrConfidence` per field.
+- Manual: With `ragExamples` populated, suggestions for fields present in examples show `ragAgreement: 1.0` when values match.
+- Manual: Ollama container stopped → endpoint returns `{ok: false, error: {code: "model_not_ready"}}` immediately (no hang).
+- Manual: Empty `ragExamples` → zero-shot extraction still returns suggestions (may be null for missing fields).
+- Logs: model_registry.py warm-up pings Ollama `/api/tags` on container start; logs success or warns if qwen model not yet pulled.
 - Regression: `POST /ml/detect-tables` still functions (uses separate heuristic path, unaffected).
 
 **Estimated effort:** 4–5 hours
@@ -600,43 +678,52 @@ Assigning a zone label (header/addresses/line_items/instructions/footer) to each
    - `confidence_score` — post-validation value (may be 0.0 if type mismatch).
    - `zone` from suggestion zone.
    - `bounding_box` from suggestion boundingBox.
-   - `extraction_method` = `'layoutlmv3'`.
+   - `extraction_method` = `'qwen-1.5b-rag'`.
    - `llm_reasoning` — structured inference trace object (the "debug sidecar"); persisted on every suggestion so any extraction failure can be diagnosed without re-running inference:
      ```json
      {
        "rawOcrConfidence": 0.98,
-       "modelConfidence": 0.65,
+       "modelConfidence": null,
        "zone": "line_items",
        "dsppApplied": true,
        "dsppTransforms": ["S→5", "O→0"],
        "validationOverride": null,
-       "ragAdjustment": null,
-       "ragRetrievedCount": null,
-       "documentTypeScoped": null,
+       "ragAgreement": 0.0,
+       "ragRetrievedCount": 3,
+       "documentTypeScoped": true,
        "fieldSchemaVersion": 1
      }
      ```
      - `rawOcrConfidence`: OCR-reported confidence from the segment (null for text-layer segments where PaddleOCR is not used).
-     - `modelConfidence`: LayoutLMv3 confidence before any post-processing.
+     - `modelConfidence`: always null — dropped (logprob extraction from grammar-constrained JSON unreliable on 1.5B model); kept for schema compatibility only.
      - `dsppApplied`: true if any DSPP substitution was made.
      - `dsppTransforms`: list of substitutions applied (e.g. `["S→5"]`); empty array if none.
      - `validationOverride`: `'type_mismatch'` if type validation zeroed confidence; null otherwise.
-     - `ragAdjustment`, `ragRetrievedCount`, `documentTypeScoped`, `fieldSchemaVersion`: populated by M4 RAG pass; null until v8.11.
+     - `ragAgreement`: binary 1.0 or 0.0 — whether any RAG example matched this field's normalized value exactly.
+     - `ragRetrievedCount`: number of RAG examples retrieved (0 if pgvector unavailable or cold start).
+     - `documentTypeScoped`: true if RAG query was filtered by `document_type_id`; false if unscoped fallback used.
 6. **Conflicting field detection** (layout injection guard): after aggregating all suggestions, scan for any `fieldKey` that appears in more than one zone with confidence ≥ 0.50. If found, set `validationOverride = 'conflicting_zones'` and zero confidence on all but the highest-confidence occurrence. Log the conflict. This catches invisible-text injection (white-on-white text in a different zone claiming the same field) — LayoutLMv3's multimodal image branch provides natural resilience but does not guarantee immunity. The conflict flag surfaces these cases for human review rather than silently auto-confirming a potentially fraudulent value.
-7. **Weighted FinalScore computation** (`field-type-validator.ts`): after all validation passes, compute a composite `finalScore` from the three available signals. Store as `confidence_score`; log component breakdown in `llm_reasoning`:
+7. **Confidence computation** (`field-type-validator.ts`): apply hard overrides first, then fallback formula for non-math fields.
+
+   **Hard overrides (applied first, non-negotiable — set by I6 after this step):**
+   - I6 math reconciliation PASSES → `confidence_score = 1.0` (auto_confirm tier)
+   - I6 math reconciliation FAILS → `confidence_score = 0.0` (flag tier)
+   - Type validation fails (I3 step 4) → `confidence_score = 0.0` (flag tier)
+   - Conflicting zones (I3 step 6) → `confidence_score = 0.0` on all but highest (flag tier)
+   - Conflicting pages (I5) → `confidence_score = 0.0` on all occurrences (flag tier)
+
+   **Fallback formula (non-math fields passing all hard overrides):**
    ```
    finalScore = clamp(
-     0.7 * modelConfidence
-     + 0.2 * ragAgreement          // 0.0 if RAG disabled or no results
-     + 0.1 * (rawOcrConfidence ?? modelConfidence),
+     0.65 * ragAgreement + 0.35 * (rawOcrConfidence ?? 0.0),
      0.0, 1.0
    )
    ```
-   Post-computation penalties applied in order (cumulative, floor 0.0):
-   - `dsppApplied = true` → `-0.10` (value was fixed, not clean; human should verify)
-   - `validationOverride = 'type_mismatch'` → force `0.0` (hard override; formula irrelevant)
-   - `validationOverride = 'conflicting_zones'` → force `0.0` on losing occurrence
-   Note: RAG weight (`0.2`) is intentionally conservative at launch. As corpus grows and RAG recall is validated, consider raising to `0.3` with corresponding reduction in model weight. Do not change weights without re-validating auto_confirm threshold.
+   Post-computation penalty: if `dsppApplied = true` → subtract 0.10 (floor 0.0).
+
+   **ragAgreement definition (binary):** After I4 normalization, compare the field's `normalizedValue` against `confirmedFields[fieldKey]` from each RAG example (post-normalization, exact match). `ragAgreement = 1.0` if any example matches; `0.0` otherwise. No embedding calls needed for this comparison.
+
+   **Consequence:** Non-math fields without RAG context max out at `0.35 * rawOcrConfidence ≈ 0.33` → always flag tier. Non-math fields with RAG agreement reach up to `0.65 + 0.35 = 1.0` but typically `0.65 + 0.30 ≈ 0.95` → auto_confirm. This is the correct posture: human review required until the RAG corpus is populated.
 8. Update `tasks/codemapcc.md`.
 
 **Checkpoint I3 — Verification**
@@ -903,92 +990,21 @@ Reviewers need keyboard navigation to process fields without switching between m
 
 ---
 
-## 10) LayoutLMv3 Fine-Tuning Pipeline (P1 — depends on I1, F1/F2)
+## 10) Training Pipeline (SLM+RAG pivot — fine-tuning dropped)
 
 ### L1 — training-worker Container Setup (Complexity: Medium)
 **Status:** ✅ Completed on 2026-02-23
-
-**Problem statement**
-Fine-tuning must not block the inference service. A dedicated `training-worker` container handles training runs asynchronously.
-
-**Files / Locations**
-- New: `apps/training-worker/main.py` — FastAPI app with `POST /train` and `GET /health`.
-- New: `apps/training-worker/finetune.py` — LayoutLMv3 fine-tuning script.
-- New: `apps/training-worker/generate_synthetic.py` — spatially-aware synthetic data generator.
-- New: `apps/training-worker/requirements.txt` — `fastapi`, `uvicorn`, `transformers`, `datasets`, `torch`, `Pillow`, `numpy`.
-- New: `apps/training-worker/training-worker.Dockerfile` — python:3.11 (GPU-compatible), backend network only, port 7000.
-- Amend: `docker-compose.yml` — add `training-worker` service; mount model volume; no host port mapping.
-- Docs: `tasks/codemapcc.md`.
-
-**Implementation plan**
-1. `GET /health` returns `{status: "ok"}`.
-2. `POST /train` accepts `{jobId, exportPath, syntheticPath?, syntheticRatio?, candidateVersion, epochs?, batchSize?, learningRate?}`.
-3. Runs `finetune.py` in a background thread; calls API callback on success/failure.
-4. Model volume mounted at `/app/models/`; checkpoints written to `/app/models/<candidateVersion>/`.
-5. Update `tasks/codemapcc.md`.
-
-**Checkpoint L1 — Verification**
-- Manual: `docker compose up training-worker` starts; `GET /health` returns `{status:"ok"}`.
-- Manual: `POST /train` with a minimal export JSON triggers the script and writes a checkpoint directory.
-
-**Estimated effort:** 2–3 hours
-**Complexity flag:** Medium
+**Note:** 🗑️ TO BE DECOMMISSIONED — this container will be removed after M1–M4 are wired in. The RAG learning loop (M1) replaces the fine-tuning pipeline. Container remains running until M4 is verified; then remove from `docker-compose.yml`. Do not add new work to this container.
 
 ---
 
-### L2 — LayoutLMv3 Fine-Tuning Script (Complexity: Complex)
-
-**Problem statement**
-The fine-tuning script must load spatially-annotated training examples, apply augmentation, and produce a versioned LayoutLMv3 checkpoint with metrics.
-
-**Files / Locations**
-- New: `apps/training-worker/finetune.py`.
-- Docs: `tasks/codemapcc.md`.
-
-**Implementation plan**
-1. Load `extraction_training_examples` export JSON (rows: `{tokens, bboxes, zoneLabel, fieldKey, isSynthetic}`).
-2. Optional: accept `--synthetic` file and `--synthetic-ratio` (default 0.2, max 0.3); mix synthetic into training set only.
-3. Split 80/10/10 with fixed seed; validation/test exclude `isSynthetic=true` rows.
-4. Data augmentation on training set (image-level if rendered page images available, otherwise token-level bbox jitter ±5px).
-5. Fine-tune `LayoutLMv3ForTokenClassification` with HuggingFace `Trainer`; field labels mapped to class indices.
-6. Evaluate on test set: per-field F1, zone accuracy, overall accuracy.
-7. Save checkpoint to `/app/models/<candidateVersion>/`; write `metrics.json` alongside.
-8. Print metrics to stdout; exit 0 on success.
-
-**Checkpoint L2 — Verification**
-- Manual: `python finetune.py --input /data/export.json --output /app/models/layoutlmv3-v2026-02-22 --epochs 1 --batch-size 4` exits 0; `/app/models/layoutlmv3-v2026-02-22/` contains `config.json` and `metrics.json`.
-- Output: console prints per-field F1 and overall accuracy.
-- Synthetic rows excluded from validation/test metrics.
-
-**Estimated effort:** 4–5 hours
-**Complexity flag:** Complex
+### L2 — LayoutLMv3 Fine-Tuning Script
+**Status:** 🗑️ DELETED — dropped by SLM+RAG pivot (ADR 2026-02-24). No fine-tuning pipeline required. Do not implement.
 
 ---
 
-### L3 — Spatially-Annotated Training Data Export (Complexity: Medium)
-
-**Problem statement**
-The existing training data export (`GET /admin/ml/training-data`) outputs text pairs only. LayoutLMv3 training requires bounding boxes and zone labels.
-
-**Files / Locations**
-- Amend: `apps/api/src/ml/ml-training-data.service.ts` — add spatial export query.
-- Amend: `apps/api/src/ml/ml-training-data.controller.ts` — add `GET /admin/ml/training-data/spatial`.
-- Docs: `tasks/codemapcc.md`.
-
-**Implementation plan**
-1. New endpoint `GET /admin/ml/training-data/spatial` (admin-only, same auth guards).
-2. Query `extraction_training_examples` (from F1 schema) joined to `baseline_field_assignments` and `extracted_text_segments`.
-3. Return per row: `{tokens: string[], bboxes: [[x,y,w,h]], zoneLabel, fieldKey, isSynthetic}` with bboxes normalised 0–1000.
-4. Apply same A2 quality filters as the existing text export.
-5. Update `tasks/codemapcc.md`.
-
-**Checkpoint L3 — Verification**
-- Manual: `GET /admin/ml/training-data/spatial?startDate=...&endDate=...` returns JSON with `tokens`, `bboxes`, `zoneLabel` per row.
-- DB: row count matches `extraction_training_examples` within date range after quality filters.
-- Regression: Existing `GET /admin/ml/training-data` (text pairs) unaffected.
-
-**Estimated effort:** 2 hours
-**Complexity flag:** Medium
+### L3 — Spatially-Annotated Training Data Export
+**Status:** 🗑️ DELETED — dropped by SLM+RAG pivot (ADR 2026-02-24). No fine-tuning consumer exists. Do not implement.
 
 ---
 
@@ -1018,91 +1034,269 @@ Training examples must be captured automatically when field assignments are save
 
 ---
 
-### L5 — Synthetic Data Generator (Spatial) (Complexity: Medium)
+### L5 — Synthetic Data Generator (Spatial)
+**Status:** 🗑️ DELETED — dropped by SLM+RAG pivot (ADR 2026-02-24). Cold-start is handled by the seed corpus (L6) instead. Do not implement.
+
+---
+
+## 11) RAG Learning Loop (P1 — depends on I1, F3)
+
+### M1 — Embed-on-Confirm (Complexity: Medium)
 
 **Problem statement**
-When real corrections are insufficient, synthetic spatially-annotated training examples must be available to bootstrap LayoutLMv3.
+After a baseline is confirmed, qualifying extractions must be embedded and stored in `baseline_embeddings` so future similar documents can retrieve them as few-shot examples. This is the learning loop replacing fine-tuning.
 
 **Files / Locations**
-- New: `apps/training-worker/generate_synthetic.py`.
-- New: `apps/training-worker/templates.json` — field-key → label variants, value patterns, bbox grid positions, zone hints.
+- Amend: `apps/api/src/baseline/baseline.service.ts` (or `confirmBaseline()` entrypoint) — hook into confirmation event.
+- New: `apps/api/src/ml/rag-embedding.service.ts` — quality gate check + embed + store logic.
 - Docs: `tasks/codemapcc.md`.
 
+**Quality gate (must ALL pass to embed):**
+- **Condition A:** I6 math reconciliation = 'pass' on the confirmed baseline (`mathReconciliation: 'pass'` in any field's `llm_reasoning`), OR
+- **Condition B:** All field assignments have `suggestionAccepted = true` (human made zero modifications — model got everything right), OR
+- **Condition C:** `gold_standard = true` on the baseline (admin-set flag, future use).
+
+**Volume cap:** Max 5 embeddings per `document_type_id` in `baseline_embeddings`. When cap is reached, replace the oldest non-gold entry. Gold Standard entries (`gold_standard = true`) are never evicted.
+
 **Implementation plan**
-1. Templates define per field: `fieldKey`, `labelVariants[]`, `valuePatterns[]`, `zonHint`, `bboxGrid` (typical position range as fraction of page).
-2. Generate `count` samples deterministically with `--seed`; each row: `{tokens, bboxes: [[x,y,w,h]], zoneLabel, fieldKey, assignedValue, isSynthetic: true}`.
-3. Bboxes synthesised from `bboxGrid` ranges with small random jitter (seeded).
-4. OCR-style noise transforms on tokens (0/O, 1/l, punctuation drop) using stdlib only.
-5. Output JSON array; never produce train/test splits — raw samples only.
-6. CLI: `python generate_synthetic.py --templates templates.json --output synthetic.json --count 200 --seed 42`.
+1. `RagEmbeddingService.embedOnConfirm(baselineId)`:
+   - Load baseline + all field assignments.
+   - Run quality gate check (Condition A or B or C).
+   - If gate fails: log `rag.embed.skipped` with reason; return.
+   - Serialize the confirmed fields using the Phase 2 serialization from `prompt_builder.py` (call ML service `POST /ml/serialize` or reproduce in TS — prefer calling ML service to avoid duplicating serialization logic).
+   - Call Ollama `POST http://ollama:11434/api/embeddings` with `{model: "nomic-embed-text", prompt: serializedText}` → get 768-dim vector.
+   - Determine `quality_gate`: `'math_pass'` | `'zero_corrections'` | `'admin'`.
+   - Check volume cap: count existing embeddings for `document_type_id`; if ≥5, find oldest non-gold row and delete it.
+   - Insert into `baseline_embeddings`.
+   - Emit audit log `rag.embed.stored` with `baselineId`, `documentTypeId`, `qualityGate`.
+2. Call `embedOnConfirm()` from the baseline confirmation handler (after `status = 'confirmed'` is committed; non-blocking — do not let embedding failure prevent confirmation).
+3. Update `tasks/codemapcc.md`.
 
-**Checkpoint L5 — Verification**
-- Manual: `python generate_synthetic.py --count 200 --seed 42` outputs JSON array of length 200 with `isSynthetic=true` on each row.
-- Output: each row has `tokens`, `bboxes`, `zoneLabel`, `fieldKey`.
+**Checkpoint M1 — Verification**
+- Manual: Confirm a baseline where I6 math reconciliation passed → `baseline_embeddings` gains a new row; `quality_gate = 'math_pass'`.
+- Manual: Confirm a baseline where all suggestions were accepted unchanged → row inserted; `quality_gate = 'zero_corrections'`.
+- Manual: Confirm a baseline where user modified some fields and math did not reconcile → no row inserted; `rag.embed.skipped` log entry present.
+- Manual: Confirm 6 qualifying baselines for same `document_type_id` → only 5 rows remain; oldest non-gold evicted.
+- Manual: Ollama embedding endpoint unreachable → confirmation still succeeds; embedding error logged; no exception propagated.
 
-**Estimated effort:** 2 hours
+**Estimated effort:** 2–3 hours
 **Complexity flag:** Medium
 
 ---
 
-## 11) Execution Order (Do Not Skip)
+### M2 — RAG Retrieval Service (Complexity: Simple)
 
-**Critical path:**
-1. **F1** New tables migration — no dependencies.
-2. **F2** Amend existing tables — depends on F1 (same migration run is fine; run after F1 definitions added).
-3. **G1** Preprocessor container — no dependencies (parallel with F1/F2).
-4. **H1** PyMuPDF OCR routing — depends on G1 (preprocessor must be running).
-5. **C1** A/B model selection — no schema dependencies (uses existing `ml_model_versions`).
-6. **C2** Suggestion outcome tracking — no schema dependencies.
-7. **I1** LayoutLMv3 model loading — depends on F1/F2 (uses `extraction_models` table); can start parallel with H1.
-8. **I2** Zone classifier — depends on I1.
-9. **I3** Updated field suggestion service — depends on I1/I2 and F2 (new columns must exist).
-10. **L4** Populate extraction_training_examples — depends on F1/I3 (table and new columns must exist).
-11. **J1** Confidence tier logic + bulk confirm — depends on I3.
-12. **K1** Verification UI layout — depends on J1.
-13. **K2** Keyboard flow — depends on K1.
-14. **D3** Volume trigger + job state — depends on C1/C2 (qualified correction counting uses same filters).
-15. **E1** Performance API — depends on C2 and existing B1.
-16. **E2** Performance UI — depends on E1 and D5.
-17. **D4** Assisted training run — depends on D3 and L1/L2.
-18. **D5** Activation gates — depends on E1 and D4.
-19. **L1** training-worker container — no external dependencies (parallel with K1).
-20. **L3** Spatial training data export — depends on L4 (examples table must have rows to export).
-21. **L5** Synthetic data generator — depends on L1 (same container).
-22. **L2** LayoutLMv3 fine-tuning script — depends on L1/L3/L5.
+**Problem statement**
+Before calling the SLM, retrieve the top-3 most similar confirmed baselines from pgvector filtered by `document_type_id`. These become the few-shot examples in the prompt.
 
-**Parallel opportunities:**
-- F1/F2 and G1 can run in parallel.
-- C1/C2 can run in parallel with I1/I2.
-- L1 can run in parallel with K1/K2.
-- D3 can run in parallel with I1/I2/I3 once C1/C2 are done.
-- E1 can run in parallel with D3/D4 once C2 is done.
+**Files / Locations**
+- New: `apps/api/src/ml/rag-retrieval.service.ts` — embed query text, query pgvector, return top-3.
+- Docs: `tasks/codemapcc.md`.
+
+**Implementation plan**
+1. `RagRetrievalService.retrieve(serializedText, documentTypeId)`:
+   - Call Ollama `POST /api/embeddings` with `{model: "nomic-embed-text", prompt: serializedText}` to get query vector.
+   - Query `baseline_embeddings` using pgvector cosine distance:
+     ```sql
+     SELECT serialized_text, confirmed_fields
+     FROM baseline_embeddings
+     WHERE document_type_id = $1
+     ORDER BY embedding <=> $2
+     LIMIT 3;
+     ```
+   - Return `[{serializedText, confirmedFields}]`.
+2. **Graceful degradation:** If pgvector extension unavailable or query fails → log warning `rag.retrieval.unavailable`; return empty array `[]`. Never throw. Caller receives empty RAG context and proceeds zero-shot.
+3. If `documentTypeId` is null: skip the `WHERE document_type_id = $1` filter (unscoped fallback).
+4. Update `tasks/codemapcc.md`.
+
+**Checkpoint M2 — Verification**
+- Manual: With embeddings in `baseline_embeddings`, call retrieval → returns up to 3 results ordered by similarity.
+- Manual: `documentTypeId` filter applied — results only include entries for that type.
+- Manual: pgvector extension disabled → returns empty array; log entry `rag.retrieval.unavailable` present; no exception.
+- Manual: Empty `baseline_embeddings` table → returns empty array; no error.
+
+**Estimated effort:** 1–2 hours
+**Complexity flag:** Simple
 
 ---
 
-## 12) Definition of Done
+### M3 — Prompt Builder Serialization Endpoint (Complexity: Simple)
+
+**Problem statement**
+The API needs a way to serialize OCR segments into Phase 2 format (zone-tagged text blocks) without duplicating the logic from `prompt_builder.py` in TypeScript. Expose a lightweight serialization endpoint on the ML service.
+
+**Files / Locations**
+- New: `apps/ml-service/prompt_builder.py` — already specified in I1 rewrite; this task formalizes the `POST /ml/serialize` endpoint exposing the serializer.
+- Amend: `apps/ml-service/main.py` — add `POST /ml/serialize` endpoint.
+- Docs: `tasks/codemapcc.md`.
+
+**Note:** `prompt_builder.py` is built as part of I1. M3 adds only the HTTP endpoint wrapper so the API can call serialization without duplicating the logic.
+
+**Implementation plan**
+1. `POST /ml/serialize` request:
+   ```json
+   {
+     "segments": [{ "text": "", "boundingBox": {}, "pageNumber": 0, "zone": "" }],
+     "pageWidth": 0
+   }
+   ```
+2. Response: `{ "serializedText": "[ZONE: header]\nInvoice Date: ...\n\n[ZONE: footer]\nTotal: ..." }`.
+3. Calls the same `serialize_segments()` function used internally by the `POST /ml/suggest-fields` handler — no duplication.
+4. Update `tasks/codemapcc.md`.
+
+**Checkpoint M3 — Verification**
+- Manual: `POST /ml/serialize` with zone-tagged segments returns a structured text block with `[ZONE: ...]` headers.
+- Manual: Multi-column segments sorted left-before-right in output.
+- Manual: Segments within same y-band merged into single line.
+
+**Estimated effort:** 1 hour
+**Complexity flag:** Simple
+
+---
+
+### M4 — Wire M1–M3 into field-suggestion.service.ts (Complexity: Medium)
+
+**Problem statement**
+The field suggestion entry point must call M2 (RAG retrieval) before the ML service call, pass `ragExamples` in the request, and trigger M1 (embed-on-confirm) after confirmation. This task wires all RAG components into the existing suggestion flow.
+
+**Files / Locations**
+- Amend: `apps/api/src/ml/field-suggestion.service.ts` — add M2 call before ML request; pass `ragExamples`.
+- Amend: `apps/api/src/baseline/baseline.service.ts` — call M1 after `confirmBaseline()`.
+- Docs: `tasks/codemapcc.md`.
+
+**Implementation plan**
+1. In `field-suggestion.service.ts`, before calling `POST /ml/suggest-fields`:
+   - Call `RagRetrievalService.retrieve(serializedText, documentTypeId)` → `ragExamples[]`.
+   - Serialize current document: call `POST /ml/serialize` with current segments → `serializedText`.
+   - Include `ragExamples` in the ML service request body.
+   - Log `rag.retrieval.used` with `retrievedCount` and `documentTypeId`.
+2. In `baseline.service.ts`, after `status = 'confirmed'` is persisted:
+   - Call `RagEmbeddingService.embedOnConfirm(baselineId)` in a non-blocking fire-and-forget (do not await; wrap in try/catch; log any error).
+3. Ensure `ragAgreement` in `llm_reasoning` is re-evaluated post-I4 normalization using the retrieved examples.
+4. Update `tasks/codemapcc.md`.
+
+**Checkpoint M4 — Verification**
+- Manual: Generate suggestions on a baseline with a confirmed similar baseline in `baseline_embeddings` → `llm_reasoning.ragRetrievedCount > 0`; `ragAgreement = 1.0` for matching fields.
+- Manual: No matching embeddings → `ragRetrievedCount = 0`; `ragAgreement = 0.0`; suggestion still returned.
+- Manual: Confirm a qualifying baseline → `baseline_embeddings` row appears (M1 called).
+- Regression: Suggestions still generated when pgvector unavailable (M2 returns empty; zero-shot path).
+
+**Estimated effort:** 2–3 hours
+**Complexity flag:** Medium
+
+---
+
+### L6 — Seed Corpus (Complexity: Simple)
+
+**Problem statement**
+RAG retrieval returns no results until confirmed baselines accumulate. A seed corpus of synthetic gold-standard examples provides immediate few-shot context for all supported document types before any real baselines are confirmed.
+
+**Files / Locations**
+- New: `seed_corpus/` directory in repo root — one JSON file per document type.
+- New: `apps/api/src/scripts/seed-corpus.ts` — deploy script; reads `seed_corpus/`, embeds, inserts into `baseline_embeddings`.
+- Docs: `tasks/codemapcc.md`.
+
+**Seed file format:**
+```json
+{
+  "documentType": "invoice",
+  "serializedText": "[ZONE: header]\nInvoice Date: 15/01/2026\n\n[ZONE: footer]\nTotal: $1200.00",
+  "confirmedFields": {
+    "invoice_total": "1200.00",
+    "invoice_date": "2026-01-15"
+  },
+  "isSynthetic": true,
+  "goldStandard": true
+}
+```
+
+**Implementation plan**
+1. Create `seed_corpus/` directory with at least one JSON file per supported document type (target: 5–10 files). Serialized text must use Phase 2 format (zone-tagged blocks). Use realistic but fictional values.
+2. `seed-corpus.ts` deploy script:
+   - Read all JSON files from `seed_corpus/`.
+   - For each: call Ollama `POST /api/embeddings` with `nomic-embed-text` + `serializedText` → embedding vector.
+   - Upsert into `baseline_embeddings` with `is_synthetic=true`, `gold_standard=true`, `quality_gate='admin'`.
+   - Idempotent: upsert by `documentType + is_synthetic` (use ON CONFLICT or check-before-insert).
+   - Gold Standard entries are never evicted by the volume cap (M1 logic already handles this).
+3. Script is run manually on first deploy: `docker compose exec api npx ts-node src/scripts/seed-corpus.ts`.
+4. Document run instructions in `tasks/codemapcc.md`.
+
+**Dependency:** L6 depends on I1 (prompt_builder.py must exist for Phase 2 serialized text format) and F3 (baseline_embeddings table must exist).
+
+**Checkpoint L6 — Verification**
+- Manual: Run seed script → `baseline_embeddings` contains one row per seed file; all have `gold_standard=true`, `is_synthetic=true`.
+- Manual: Run script again → idempotent; no duplicate rows inserted.
+- Manual: Generate suggestions on a new baseline of a seeded document type → `ragRetrievedCount > 0`; few-shot examples from seed corpus used.
+
+**Estimated effort:** 1–2 hours
+**Complexity flag:** Simple
+
+---
+
+## 12) Execution Order (Do Not Skip)
+
+**Critical path:**
+1. **F1** New tables migration — no dependencies.
+2. **F2** Amend existing tables — depends on F1.
+3. **F3** pgvector migration + baseline_embeddings — no external dependencies (parallel with F1/F2; must complete before M1/M2).
+4. **G1** Preprocessor container — no dependencies (parallel with F1/F2/F3).
+5. **H1** PyMuPDF OCR routing — depends on G1 (preprocessor must be running).
+6. **H2** Ollama service in docker-compose — no dependencies (parallel with G1); must be running before I1 warm-up.
+7. **C1** A/B model selection — no schema dependencies.
+8. **C2** Suggestion outcome tracking — no schema dependencies.
+9. **I1** Ollama/RAG orchestrator rewrite — depends on H2 (Ollama must be running) and F3 (baseline_embeddings must exist for M2 integration); can start after H2 and F3.
+10. **I2** Zone classifier — depends on I1 (already built; verify unchanged).
+11. **I3** Updated field suggestion service — depends on I1/I2 and F2 (new columns must exist); update confidence formula per ADR §4.
+12. **M3** Prompt builder serialization endpoint — depends on I1 (prompt_builder.py built in I1 rewrite).
+13. **M2** RAG retrieval service — depends on F3 (baseline_embeddings table) and H2 (Ollama for embedding).
+14. **M4** Wire M1–M3 into field-suggestion.service.ts — depends on M2, M3, I1.
+15. **M1** Embed-on-confirm — depends on F3, H2, M3 (serialization endpoint).
+16. **L4** Populate extraction_training_examples — depends on F1/I3.
+17. **L6** Seed corpus — depends on I1 (prompt_builder.py serializer exists) and F3 (baseline_embeddings table exists) and H2 (Ollama embed model available).
+18. **J1** Confidence tier logic + bulk confirm — depends on I3.
+19. **K1** Verification UI layout — depends on J1.
+20. **K2** Keyboard flow — depends on K1.
+21. **D3** Volume trigger + job state — depends on C1/C2.
+22. **D5** Activation gates (online only) — depends on E1.
+23. **E1** Performance API — depends on C2 and existing B1.
+24. **E2** Performance UI — depends on E1 and D5.
+
+**Parallel opportunities:**
+- F1/F2/F3 and G1/H2 can all run in parallel.
+- C1/C2 can run in parallel with the F/G/H infrastructure tasks.
+- M2 and M3 can run in parallel once F3 and I1 are done.
+- L6 can run in parallel with J1/K1/K2 once I1, F3, H2 are done.
+- D3 can run in parallel with I1/I2/I3 once C1/C2 are done.
+- E1 can run in parallel with D3 once C2 is done.
+
+---
+
+## 13) Definition of Done
 
 **Feature Completeness:**
 - A/B routing deterministically assigns models and persists outcomes (C1/C2).
-- Performance dashboard shows per-model metrics, gate status, and recommendation (E1/E2).
-- Activation is gated by offline (≥2% accuracy delta) and online (≥5% acceptance delta, ≥1000 suggestions) thresholds (D5).
-- Assisted auto-learning runs globally on volume-only trigger (≥1000 qualified corrections) and auto-registers candidate models (D3/D4).
+- Performance dashboard shows per-model metrics, online gate status, and recommendation (E1/E2).
+- Activation is gated by online gate only (≥5% acceptance delta, ≥1000 suggestions) (D5).
+- Volume trigger runs globally (≥1000 qualified corrections) and queues training jobs (D3).
 - All five new schema tables exist and all amended column additions are live (F1/F2).
+- pgvector extension live; `baseline_embeddings` table present with ivfflat index (F3).
+- Ollama service running on backend network; `qwen2.5:1.5b` and `nomic-embed-text` available (H2).
 - Preprocessor container running; skewed/shadowed images corrected before OCR (G1).
 - Digital PDFs use text layer directly; scanned PDFs route through preprocessor (H1).
-- LayoutLMv3 loaded and serving suggestions with `zone`, `bounding_box`, `extraction_method` per field (I1/I2/I3).
+- Qwen 2.5 1.5B via Ollama serving suggestions with `zone`, `bounding_box`, `extractionMethod: 'qwen-1.5b-rag'` per field (I1/I2/I3).
+- RAG retrieval injecting top-3 few-shot examples from `baseline_embeddings` into every suggestion call (M2/M4).
+- Embed-on-confirm writing qualifying baselines to `baseline_embeddings` (M1).
+- Seed corpus deployed; `baseline_embeddings` has at least one gold-standard entry per document type (L6).
 - Confidence tiers (auto_confirm/verify/flag) computed and surfaced in UI (J1).
 - Side-by-side verification layout with PDF auto-scroll to flagged field region (K1/K2).
 - Bulk confirm available for auto_confirm tier fields (J1/K2).
-- training-worker container running; LayoutLMv3 fine-tuning script produces versioned checkpoint (L1/L2).
-- Spatially-annotated training data export endpoint available (L3).
 - Training examples captured on assignment (L4).
-- Synthetic spatial data generator available (L5).
 
 **Data Integrity:**
 - `extraction_training_examples` rows are append-only; no updates.
-- Exactly one active model per `modelName` at any time in `extraction_models`.
+- `baseline_embeddings` gold-standard rows never evicted by volume cap.
 - New columns on `baseline_field_assignments` and `attachment_ocr_outputs` are nullable; no existing rows broken.
+- Confirmed baselines are immutable; embedding failure never prevents confirmation.
 
 **No Regressions:**
 - `docker compose exec -T api npm run build` exits 0.
@@ -1110,6 +1304,7 @@ When real corrections are insufficient, synthetic spatially-annotated training e
 - Review page still supports manual assignment and suggestions for baselines without spatial data.
 - Existing `/admin/ml/metrics` endpoint still works.
 - Existing training data export (`/admin/ml/training-data`) still works.
+- Suggestions still returned when Ollama unreachable (`model_not_ready` error — not a crash).
 
 **Documentation:**
 - `tasks/codemapcc.md` updated with every new file, endpoint, and route.
@@ -1118,7 +1313,7 @@ When real corrections are insufficient, synthetic spatially-annotated training e
 
 ---
 
-## 13) Manual Test Checklist (Run After Each Checkpoint)
+## 14) Manual Test Checklist (Run After Each Checkpoint)
 
 **Smoke Tests (run after every task):**
 - [ ] API builds: `cd apps/api && npm run build` → no errors.
@@ -1131,8 +1326,7 @@ When real corrections are insufficient, synthetic spatially-annotated training e
 
 **Task Group D — Assisted Auto-Learning:**
 - [ ] Volume trigger: <1000 qualified corrections → no job; ≥1000 → exactly one queued job.
-- [ ] Training run: trigger job → ML service completes → candidate registered with `isActive=false`.
-- [ ] Activation gates: candidate below thresholds → Activate button disabled; above thresholds → enabled.
+- [ ] Activation gate (online only): candidate with <1000 suggestions or <5% delta → Activate button disabled; above thresholds → enabled.
 
 **Task Group E — Performance Dashboard:**
 - [ ] Performance API: `GET /admin/ml/performance?startDate=...&endDate=...` returns `models`, `trend`, `recommendation`.
@@ -1141,15 +1335,27 @@ When real corrections are insufficient, synthetic spatially-annotated training e
 **Task Group F — Schema:**
 - [ ] All five new tables present in DB.
 - [ ] New columns on `baseline_field_assignments` and `attachment_ocr_outputs` present and nullable.
+- [ ] pgvector: `SELECT * FROM pg_extension WHERE extname = 'vector'` returns a row.
+- [ ] `baseline_embeddings` table present with vector(768) embedding column.
 
-**Task Group G/H — Preprocessor + PyMuPDF:**
+**Task Group G/H — Preprocessor + PyMuPDF + Ollama:**
 - [ ] Preprocessor health: `GET http://preprocessor:6000/health` returns `{status:"ok"}`.
 - [ ] Digital PDF: upload → metadata shows `extraction_path='text_layer'`.
 - [ ] Scanned PDF: upload → metadata shows `extraction_path='ocr_preprocessed'`; preprocessor logs show request.
+- [ ] Ollama health: `GET http://ollama:11434/api/tags` (from backend network) lists `qwen2.5:1.5b` and `nomic-embed-text`.
 
-**Task Group I — LayoutLMv3:**
-- [ ] Suggestions include `zone`, `bounding_box`, `extraction_method` in response.
+**Task Group I — SLM Inference (Qwen 2.5 1.5B):**
+- [ ] Suggestions include `zone`, `bounding_box`, `extractionMethod: 'qwen-1.5b-rag'` in response.
 - [ ] DB: `baseline_field_assignments` has `zone`, `bounding_box`, `confidence_score` populated after suggestion generation.
+- [ ] `llm_reasoning` contains `rawOcrConfidence`, `ragAgreement`, `ragRetrievedCount`, `modelConfidence: null`.
+- [ ] Ollama stopped → endpoint returns `{ok: false, error: {code: "model_not_ready"}}` immediately.
+
+**Task Group M — RAG Learning Loop:**
+- [ ] With seed corpus loaded: generate suggestions → `llm_reasoning.ragRetrievedCount > 0` for document type with seeds.
+- [ ] Confirm a qualifying baseline (math pass or zero corrections) → `baseline_embeddings` gains a new row.
+- [ ] Confirm a non-qualifying baseline → no new row in `baseline_embeddings`; `rag.embed.skipped` log present.
+- [ ] 6th qualifying confirm for same document type → only 5 rows remain; oldest non-gold evicted.
+- [ ] Seed corpus script: run `docker compose exec api npx ts-node src/scripts/seed-corpus.ts` → rows inserted; run again → idempotent.
 
 **Task Group J/K — Tiers + Verification UI:**
 - [ ] High-confidence fields (≥0.90) show `auto_confirm` tier; "Confirm High-Confidence Fields" button visible.
@@ -1158,20 +1364,16 @@ When real corrections are insufficient, synthetic spatially-annotated training e
 - [ ] Clicking flag field → PDF viewer scrolls to bbox region.
 - [ ] Tab, Enter, Escape, Shift+Enter keyboard shortcuts all function.
 
-**Task Group L — Training Pipeline:**
-- [ ] training-worker health: `GET http://training-worker:7000/health` returns `{status:"ok"}`.
-- [ ] Fine-tuning: `POST /train` with minimal export → checkpoint directory created; `metrics.json` written.
-- [ ] Spatial export: `GET /admin/ml/training-data/spatial` returns rows with `tokens`, `bboxes`, `zoneLabel`.
-- [ ] Training capture: accept spatial suggestion → `extraction_training_examples` row inserted.
-- [ ] Synthetic generator: `python generate_synthetic.py --count 200 --seed 42` → 200 rows with `isSynthetic=true`.
+**Task Group L — Training Capture:**
+- [ ] Training capture: accept spatial suggestion → `extraction_training_examples` row inserted (L4).
 
 **Integration (run after all tasks):**
-- [ ] End-to-end: upload PDF → OCR → generate suggestions (LayoutLMv3) → review tiers in verification UI → bulk confirm auto_confirm → correct verify fields → flag fields manually confirmed → baseline confirmed.
-- [ ] Training loop: export spatial data → run fine-tuning → register candidate → activate (if gates met) → new suggestions use new model.
+- [ ] End-to-end: upload PDF → OCR → generate suggestions (Qwen via Ollama + RAG) → review tiers in verification UI → bulk confirm auto_confirm → correct verify fields → flag fields manually confirmed → baseline confirmed → qualifying baseline embedded to `baseline_embeddings`.
+- [ ] RAG loop: after 3+ confirmed baselines of same type, new suggestion for same type shows `ragRetrievedCount ≥ 1` and matching fields show `ragAgreement: 1.0`.
 
 ---
 
-## 14) Post-Completion Checklist
+## 15) Post-Completion Checklist
 
 - [ ] Update `tasks/executionnotes.md` (append-only; newest entry must be last):
   - [ ] Completion date
@@ -1187,169 +1389,20 @@ When real corrections are insufficient, synthetic spatially-annotated training e
 
 ---
 
-## PART 3 — v8.11 RAG + Semantic Search
+## PART 3 — v8.11 Semantic Search
 
-**Prerequisite:** v8.10 complete. Minimum 200 confirmed baselines in production before M4 (extraction confidence RAG) is enabled.
+**Note:** The RAG infrastructure (F3, M1–M4, L6) has been pulled into v8.10 by the SLM+RAG pivot (ADR 2026-02-24). v8.11 scope is now reduced to semantic search on top of the v8.10 RAG corpus.
 
----
-
-## 15) pgvector Infrastructure (P0 — all v8.11 work depends on this)
-
-### F3 — pgvector Migration + baseline_embeddings Table (Complexity: Simple)
-
-**Problem statement**
-All RAG and semantic search capabilities require a vector store. pgvector on the existing Postgres instance is sufficient — no new database needed. This migration adds the extension and the embeddings table.
-
-**Files / Locations**
-- Amend: `docker-compose.yml` — change Postgres image to pgvector-enabled variant.
-- Amend: `apps/api/package.json` — add `drizzle-orm` pgvector custom type helper (no new package needed; uses `customType` from `drizzle-orm/pg-core`).
-- Backend: `apps/api/src/db/schema.ts` — define custom `vector` column type; add `baseline_embeddings` table definition.
-- Backend: `apps/api/drizzle/` — generate and run migration SQL.
-- Docs: `tasks/codemapcc.md` — document new table.
-
-**Implementation plan**
-1. **Amend `docker-compose.yml`**: change Postgres image from `postgres:16-alpine` to `pgvector/pgvector:pg16`. This is the official pgvector image — drop-in replacement for Postgres 16 with the extension pre-installed. Without this change, `CREATE EXTENSION vector` will fail at runtime.
-   ```yaml
-   # before
-   image: postgres:16-alpine
-   # after
-   image: pgvector/pgvector:pg16
-   ```
-   Also add container resource limits to `ocr-worker` and `preprocessor` services to prevent memory/pixel bomb DoS. A 100KB compressed PDF can decompress into gigabytes of bitmap during PyMuPDF/OpenCV rendering — without limits, this OOMs the host:
-   ```yaml
-   ocr-worker:
-     deploy:
-       resources:
-         limits:
-           memory: 4g
-           pids: 256
-   preprocessor:
-     deploy:
-       resources:
-         limits:
-           memory: 2g
-           pids: 128
-   ```
-   The `pids` limit prevents fork bombs via malicious PDFs that trigger subprocess spawning. Memory limits ensure the OOM killer targets only the offending container, not the host or other services.
-2. **Define custom `vector` column type** in `apps/api/src/db/schema.ts`. `drizzle-orm` does not have a built-in `vector(n)` column type — define it using `customType`:
-   ```ts
-   import { customType } from 'drizzle-orm/pg-core';
-   const vector = (name: string, dimensions: number) =>
-     customType<{ data: number[]; driverData: string }>({
-       dataType() { return `vector(${dimensions})`; },
-       fromDriver(val: string) { return JSON.parse(val); },
-       toDriver(val: number[]) { return JSON.stringify(val); },
-     })(name);
-   ```
-3. **Enable pgvector extension** in migration SQL (add as raw SQL in migration file):
-   ```sql
-   CREATE EXTENSION IF NOT EXISTS vector;
-   ```
-4. **`field_library` already has a `version` column** (integer, increments on `characterType` change — confirmed in `codemapcc.md` schema map). No migration needed for `field_library` itself. Use this existing `version` as the field schema version throughout — do not add a redundant `schema_version` column. Document: when an admin changes a field's `type` or validation rules, `field_library.version` must be incremented; existing confirmed baselines retain their prior version snapshot in `baseline_embeddings.field_schema_version`.
-5. **Add `baseline_embeddings` table** in `schema.ts`:
-   - `id` uuid pk
-   - `baseline_id` uuid fk `extraction_baselines` on delete cascade
-   - `field_key` text — `'document'` for document-level vectors, or specific field key for field-level vectors
-   - `field_schema_version` integer not null default 1 — snapshot of `field_library.schema_version` at the time this embedding was created. RAG queries filter `WHERE field_schema_version = currentSchemaVersion` to exclude embeddings built against superseded field definitions.
-   - `embedding` vector(384) — MiniLM output dimension (use custom type from step 2)
-   - `embedding_model_version` text — embedding model identifier (e.g. `'all-MiniLM-L6-v2'`); required for vector versioning. When the embedding model changes, old rows with a different `embedding_model_version` must be re-embedded before RAG queries will be reliable.
-   - `bbox_centroid_x` decimal(6,4) nullable — normalised x centroid of document-level bbox (0–1000 scale); null for field-level embeddings.
-   - `bbox_centroid_y` decimal(6,4) nullable — normalised y centroid; null for field-level embeddings.
-   - `document_type_id` uuid nullable fk `document_types` — populated from `attachment_ocr_outputs.document_type_id`; used for metadata-filtered retrieval.
-   - `confirmed_at` timestamp
-   - `created_at` timestamp default now()
-5. **Add HNSW index** (not IVFFlat) in migration SQL:
-   ```sql
-   CREATE INDEX ON baseline_embeddings
-     USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
-   ```
-   HNSW is preferred over IVFFlat for this use case: it does not require a minimum row count to build, maintains consistent recall as the table grows to 100k+ rows, and has more predictable latency. IVFFlat degrades as the dataset grows and requires periodic `VACUUM` + rebuild.
-6. **Add composite B-tree index** on the metadata filter columns in migration SQL:
-   ```sql
-   CREATE INDEX ON baseline_embeddings (document_type_id, embedding_model_version, field_schema_version);
-   ```
-   Without this, Postgres must scan all rows before applying the HNSW vector operator. With it, the planner prunes the row-space using the B-tree index first, then applies HNSW distance math only on the surviving partition — critical once the table exceeds tens of thousands of rows. The three-column order matches the selectivity of M2/M4 query filters: `document_type_id` is most selective (small set of types), then `embedding_model_version`, then `field_schema_version`.
-7. Run `npm run drizzle:generate && npm run drizzle:migrate`.
-8. Update `tasks/codemapcc.md`.
-
-**Checkpoint F3 — Verification**
-- Docker: `docker compose up db` starts cleanly with `pgvector/pgvector:pg16` image.
-- DB: `SELECT * FROM pg_extension WHERE extname = 'vector'` returns a row.
-- DB: `\d field_library` shows `schema_version` column (integer, default 1).
-- DB: `\d baseline_embeddings` shows all columns including `field_schema_version`, `embedding_model_version`, `bbox_centroid_x`, `bbox_centroid_y`, `document_type_id`.
-- DB: HNSW index present: `SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'baseline_embeddings'` shows both `hnsw` vector index and composite B-tree index on `(document_type_id, embedding_model_version, field_schema_version)`.
-- Build: `npm run build` exits 0.
-- Regression: Existing DB data and all other tables unaffected by image change.
-
-**Estimated effort:** 2 hours
-**Complexity flag:** Simple
+**Prerequisite:** v8.10 complete. `baseline_embeddings` table populated with confirmed baselines and seed corpus.
 
 ---
 
-## 16) Embedding Pipeline (P0 — blocks M2, M3, M4)
+## 16) Semantic Search (P1 — depends on v8.10 baseline_embeddings)
 
-### M1 — Embed on Confirm (Complexity: Medium)
-
-**Problem statement**
-When a baseline is confirmed, document-level and field-level embeddings must be generated and stored in `baseline_embeddings`. MiniLM (`all-MiniLM-L6-v2`) is reloaded in `ml-service` alongside LayoutLMv3 for this purpose — it is not used for field extraction (LayoutLMv3 handles that), only for embedding.
-
-**Files / Locations**
-- Amend: `apps/ml-service/requirements.txt` — restore `sentence-transformers`.
-- Amend: `apps/ml-service/ml.Dockerfile` — pre-cache MiniLM model during build.
-- Amend: `apps/ml-service/main.py` — add `POST /ml/embed` endpoint.
-- Amend: `apps/ml-service/model.py` — load MiniLM alongside LayoutLMv3 for embedding only.
-- Amend: `apps/api/src/baseline/baseline-assignments.service.ts` — call `POST /ml/embed` after baseline confirm; persist result to `baseline_embeddings`.
-- Amend: `apps/api/src/baseline/baseline.controller.ts` — trigger embed in confirm flow.
-- Docs: `tasks/codemapcc.md`.
-
-**Implementation plan**
-1. In `ml-service/requirements.txt`: restore `sentence-transformers` (was removed in I1 when MiniLM was replaced for extraction; now needed again for embedding role only).
-2. In `ml-service/ml.Dockerfile`: pre-cache MiniLM during image build, following the same pattern already used for LayoutLMv3. Add immediately after the existing LayoutLMv3 pre-cache line:
-   ```dockerfile
-   RUN HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0 HF_HUB_DISABLE_TELEMETRY=1 \
-       python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')" \
-       && rm -rf /root/.cache/pip
-   ```
-   Without this, the container sets `HF_HUB_OFFLINE=1` at runtime (line 17 of current Dockerfile) and MiniLM will fail to download on first use.
-3. In `ml-service/model.py`: load `SentenceTransformer('all-MiniLM-L6-v2')` as a second model alongside LayoutLMv3. Used only for embedding, not field classification.
-4. In `ml-service/model_registry.py`: add MiniLM warm-up alongside existing LayoutLMv3 warm-up — encode a dummy string `"warm-up"` on startup to force model load into memory before first real embed request. Without this, first embed call after container start will be slow.
-4. `POST /ml/embed` accepts `{documentText: string, fields: [{fieldKey, value}]}`; returns `{documentEmbedding: float[], fieldEmbeddings: [{fieldKey, embedding: float[]}]}`.
-5. Document embedding: encode full `documentText` with MiniLM → vector(384).
-6. Field embeddings: encode `"[fieldKey]: [value]"` per field → vector(384) each.
-7. In API confirm flow (`POST /attachments/:id/ocr/confirm`): after baseline status set to `'confirmed'`, call `POST /ml/embed` with extracted text and confirmed field assignments; insert rows into `baseline_embeddings`:
-   - One `field_key='document'` row with `embedding_model_version='all-MiniLM-L6-v2'`, `field_schema_version=1` (document-level rows use version 1 by convention — no field-specific schema applies), `bbox_centroid_x/y` from the median bbox of confirmed field assignments (normalised 0–1000), `document_type_id` from `attachment_ocr_outputs.document_type_id`.
-   - One row per confirmed field assignment with `field_key=fieldKey`, `embedding_model_version='all-MiniLM-L6-v2'`, `field_schema_version` = current `field_library.schema_version` for that `fieldKey` (read at insert time — snapshot the version in effect when the baseline was confirmed), `bbox_centroid_x/y=null`, `document_type_id=null`.
-8. Embed call is fire-and-forget with error logging — confirm must not fail if embedding fails.
-9. Update `tasks/codemapcc.md`.
-
-**Vector versioning note:** `embedding_model_version` must be set on every row at insert time. When the embedding model is upgraded (e.g. from `all-MiniLM-L6-v2` to `bge-small`), query `SELECT COUNT(*) FROM baseline_embeddings WHERE embedding_model_version != 'new-model'` to identify stale rows. A background admin-triggered re-embedding job must update all stale rows before RAG queries return reliable results.
-
-**Note — memory:** `ml-service` will carry both models simultaneously (~580MB total: LayoutLMv3-base ~500MB + MiniLM ~80MB). Acceptable on any server with ≥2GB RAM allocated to the container. Monitor on constrained environments.
-
-**Checkpoint M1 — Verification**
-- Build: `docker compose build ml-service` completes without error; MiniLM pre-cache step downloads and caches the model during build.
-- Manual: `docker compose up ml-service` → startup logs show both LayoutLMv3 and MiniLM loaded; no HF Hub download attempted at runtime.
-- Manual: Confirm a baseline → `baseline_embeddings` gains one `field_key='document'` row and N field-level rows.
-- Manual: Confirm flow succeeds even if `ml-service` is temporarily unavailable (error logged, confirm not blocked).
-- DB:
-```sql
-SELECT field_key, LEFT(embedding::text, 40) AS embedding_preview
-FROM baseline_embeddings
-WHERE baseline_id = '<BASELINE_ID>';
-```
-Expected: at least one `field_key='document'` row with non-null embedding.
-
-**Estimated effort:** 3–4 hours
-**Complexity flag:** Medium
-
----
-
-## 17) Semantic Search (P1 — depends on M1)
-
-### M2 — Semantic Search Endpoint + UI (Complexity: Medium)
+### S1 — Semantic Search Endpoint + UI (Complexity: Medium)
 
 **Problem statement**
-Users need to search across all confirmed extraction data using natural language queries. pgvector cosine similarity retrieves semantically relevant baselines; SQL filters narrow by structured fields.
+Users need to search across all confirmed extraction data using natural language queries. pgvector cosine similarity retrieves semantically relevant baselines using the `nomic-embed-text` model (already running in Ollama from v8.10).
 
 **Files / Locations**
 - New: `apps/api/src/search/search.controller.ts` — `GET /search/extractions`.
@@ -1363,193 +1416,52 @@ Users need to search across all confirmed extraction data using natural language
 **Implementation plan**
 1. `GET /search/extractions` query params: `q` (text), `documentType` (optional uuid), `dateFrom` (optional), `dateTo` (optional), `limit` (default 20, max 100).
 2. In `SearchService`:
-   - Embed `q` via `POST /ml/embed` (document embedding only).
-   - **Metadata-filtered pgvector query** — scope vector search to the relevant document type partition when `documentType` is provided. Searching within a typed partition eliminates cross-type noise (e.g. "Total" on an invoice vs "Total" on a utility bill are different fields). Set `hnsw.ef_search = 100` per session before querying to ensure recall stays accurate as the baseline library scales (default ef_search is typically equal to ef_construction=64, which degrades recall at >10k rows):
-     ```sql
-     SET LOCAL hnsw.ef_search = 100;
-     SELECT b.id, b.attachment_id, b.confirmed_at,
-            1 - (be.embedding <=> $1) AS similarity
-     FROM baseline_embeddings be
-     JOIN extraction_baselines b ON b.id = be.baseline_id
-     JOIN attachments a ON a.id = b.attachment_id
-     WHERE be.field_key = 'document'
-       AND b.status = 'confirmed'
-       AND a.user_id = $requestingUserId
-       AND be.embedding_model_version = $currentEmbeddingModel
-       AND be.field_schema_version = 1
-       [AND be.document_type_id = $documentType]
-       [AND b.confirmed_at >= $dateFrom]
-       [AND b.confirmed_at <= $dateTo]
-     ORDER BY be.embedding <=> $1
-     LIMIT $limit;
-     ```
-   - `$currentEmbeddingModel` is read from env `EMBEDDING_MODEL_VERSION` (default `'all-MiniLM-L6-v2'`). Only rows with matching version are queried — stale embeddings from old model versions are automatically excluded.
+   - Embed `q` via Ollama `POST /api/embeddings` with `nomic-embed-text`.
+   - Query `baseline_embeddings` by cosine similarity, filtered by `document_type_id` when provided.
    - For each result, fetch top confirmed field assignments for preview.
 3. Response: `{results: [{baselineId, attachmentId, similarity, confirmedAt, documentTypeId, fieldPreview: [{fieldKey, value}]}]}`.
-4. Frontend search page: text input + optional filters (date range, document type dropdown); renders result cards showing similarity score, document metadata, field value previews; links to review page.
-5. Emit audit log `search.extractions` with query hash (not raw query), `documentType` filter if applied, and result count.
+4. Frontend search page: text input + optional filters; result cards with similarity, metadata, field previews; links to review page.
+5. Emit audit log `search.extractions` with query hash (not raw query), filter applied, result count.
 6. Update `tasks/codemapcc.md`.
 
-**Checkpoint M2 — Verification**
-- Manual: `GET /search/extractions?q=Acme+invoice` returns results ranked by similarity; top result is an Acme invoice baseline.
-- Manual: `GET /search/extractions?q=total+amount&documentType=<invoice-type-id>` returns only invoice baselines; utility bill baselines not returned.
-- Manual: `GET /search/extractions?q=total+amount&dateFrom=2026-01-01` filters results to date range.
-- Manual: Search page renders results with field previews; clicking a result navigates to review page.
-- Manual: Stale embeddings (different `embedding_model_version`) excluded from results.
-- Regression: No existing endpoints affected.
+**Checkpoint S1 — Verification**
+- Manual: `GET /search/extractions?q=invoice+total` returns baselines ranked by similarity.
+- Manual: `documentType` filter returns only that type's baselines.
+- Manual: Search page renders results; clicking navigates to review page.
+- Regression: No existing v8.10 endpoints affected.
 
 **Estimated effort:** 3–4 hours
 **Complexity flag:** Medium
 
 ---
 
-## 18) Reviewer Context Panel (P1 — depends on M1)
+## 17) v8.11 Execution Order
 
-### M3 — Similar Past Extractions in VerificationPanel (Complexity: Simple)
-
-**Problem statement**
-When a reviewer is looking at a flagged or verify-tier field, seeing how the same field was confirmed on similar past documents reduces cognitive load and review time.
-
-**Files / Locations**
-- New: `apps/api/src/search/search.service.ts` — add `findSimilarBaselines(baselineId, fieldKey, limit)` method (reuses M2 service).
-- Amend: `apps/api/src/baseline/baseline.controller.ts` — add `GET /baselines/:baselineId/similar-context`.
-- Amend: `apps/web/app/components/ocr/VerificationPanel.tsx` — add "Similar past extractions" section per field card.
-- Docs: `tasks/codemapcc.md`.
-
-**Implementation plan**
-1. `GET /baselines/:baselineId/similar-context?fieldKey=invoice_total&limit=3`:
-   - Look up document embedding for `baselineId` from `baseline_embeddings`.
-   - Query pgvector for top-3 nearest confirmed baselines (excluding current baseline).
-   - For each, return the confirmed value for `fieldKey`.
-   - Response: `{similar: [{baselineId, confirmedAt, value, similarity}]}`.
-2. In `VerificationPanel`: for flag and verify tier fields, fetch similar context on card expand/focus.
-3. Render as a small collapsed section "Similar past extractions (3)":
-   - Each row: confirmed value + date confirmed + similarity percentage.
-   - Read-only, no interaction — informational only.
-4. Only fetch if `baseline_embeddings` has a document-level row for the baseline (skip gracefully if not).
-5. Update `tasks/codemapcc.md`.
-
-**Checkpoint M3 — Verification**
-- Manual: Open review page for a baseline with embeddings → flag/verify field cards show "Similar past extractions" section with ≥1 result.
-- Manual: If no similar baselines exist yet → section hidden, no error.
-- Manual: Section is read-only; expanding it does not trigger any write.
-- Regression: VerificationPanel renders correctly for baselines without embeddings.
-
-**Estimated effort:** 2 hours
-**Complexity flag:** Simple
+1. **S1** Semantic search — depends on v8.10 `baseline_embeddings` being populated.
 
 ---
 
-## 19) Extraction Confidence RAG (P2 — depends on M1, requires ≥200 confirmed baselines)
-
-### M4 — RAG Confidence Adjustment in ml-service (Complexity: Medium)
-
-**Problem statement**
-After LayoutLMv3 produces a suggestion, retrieving confirmed values from similar past baselines provides a secondary signal. Agreement boosts confidence; disagreement penalises it. This is feature-flagged and only enabled when corpus is sufficient.
-
-**Files / Locations**
-- Amend: `apps/ml-service/main.py` — add RAG confidence adjustment pass after LayoutLMv3 inference.
-- New: `apps/ml-service/rag.py` — pgvector retrieval + confidence adjustment logic.
-- Docs: `tasks/codemapcc.md`.
-
-**Rules**
-- Feature flag: `RAG_CONFIDENCE_ENABLED` env var (default `false`). Do not enable until ≥200 confirmed baselines exist.
-- Adjustment cap: confidence boost max `+0.10`; penalty max `-0.15`. Never push above `1.0` or below `0.0`.
-- RAG does not change the suggested value — only the confidence score.
-- If pgvector query fails or returns no results, skip adjustment silently.
-
-**Implementation plan**
-0. Verify `psycopg2-binary` is present in `apps/ml-service/requirements.txt`. If absent, add it — it is an already-approved dependency used by the API service. Required for direct pgvector queries from `rag.py`.
-1. `rag.py`: given `{documentEmbedding, fieldKey, suggestedValue, documentTypeId}`:
-   - **Metadata-filtered retrieval**: query `baseline_embeddings` scoped by `document_type_id` and `embedding_model_version` to prevent cross-type noise and stale vector interference. Set `hnsw.ef_search = 100` per session before querying — default ef_search equals ef_construction (64) and degrades recall at scale:
-     ```sql
-     SET LOCAL hnsw.ef_search = 100;
-     SELECT be.baseline_id,
-            1 - (be.embedding <=> $documentEmbedding) AS similarity
-     FROM baseline_embeddings be
-     JOIN extraction_baselines b ON b.id = be.baseline_id
-     JOIN attachments a ON a.id = b.attachment_id
-     WHERE be.field_key = $fieldKey
-       AND a.user_id = $requestingUserId
-       AND be.embedding_model_version = $currentEmbeddingModel
-       AND be.field_schema_version = $currentFieldSchemaVersion
-       [AND be.document_type_id = $documentTypeId]
-     ORDER BY be.embedding <=> $documentEmbedding
-     LIMIT 5;
-     ```
-   - If `documentTypeId` is null (document type not yet classified), omit the `document_type_id` filter — fall back to unscoped retrieval.
-   - For each retrieved baseline, fetch confirmed value for `fieldKey` from `baseline_field_assignments`.
-   - Compute agreement ratio: fraction of retrieved values that match `suggestedValue` (exact match after normalisation — strip whitespace, lowercase, remove currency symbols).
-   - `agreement_ratio >= 0.6` → boost `+0.10 * agreement_ratio`.
-   - `agreement_ratio <= 0.2` → penalty `-0.15 * (1 - agreement_ratio)`.
-   - `0.2 < agreement_ratio < 0.6` → no adjustment.
-2. In `main.py` `POST /ml/suggest-fields`: after LayoutLMv3 inference, if `RAG_CONFIDENCE_ENABLED=true`, call `rag.py` per suggestion; pass `documentTypeId` from request payload; apply adjusted confidence score.
-3. Add `ragAdjustment` float to each suggestion in response (nullable; null if RAG disabled or no results).
-4. Merge RAG results into the existing `llm_reasoning` inference trace (written by I3). Update the null-initialised RAG fields in the trace: `{ragAdjustment: float, ragRetrievedCount: int, documentTypeScoped: bool, fieldSchemaVersion: int}`. The full trace then covers the complete causal chain — OCR → model → DSPP → type validation → RAG — in a single queryable JSON column. This means any extraction failure ("why was Total missed?") can be diagnosed with a single DB query without re-running inference.
-5. Update `tasks/codemapcc.md`.
-
-**Checkpoint M4 — Verification**
-- Manual: With `RAG_CONFIDENCE_ENABLED=false` → suggestions unchanged; `ragAdjustment=null`.
-- Manual: With `RAG_CONFIDENCE_ENABLED=true`, `documentTypeId` set, and matching similar baselines of same type → `ragAdjustment` non-null; adjusted confidence within bounds; `documentTypeScoped=true` in reasoning.
-- Manual: With `RAG_CONFIDENCE_ENABLED=true`, `documentTypeId` null → unscoped retrieval used; `documentTypeScoped=false` in reasoning.
-- Manual: pgvector unavailable → suggestions still returned, `ragAdjustment=null`, error logged.
-- Manual: RAG query for User A must not return baselines confirmed by User B — verify `a.user_id` filter is applied by confirming a baseline as User B, then running RAG as User A and checking the baseline does not appear in retrieved results.
-- DB: `llm_reasoning` on adjusted assignments contains `{ragAdjustment: float, retrievedCount: int, documentTypeScoped: bool, fieldSchemaVersion: int}`.
-
-**Estimated effort:** 3–4 hours
-**Complexity flag:** Medium
-
----
-
-## 20) v8.11 Execution Order
-
-1. **F3** pgvector migration — no dependencies (run before any M task).
-2. **M1** Embed on confirm — depends on F3.
-3. **M2** Semantic search — depends on M1 (needs embeddings in DB to be useful).
-4. **M3** Reviewer context panel — depends on M1; can run in parallel with M2.
-5. **M4** Extraction confidence RAG — depends on M1; feature-flagged; enable only when ≥200 confirmed baselines exist.
-
-**Parallel opportunities:**
-- M2 and M3 can be built in parallel once M1 is done.
-- M4 can be built in parallel with M2/M3 but must remain disabled until corpus threshold is met.
-
----
-
-## 21) v8.11 Definition of Done
+## 18) v8.11 Definition of Done
 
 **Feature Completeness:**
-- `pgvector` extension enabled; `baseline_embeddings` table present with HNSW index; `embedding_model_version`, `bbox_centroid_x/y`, `document_type_id` columns present (F3).
-- Confirming a baseline generates and stores document-level and field-level embeddings with `embedding_model_version` set (M1).
-- `GET /search/extractions` returns similarity-ranked confirmed baselines; metadata filter by `documentType` scopes results correctly; stale embeddings excluded by version filter (M2).
-- Search UI page renders results and links to review page (M2).
-- Reviewer context panel shows similar past confirmed values for flag/verify fields; pre-fetched in manifest (M3).
-- Review page loads via single manifest request (`GET /baselines/:id/review-manifest`); zero additional requests during hover/highlight (K1).
-- RAG confidence adjustment implemented, metadata-filtered by `document_type_id`, and feature-flagged behind `RAG_CONFIDENCE_ENABLED` (M4).
-
-**Data Integrity:**
-- Embedding failure never blocks baseline confirm.
-- `baseline_embeddings` rows cascade-delete when baseline is deleted.
-- RAG never mutates suggested values — confidence score only.
-- All embeddings carry `embedding_model_version` — stale rows identifiable by version mismatch query.
+- `GET /search/extractions` returns similarity-ranked confirmed baselines (S1).
+- Search UI renders and links to review page (S1).
 
 **No Regressions:**
-- Confirm flow works without `ml-service` running (embedding is fire-and-forget).
-- `VerificationPanel` renders correctly for baselines without embeddings.
 - All v8.10 endpoints and flows unaffected.
 
 **Documentation:**
-- `tasks/codemapcc.md` updated with all new files, endpoints, and the `baseline_embeddings` table.
+- `tasks/codemapcc.md` updated with new files and endpoints.
 - `tasks/features.md` v8.11 section reflects actual state.
 
 ---
 
-## 22) Post-Completion Checklist (v8.11)
+## 19) Post-Completion Checklist (v8.11)
 
 - [ ] Update `tasks/executionnotes.md` (append-only).
 - [ ] Update `tasks/codemapcc.md` with all new file paths and endpoints.
 - [ ] Update `tasks/features.md` v8.11 status to ✅ Complete.
-- [ ] Enable `RAG_CONFIDENCE_ENABLED=true` only after confirming ≥200 baselines in DB.
-- [ ] Tag commit: `git tag v8.11 -m "RAG + Semantic Search + Hardening complete"`
+- [ ] Tag commit: `git tag v8.11 -m "Semantic Search complete"`
 
 ---
 
@@ -1557,126 +1469,36 @@ After LayoutLMv3 produces a suggestion, retrieving confirmed values from similar
 
 ## PART 4 — Data Governance Hardening
 
-**Prerequisite:** v8.10 complete. These tasks harden the training pipeline and field library integrity. N1 should be completed before any LayoutLMv3 fine-tuning run is activated in production.
+**Note:** N1 (Golden Set gate) is superseded by the D5 revision — the offline/Golden Set activation gates were dropped by the SLM+RAG pivot (ADR 2026-02-24). D5 now uses online gate only. N2 (field library similarity check) referenced field-level embeddings in `baseline_embeddings` which no longer exist in the v8.10 schema (the table stores document-level embeddings for RAG, not field-level). Both N1 and N2 are deferred to v8.12 for redesign.
 
 ---
 
-## 23) Golden Set Infrastructure (P0 — must precede first production model activation)
+## 23) Golden Set Infrastructure
 
-### N1 — Golden Set Repository + D5 Gate Integration (Complexity: Medium)
-
-**Problem statement**
-The D5 activation gate currently benchmarks only on recent test data, which can be contaminated by confirmation bias or vendor skew. A static, air-gapped Golden Set stored in the repository provides a regression-proof benchmark that no production user can corrupt.
-
-**Files / Locations**
-- New: `golden_set/` directory in repo root — JSON files per document type.
-- New: `golden_set/README.md` — governance rules, entry format, PR-only update policy.
-- New: `golden_set/invoices.json` — initial invoice entries (admin-curated, not from confirm flow).
-- Amend: `apps/api/src/ml/ml-performance.service.ts` — load Golden Set from filesystem; run candidate model; compute accuracy delta.
-- Amend: `apps/api/src/ml/ml-models.service.ts` — block activation if Golden Set gate fails.
-- Amend: `apps/web/app/admin/ml/performance/page.tsx` — display Golden Set gate status and accuracy scores.
-- Docs: `tasks/codemapcc.md`.
-
-**Golden Set entry format:**
-```json
-[
-  {
-    "id": "gs-invoice-001",
-    "documentType": "invoice",
-    "sourceDescription": "Standard UK invoice, Vendor A, 2024",
-    "fields": [
-      { "fieldKey": "invoice_total", "expectedValue": "1234.56", "fieldType": "currency" },
-      { "fieldKey": "invoice_date", "expectedValue": "2024-03-15", "fieldType": "date" }
-    ]
-  }
-]
-```
-
-**Governance rules (also in `golden_set/README.md`):**
-1. Entries are created manually by admin/lead only — never via the confirm flow.
-2. All additions require a PR with commit message describing the schema/edge case covered.
-3. No automated process may write to `golden_set/`.
-4. Run DSPP cleaning + type validation on `expectedValue` before adding an entry — entries must be clean.
-5. Target: 200–500 entries covering all supported document types and known edge cases.
-
-**Implementation plan**
-1. Create `golden_set/` directory with `README.md` and initial `invoices.json` (start with ≥10 manually curated entries).
-2. In `MlPerformanceService.getGateStatus()`: load all `golden_set/*.json` files at gate-check time (not cached — always read from disk to pick up new entries without restart).
-3. For each Golden Set entry: call `POST /ml/suggest-fields` on the candidate model with the entry's field text; compare top suggestion per `fieldKey` to `expectedValue` (exact match after DSPP cleaning); compute `candidateAccuracy = correct / total`.
-4. Repeat step 3 for the currently active model → `activeAccuracy`.
-5. Golden Set gate: `candidateAccuracy >= activeAccuracy`. If regression (candidate < active), gate fails regardless of offline/online gate results.
-6. If `golden_set/` is empty or all files are empty: log warning `ml.golden_set.empty`, skip gate, proceed with other gates.
-7. Return `{goldenSetGateMet, goldenSetCandidateAccuracy, goldenSetActiveAccuracy, goldenSetEntryCount, goldenSetEmpty}` in gate status response.
-8. Frontend: show Golden Set accuracy scores and gate status on performance page alongside offline/online gates.
-9. Update `tasks/codemapcc.md`.
-
-**Checkpoint N1 — Verification**
-- Manual: `golden_set/invoices.json` present with ≥10 entries in correct format.
-- Manual: Trigger D5 gate check with a candidate that regresses on Golden Set → Activate button disabled; tooltip shows Golden Set gate failure with `candidateAccuracy` vs `activeAccuracy`.
-- Manual: `golden_set/` empty → gate skipped; warning logged; other gates still enforced.
-- Manual: Add a new entry to `golden_set/` without restarting API → gate check immediately uses the new entry.
-- Regression: Offline and online gates unaffected by Golden Set addition.
-
-**Estimated effort:** 3–4 hours
-**Complexity flag:** Medium
+### N1 — Golden Set Repository
+**Status:** 🗑️ DEFERRED to v8.12 — Golden Set gate dropped from D5 by SLM+RAG pivot (ADR 2026-02-24). The online acceptance gate (D5) is the sole activation signal. Golden Set may be revisited in v8.12 as a diagnostic tool (not a gate) once the RAG corpus is established.
 
 ---
 
-## 24) Field Library Integrity (P1)
+## 24) Field Library Integrity
 
-### N2 — Field Library Similarity Check at Creation (Complexity: Simple)
-
-**Problem statement**
-Over time, users create semantically duplicate fields (e.g. `total_amount` vs `invoice_total`) which dilutes LayoutLMv3 training signal — the model tries to distinguish labels that mean the same thing. A similarity check at field creation time prevents label noise accumulation.
-
-**Files / Locations**
-- Amend: `apps/api/src/field-library/field-library.service.ts` — add similarity check on field create.
-- Amend: `apps/api/src/field-library/field-library.controller.ts` — return similarity warnings in create response.
-- Amend: `apps/web/app/admin/field-library/` — show similarity warning UI before confirming field creation.
-- Docs: `tasks/codemapcc.md`.
-
-**Implementation plan**
-1. On `POST /field-library` (create new field): before inserting, call `POST /ml/embed` with `{documentText: newField.label}` to get a label embedding.
-2. Query `baseline_embeddings` for existing field-level embeddings (where `field_key != 'document'`), compute cosine similarity to the new label embedding.
-3. If any existing field has similarity ≥ 0.85: return HTTP 200 with `{created: false, warning: 'similar_field_exists', similarFields: [{fieldKey, label, similarity}]}` — do not auto-reject, but surface the warning.
-4. Frontend: if `warning = 'similar_field_exists'`, show a confirmation modal: "This field is similar to [existing fields]. Are you sure you want to create a separate field?" Admin must explicitly confirm to proceed.
-5. If admin confirms: re-POST with `{forceCreate: true}` → insert field regardless of similarity. Log audit event `field_library.create.similarity_override` with `{newFieldKey, similarFields}`.
-6. Update `tasks/codemapcc.md`.
-
-**Checkpoint N2 — Verification**
-- Manual: Create a field with label "Invoice Total" when "invoice_total" exists → warning returned with similarity ≥ 0.85; confirmation modal shown.
-- Manual: Admin confirms → field created; audit log shows `field_library.create.similarity_override`.
-- Manual: Create a field with label "Delivery Address" when no similar field exists → field created immediately, no warning.
-- Manual: `ml-service` unavailable → similarity check skipped; field created with warning logged server-side (do not block field creation on embed failure).
-- Regression: Existing field-library create/update/delete flows unaffected.
-
-**Estimated effort:** 2–3 hours
-**Complexity flag:** Simple
+### N2 — Field Library Similarity Check at Creation
+**Status:** 🗑️ DEFERRED to v8.12 — depended on field-level embeddings in `baseline_embeddings` which were not included in the v8.10 schema pivot. Redesign required for nomic-embed-text compatibility.
 
 ---
 
 ## 25) Execution Order (PART 4)
 
-1. **N1** Golden Set infrastructure — no code dependencies; must be done before first production activation.
-2. **N2** Field library similarity check — depends on M1 (needs `POST /ml/embed` endpoint); can run in parallel with v8.11 M tasks.
+N1 and N2 are deferred. No PART 4 tasks remain for v8.10/v8.11.
 
 ---
 
 ## 26) Part 4 Definition of Done
 
-**Feature Completeness:**
-- `golden_set/` directory present with ≥10 manually curated entries (N1).
-- D5 gate enforces Golden Set regression check; empty Golden Set skips with warning (N1).
-- Field creation similarity check warns on ≥0.85 cosine similarity; admin override logged (N2).
-
-**Data Integrity:**
-- Golden Set never written by automated process — filesystem + PR governance only.
-- Field similarity check never blocks creation — warning + explicit confirm only.
-- Embed failure on field create never blocks field creation.
+Deferred — see v8.12 planning.
 
 **Documentation:**
-- `golden_set/README.md` present with governance rules.
-- `tasks/codemapcc.md` updated with `golden_set/` directory reference and N2 field-library changes.
+- Deferral rationale recorded in `tasks/executionnotes.md`.
 
 ---
 

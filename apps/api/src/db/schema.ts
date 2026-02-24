@@ -11,11 +11,25 @@ import {
   varchar,
   numeric,
   unique,
+  customType,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { DEFAULT_TASK_STAGE_KEY } from '../common/constants';
 import { extractionBaselines } from '../baseline/schema';
 import { fieldLibrary } from '../field-library/schema';
+
+const vector = customType<{
+  data: number[];
+  driverData: string;
+  config: { dimensions: number };
+}>({
+  dataType(config) {
+    return `vector(${config?.dimensions ?? 768})`;
+  },
+  toDriver(value) {
+    return `[${value.join(',')}]`;
+  },
+});
 
 // Users table
 export const users = pgTable('users', {
@@ -615,6 +629,22 @@ export const trainingRuns = pgTable('training_runs', {
   finishedAt: timestamp('finished_at'),
   errorMessage: text('error_message'),
 });
+
+export const baselineEmbeddings = pgTable(
+  'baseline_embeddings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    baselineId: uuid('baseline_id').references(() => extractionBaselines.id),
+    documentTypeId: uuid('document_type_id').references(() => documentTypes.id),
+    embedding: vector('embedding', { dimensions: 768 }),
+    serializedText: text('serialized_text').notNull(),
+    confirmedFields: jsonb('confirmed_fields').notNull(),
+    isSynthetic: boolean('is_synthetic').default(false),
+    goldStandard: boolean('gold_standard').default(false),
+    qualityGate: text('quality_gate').notNull(),
+    createdAt: timestamp('created_at').defaultNow(),
+  },
+);
 
 // ML Model Versions table
 export const mlModelVersions = pgTable(

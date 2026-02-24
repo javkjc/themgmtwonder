@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: todo-db
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -65,6 +65,14 @@ services:
       - backend
     expose:
       - 6000
+  ollama:
+    image: ollama/ollama:latest
+    networks:
+      - backend
+    volumes:
+      - ollama_models:/root/.ollama
+    entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 5 && ollama pull qwen2.5:1.5b && ollama pull nomic-embed-text && wait"]
+    restart: unless-stopped
 
   training-worker:
     build:
@@ -103,6 +111,7 @@ services:
 volumes:
   pgdata:
   ml_models:
+  ollama_models:
 
 networks:
   frontend:

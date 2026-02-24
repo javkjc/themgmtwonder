@@ -787,3 +787,52 @@ Fix OCR preprocessing issues, ML suggestion quality, and field assignment valida
 ### Notes
 - `extraction_training_examples` is empty (0 rows) because manual assignments from this session have no spatial data (`bounding_box`/`zone`/`extraction_method` are null for drag-sourced non-ML assignments). Training capture only fires for ML-suggested assignments with spatial metadata.
 - `confirmBaseline()` does not yet write to `extraction_training_examples` — this bridge (confirm → training pool) is the next required step before the fine-tuning loop is complete.
+
+---
+## 2026-02-24 - H2
+### Objective
+Add Ollama service (qwen2.5:1.5b + nomic-embed-text) to docker-compose.yml on the backend network.
+### What Was Built
+- `ollama` service block in docker-compose.yml using `ollama/ollama:latest`
+- `ollama_models` named volume for model persistence across restarts
+### Files Changed
+- `docker-compose.yml` - added ollama service and ollama_models volume
+- `tasks/codemapcc.md` - added Ollama service entry (port 11434, volume)
+### Verification
+- Manual: `docker compose up ollama` starts; `GET http://ollama:11434/api/tags` from within backend network returns JSON listing both models. [UNVERIFIED in this session]
+- Manual: `curl http://localhost:11434/api/tags` from host (if port exposed for dev) shows models. [UNVERIFIED - port not exposed in compose]
+- Logs: entrypoint logs show both model pulls completing. [UNVERIFIED in this session]
+- Regression: Other containers unaffected. [UNVERIFIED in this session]
+- Compose validation: `docker compose config` succeeds with `ollama` service and `ollama_models` volume.
+### Status
+[UNVERIFIED]
+### Notes
+- Impact: Unblocks I1 (Qwen 2.5 LLM extraction) and M2 (RAG retrieval via nomic-embed-text)
+
+---
+
+## 2026-02-24 - F3
+### Objective
+Add pgvector extension and baseline_embeddings table to enable RAG vector retrieval.
+### What Was Built
+- Postgres image changed to `pgvector/pgvector:pg16` in docker-compose.yml
+- `baseline_embeddings` table with `vector(768)` embedding column and ivfflat index
+- Drizzle schema entry for `baseline_embeddings` in `apps/api/src/db/schema.ts`
+- Migration `0008_baseline_embeddings.sql` generated and registered in `_journal.json`
+### Files Changed
+- `docker-compose.yml` - changed postgres image to `pgvector/pgvector:pg16`
+- `apps/api/src/db/schema.ts` - added `baselineEmbeddings` table definition with raw vector(768) custom type
+- `apps/api/drizzle/0008_baseline_embeddings.sql` - migration SQL (verbatim from plan.md)
+- `apps/api/drizzle/_journal.json` - registered migration entry 0008_baseline_embeddings
+- `tasks/codemapcc.md` - added baseline_embeddings to Data Model section with ivfflat index details
+### Verification
+- DB: `CREATE EXTENSION IF NOT EXISTS vector` succeeded (already exists notice — extension present)
+- DB: `SELECT * FROM pg_extension WHERE extname = 'vector'` returned one row
+- DB: `\d baseline_embeddings` shows all expected columns including `embedding vector(768)`
+- DB: `\d+ baseline_embeddings` shows ivfflat index on embedding (vector_cosine_ops, lists=100)
+- Build: `docker compose exec api npm run build` succeeded
+- Runtime: `docker compose up -d --no-recreate` — all services running
+### Status
+[VERIFIED]
+### Notes
+- Impact: Unblocks M2 (RAG retrieval) and M3 (embed-on-confirm)

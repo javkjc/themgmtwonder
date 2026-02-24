@@ -3113,49 +3113,44 @@ Governed training data export from user corrections, model version registry, hot
 
 ---
 
-**Capability C: A/B Testing & Suggestion Tracking** 📋 Not yet complete (plan.md C1/C2)
+**Capability C: A/B Testing & Suggestion Tracking** ✅ Complete (plan.md C1/C2)
 
-**Milestone 8.9.7: Deterministic A/B Model Selection** 📋 Planned
+**Milestone 8.9.7: Deterministic A/B Model Selection** ✅ Complete (2026-02-22, plan.md C1)
 - Env flag `ML_MODEL_AB_TEST=true`.
 - Deterministic 50/50 routing by stable hash of `baselineId % 2`.
 - Resolves active model as A, most recent inactive as B.
 - Files: `apps/api/src/ml/field-suggestion.service.ts`, `ml.service.ts`.
 - Audit fields: `abGroup`, `modelVersionId`, `modelVersion`.
 
-**Milestone 8.9.8: Suggestion Outcome Tracking Integrity** 📋 Planned
-- Schema already has `suggestionAccepted` (boolean nullable), `modelVersionId` (uuid fk) — fields exist.
-- Work: confirm API DTOs pass these through correctly; confirm frontend sends correct flags for accept/modify/clear.
+**Milestone 8.9.8: Suggestion Outcome Tracking Integrity** ✅ Complete (2026-02-23, plan.md C2)
+- API DTOs pass `suggestionAccepted` and `modelVersionId` through correctly.
+- Frontend sends correct flags for accept/modify/clear.
 - Files: `baseline-assignments.service.ts`, `assign-baseline-field.dto.ts`, `delete-assignment.dto.ts`, review page.
 
 ---
 
-**Capability D: Training Pipeline** 📋 Not yet complete (plan.md D0–D5)
+**Capability D: Training Pipeline** 🚧 Partially complete / partially superseded
 
-> Note: D0 (synthetic generator) and D1 (fine-tuning script) are **superseded** by v8.10 LayoutLMv3 pipeline. D2 (register trained model) uses existing B1 endpoint. D3/D4/D5 (assisted auto-learning + activation gates) remain to be built.
+> D3 complete. D4 dropped by SLM+RAG pivot (ADR 2026-02-24). D5 revised to online-gate-only.
 
-**Milestone 8.9.9: Synthetic Training Data Generator** ❌ Superseded — replaced by v8.10 spatial generator
+**Milestone 8.9.9: Synthetic Training Data Generator** ❌ Superseded — replaced by v8.10 seed corpus (L6)
 
-**Milestone 8.9.10: Fine-Tuning Script** ❌ Superseded — replaced by v8.10 LayoutLMv3 finetune
+**Milestone 8.9.10: Fine-Tuning Script** ❌ Superseded — dropped by SLM+RAG pivot; no fine-tuning pipeline
 
-**Milestone 8.9.11: Register Trained Model Metadata** 📋 Planned
-- Uses existing `POST /admin/ml/models` endpoint (already built in B1).
-- No new code; operational step to register the output of v8.10 training-worker.
+**Milestone 8.9.11: Register Trained Model Metadata** 📋 Deferred — no fine-tuning output to register under SLM+RAG architecture
 
-**Milestone 8.9.12: Global Volume Trigger + Job State** 📋 Planned (plan.md D3)
+**Milestone 8.9.12: Global Volume Trigger + Job State** ✅ Complete (2026-02-23, plan.md D3)
 - Trigger: `qualified_corrections_since_last_success >= 1000` (global only, no per-user triggers).
-- New tables: `ml_training_jobs`, `ml_training_state` singleton.
-- Automation service polls every `ML_TRAINING_POLL_MS` (default 60000) when `ML_TRAINING_ASSISTED=true`.
+- Tables: `ml_training_jobs`, `ml_training_state` singleton.
+- Automation service polls every `ML_TRAINING_POLL_MS` when `ML_TRAINING_ASSISTED=true`.
 - Files: `ml-training-automation.service.ts`, `ml-training-jobs.service.ts`, `ml-training-jobs.controller.ts`.
 
-**Milestone 8.9.13: Assisted Training Run + Auto-Register Candidate** 📋 Planned (plan.md D4)
-- `POST /ml/training/run` in ML service.
-- On success: calls API callback, auto-registers model with `isActive=false`.
-- Audit: `ml.training.run.started`, `ml.training.run.succeeded`, `ml.training.run.failed`.
+**Milestone 8.9.13: Assisted Training Run + Auto-Register Candidate** ❌ Superseded — dropped by SLM+RAG pivot (ADR 2026-02-24). RAG learning loop (v8.10 M1) replaces this.
 
-**Milestone 8.9.14: Activation Gates** 📋 Planned (plan.md D5)
-- Offline gate: candidate must beat active by ≥2% accuracy delta.
-- Online gate: candidate must beat active by ≥5% acceptance delta with ≥1000 suggestions.
-- Activation remains explicit admin action only; UI disables Activate button until both gates met.
+**Milestone 8.9.14: Activation Gates** 🔄 Revised (plan.md D5)
+- ~~Offline gate~~ — dropped by SLM+RAG pivot.
+- **Online gate only:** candidate must beat active by ≥5% acceptance delta with ≥1000 suggestions.
+- Activation remains explicit admin action only; UI disables Activate button until gate met.
 
 ---
 
@@ -3167,322 +3162,276 @@ Governed training data export from user corrections, model version registry, hot
 
 **Milestone 8.9.16: Admin Performance UI** 📋 Planned (plan.md E2)
 - Route: `/admin/ml/performance`.
-- Summary cards, model table, 12-week trend chart, Activate button (gated by D5 gates).
+- Summary cards, model table, 12-week trend chart, Activate button (gated by D5 online gate).
 - File: `apps/web/app/admin/ml/performance/page.tsx`.
 
 **Status**
-🚧 In Progress — A1/A2/B1/B2/B3 complete. C1/C2/D3/D4/D5/E1/E2 planned. D0/D1 superseded by v8.10.
+🚧 In Progress — A1/A2/B1/B2/B3/C1/C2/D3 complete. D4 dropped (SLM+RAG pivot). D5 revised (online gate only). E1/E2 pending.
 
 
 
 
-## v8.10 — Optimal Extraction Accuracy 📋 (Planned)
+## v8.10 — Optimal Extraction Accuracy 🚧 (In Progress — SLM+RAG pivot applied 2026-02-24)
+
+**Pivot note:** Original v8.10 planned LayoutLMv3 + fine-tuning pipeline. ADR 2026-02-24 replaced LayoutLMv3 inference with Qwen 2.5 1.5B via Ollama + pgvector RAG few-shot injection. Fine-tuning pipeline (training-worker, L2/L3/L5, D4) dropped entirely. All deterministic post-processing (zone classifier, DSPP, type validation, normalization, conflict detection, math reconciliation) preserved unchanged.
 
 **What this is**
 
-- PyMuPDF for PDF ingestion: auto-detect image-based vs text-based pages; use text layer directly for digital PDFs, route scanned pages through OpenCV preprocessing
-- Dedicated `preprocessor` container: OpenCV deskew, orientation correction, shadow removal, contrast enhancement, quality gate
-- LayoutLMv3 replacing all-MiniLM-L6-v2: spatially-aware token classification using bounding boxes as first-class inputs
-- Zone classifier: assigns document regions to `header`, `addresses`, `line_items`, `instructions`, `footer`
-- Per-field confidence scoring: auto-confirm / verify / flag tiers driving the verification UI
-- LayoutLMv3 fine-tuning pipeline with data augmentation in a dedicated `training-worker` container
-- Training data capture from corrections: spatially-annotated export (text + bounding box + zone) for retraining
-- Verification UI: side-by-side PDF viewer + extracted fields; PDF auto-scrolls to flagged field region; confidence-driven highlighting; bulk confirm and keyboard flow
+- PyMuPDF for PDF ingestion: auto-detect image-based vs text-based pages; use text layer directly for digital PDFs, route scanned pages through OpenCV preprocessing ✅ Built
+- Dedicated `preprocessor` container: OpenCV deskew, orientation correction, shadow removal, contrast enhancement, quality gate ✅ Built
+- Zone classifier: assigns document regions to `header`, `addresses`, `line_items`, `instructions`, `footer` ✅ Built
+- Qwen 2.5 1.5B via Ollama (replacing LayoutLMv3): grammar-constrained JSON extraction with structured output schema; all fields nullable to prevent hallucination 🔄 In progress (I1 rewrite)
+- pgvector RAG: top-3 confirmed baselines retrieved by cosine similarity and injected as few-shot examples before each SLM call 🔄 In progress (F3/M1–M4)
+- Embed-on-confirm learning loop: qualifying baselines embedded with nomic-embed-text and stored in `baseline_embeddings`; no GPU training required 🔄 In progress (M1)
+- Seed corpus: 5–10 synthetic gold-standard examples per document type bootstrap the RAG corpus at cold start 🔄 In progress (L6)
+- Per-field confidence scoring: hard overrides (math reconciliation, type validation, conflict detection) + RAG-agreement fallback formula; auto-confirm / verify / flag tiers 📋 Pending (J1)
+- Verification UI: side-by-side PDF viewer + extracted fields; PDF auto-scrolls to flagged field region; confidence-driven highlighting; bulk confirm and keyboard flow 📋 Pending (K1/K2)
 
 **What this is not**
 
 - ❌ Not automatic field assignment (user must accept suggestions)
 - ❌ Not background automation (activation remains manual)
 - ❌ Not a replacement of the review/correction governance model from v8.6–v8.9
-- ❌ Not real-time retraining
+- ❌ Not GPU training or fine-tuning — the RAG corpus self-improves on each confirmed baseline
+- ❌ Not LayoutLMv3 — that architecture was replaced by the SLM+RAG pivot
 
 **Design Intent**
 
-Maximise extraction accuracy on both scanned and digital documents by replacing text-only semantic matching with layout-aware spatial extraction, while preserving all governance invariants (explicit intent, auditability, backend authority).
+Maximise extraction accuracy on both scanned and digital documents using a locally-running small language model guided by retrieved few-shot context, while preserving all governance invariants (explicit intent, auditability, backend authority). The RAG learning loop means the system improves on every confirmed baseline without requiring GPU compute or fine-tuning cycles.
 
 **Dependencies**
 - **REQUIRES:** v8.6 (baseline_field_assignments, field_library)
 - **REQUIRES:** v8.9 (ml_model_versions, model registry, A/B routing infrastructure)
-- **AMENDS:** v8.9 model architecture (LayoutLMv3 replaces all-MiniLM-L6-v2)
-- **NEW CONTAINERS:** `preprocessor`, amended `ml-worker`, new `training-worker`
+- **AMENDS:** v8.9 model architecture (Ollama/Qwen replaces all-MiniLM-L6-v2)
+- **NEW CONTAINERS:** `preprocessor` ✅, `ollama` (new), amended `ml-service`
+- **DECOMMISSIONED:** `training-worker` (to be removed after M4 verified)
 
 ---
 
-### New Schema (only where not already in codebase)
+### Schema Changes
 
-**NEW TABLE: `document_types`**
-- `id` uuid pk, `name` varchar unique (e.g., "Invoice", "Purchase Order", "Delivery Note"), `description` text nullable, `createdAt` timestamp
+**NEW TABLE: `document_types`** ✅ Built (F1)
+- `id` uuid pk, `name` varchar unique, `description` text nullable, `createdAt` timestamp
 
-**NEW TABLE: `document_type_fields`**
-- `id` uuid pk, `documentTypeId` fk document_types, `fieldKey` fk field_library.fieldKey, `required` boolean default false, `zoneHint` text nullable (expected zone for this field), `sortOrder` int, `createdAt` timestamp
+**NEW TABLE: `document_type_fields`** ✅ Built (F1)
+- `id` uuid pk, `documentTypeId` fk document_types, `fieldKey` fk field_library.fieldKey, `required` boolean default false, `zoneHint` text nullable (role hints e.g. `role:subtotal`), `sortOrder` int, `createdAt` timestamp
 - UNIQUE(documentTypeId, fieldKey)
 
-**NEW TABLE: `extraction_training_examples`**
-- `id` uuid pk, `baselineId` fk extraction_baselines, `fieldKey` fk field_library.fieldKey, `assignedValue` text, `zone` text nullable, `boundingBox` jsonb nullable, `extractionMethod` text (layoutlmv3/manual/llm), `confidence` decimal(5,4) nullable, `isSynthetic` boolean default false, `createdAt` timestamp
-- Purpose: normalised training record with spatial ground truth for LayoutLMv3 fine-tuning
+**NEW TABLE: `extraction_training_examples`** ✅ Built (F1)
+- `id` uuid pk, `baselineId` fk extraction_baselines, `fieldKey` fk field_library.fieldKey, `assignedValue` text, `zone` text nullable, `boundingBox` jsonb nullable, `extractionMethod` text, `confidence` decimal(5,4) nullable, `isSynthetic` boolean default false, `createdAt` timestamp
+- Purpose: append-only spatial ground truth; populated by L4 on assignment
 
-**NEW TABLE: `extraction_models`**
-- `id` uuid pk, `modelName` text (e.g., `'layoutlmv3-extraction'`), `architecture` text (e.g., `'layoutlmv3'`), `version` text, `filePath` text (HuggingFace checkpoint directory), `documentTypeId` fk document_types nullable (null = general model), `metrics` jsonb (per-field F1, zone accuracy, overall accuracy), `trainedAt` timestamp, `isActive` boolean, `createdAt` timestamp
-- UNIQUE(modelName, version)
-- Note: supplements existing `ml_model_versions`; `ml_model_versions` retains v8.9 models; new LayoutLMv3 models register here
+**NEW TABLE: `extraction_models`** ✅ Built (F1)
+- `id` uuid pk, `modelName` text, `architecture` text, `version` text, `filePath` text, `documentTypeId` fk nullable, `metrics` jsonb, `trainedAt` timestamp, `isActive` boolean, `createdAt` timestamp
 
-**NEW TABLE: `training_runs`**
-- `id` uuid pk, `status` text (queued/running/succeeded/failed), `triggerType` text (volume_auto/manual), `windowStart` timestamp, `windowEnd` timestamp, `qualifiedExampleCount` int, `candidateVersion` text, `modelPath` text, `metrics` jsonb, `startedAt` timestamp, `finishedAt` timestamp nullable, `errorMessage` text nullable
-- Replaces / unifies `ml_training_jobs` from v8.9 D3 for the LayoutLMv3 pipeline; `ml_training_jobs` remains for the v8.9 SentenceTransformer-era jobs (historical)
+**NEW TABLE: `training_runs`** ✅ Built (F1)
 
-**AMEND `baseline_field_assignments` — add columns:**
-- `confidence_score` decimal(5,4) nullable — per-field extraction confidence from LayoutLMv3 (distinct from `suggestionConfidence`, which is ML match confidence)
-- `zone` text nullable — zone classifier output (header/addresses/line_items/instructions/footer)
-- `bounding_box` jsonb nullable — source bounding box on document (normalised 0–1000 per LayoutLMv3 convention)
-- `extraction_method` text nullable — e.g., `'layoutlmv3'`, `'manual'`, `'llm'`
+**NEW TABLE: `baseline_embeddings`** 📋 Pending (F3)
+- `id` uuid pk, `baseline_id` uuid fk extraction_baselines, `document_type_id` uuid fk document_types, `embedding vector(768)` (nomic-embed-text output dimension), `serialized_text` text, `confirmed_fields` jsonb, `is_synthetic` boolean default false, `gold_standard` boolean default false, `quality_gate` text (`'math_pass'`|`'zero_corrections'`|`'admin'`), `created_at` timestamp
+- ivfflat index on embedding (cosine ops, lists=100)
+
+**AMEND `baseline_field_assignments`** ✅ Built (F2):
+- `confidence_score` decimal(5,4) nullable — composite score (math/RAG/OCR signals)
+- `zone` text nullable — zone classifier output
+- `bounding_box` jsonb nullable — source bbox normalised 0–1000
+- `extraction_method` text nullable — e.g. `'qwen-1.5b-rag'`, `'manual'`
 - `llm_reviewed` boolean nullable
-- `llm_reasoning` text nullable
+- `llm_reasoning` jsonb nullable — structured inference trace: `{rawOcrConfidence, modelConfidence, zone, dsppApplied, dsppTransforms, validationOverride, ragAgreement, ragRetrievedCount, documentTypeScoped, mathReconciliation}`
+- `normalized_value` text nullable — I4 type-aware scalar
+- `normalization_error` text nullable
 
-**AMEND `attachment_ocr_outputs` — add columns:**
-- `document_type_id` uuid nullable fk document_types — detected or user-assigned document type
-- `extraction_path` text nullable — which pipeline was used (e.g., `'layoutlmv3'`, `'paddleocr'`, `'text_layer'`)
-- `preprocessing_applied` jsonb nullable — record of OpenCV steps applied (deskew angle, contrast params, quality score)
-- `overall_confidence` decimal(5,4) nullable — aggregate confidence across all extracted fields
-- `processing_duration_ms` int nullable
+**AMEND `attachment_ocr_outputs`** ✅ Built (F2):
+- `document_type_id` uuid nullable, `extraction_path` text nullable, `preprocessing_applied` jsonb nullable, `overall_confidence` decimal(5,4) nullable, `processing_duration_ms` int nullable
 
 ---
 
-### Capability A — PyMuPDF PDF Ingestion
+### Capability A — PyMuPDF PDF Ingestion ✅ Complete (H1)
 
-**Milestone 8.10.1: PyMuPDF Integration in OCR Pipeline**
-- Add `PyMuPDF` (`fitz`) to `apps/preprocessor/` (or `apps/ocr-worker/`).
-- Per-page logic: `page.get_text()` non-empty → use text layer directly (digital PDF), skip image OCR.
-- If page has no text layer → render to image via `page.get_pixmap()` → route to OpenCV preprocessor → PaddleOCR.
-- Store `extraction_path='text_layer'` or `extraction_path='ocr_pipeline'` per output.
-- Update `codemapcc.md` with new dependency and logic.
-
-**Milestone 8.10.2: Page-Level Routing Metadata**
-- Each extracted text segment gains `pageType` field: `'digital'` or `'scanned'`.
-- `attachment_ocr_outputs.preprocessing_applied` records per-page routing decisions.
-- No change to existing OCR confirmation or baseline lifecycle.
+**Milestone 8.10.1: PyMuPDF Integration in OCR Pipeline** ✅ Complete
+- Digital PDF pages: `page.get_text('words')` ≥5 words → text layer directly; `extraction_path='text_layer'`.
+- Scanned pages: render via `page.get_pixmap(dpi=300)` → preprocessor → PaddleOCR; `extraction_path='ocr_preprocessed'`.
+- Fallback: preprocessor quality fail → proceed unprocessed; `extraction_path='ocr_unprocessed'`.
 
 ---
 
-### Capability B — OpenCV Preprocessor Container
+### Capability B — OpenCV Preprocessor Container ✅ Complete (G1)
 
-**Milestone 8.10.3: Preprocessor Container Setup**
-- New service: `apps/preprocessor/` (FastAPI + `opencv-python-headless`, `Pillow`, `numpy`).
-- `preprocessor.Dockerfile`: python:3.11-slim, installs OpenCV, uvicorn on port 6000, backend network only.
-- `docker-compose.yml`: add `preprocessor` service on backend network.
-- Endpoint: `POST /preprocess` — accepts raw image bytes, returns preprocessed bytes + `preprocessing_applied` JSON.
-- `codemapcc.md` entry required.
-
-**Milestone 8.10.4: OpenCV Preprocessing Pipeline**
-- Steps applied in order (each logged in `preprocessing_applied`):
-  1. Orientation detection and correction (using moments or Tesseract OSD)
-  2. Deskew (Hough line transform, correct angles -45° to +45°)
-  3. Shadow removal (morphological operations + normalisation)
-  4. Contrast enhancement (CLAHE with clip limit 2.0, tile grid 8×8)
-  5. Quality gate: compute estimated DPI / sharpness score; if below threshold, return `{ok: false, reason: "quality_too_low"}` so caller can decide whether to proceed or fail the job
-- All steps optional per request via `{steps: ["deskew","contrast",...]}` body field.
-- Log applied steps, angles corrected, quality score in response.
+**Milestone 8.10.3: Preprocessor Container Setup** ✅ Complete
+- `apps/preprocessor/` — FastAPI, port 6000, backend network only.
+- Pipeline: orientation → deskew (Hough, ±45°) → shadow removal (morphological) → CLAHE contrast → quality gate (Laplacian variance < threshold → `{ok: false}`).
 
 ---
 
-### Capability C — LayoutLMv3 Model (ml-worker Amendment)
+### Capability C — Ollama Service (new — H2) 📋 Pending
 
-**Milestone 8.10.5: LayoutLMv3 Model Loading**
-- `apps/ml-service/requirements.txt`: add `transformers`, `datasets`; remove `sentence-transformers`.
-- `apps/ml-service/model.py`: replace `SentenceTransformer(...)` with HuggingFace `LayoutLMv3Processor` + `LayoutLMv3ForTokenClassification` loading from checkpoint directory.
-- `apps/ml-service/model_registry.py`: update warm-up to use a token+bbox input (not a text embedding call).
-- `apps/ml-service/ml.Dockerfile`: update base image requirements; ensure `transformers` and `torch` installed.
-- Inference input: `{tokens: string[], bboxes: [x,y,w,h][], image?: base64}`.
-- Inference output per token: `{token, fieldKey, confidence, zone}`.
-
-**Milestone 8.10.6: Zone Classifier Integration**
-- Add zone classification as a pre-pass before field extraction.
-- Input: bounding boxes + page dimensions.
-- Output: per-segment zone label (`header`/`addresses`/`line_items`/`instructions`/`footer`).
-- Integrated into `POST /ml/suggest-fields` response: each suggestion gains `zone` field.
-- Store zone on `baseline_field_assignments.zone` at suggestion persistence time.
-
-**Milestone 8.10.7: Updated Suggestion Endpoint Contract**
-- `POST /ml/suggest-fields` request gains: `pageWidth`, `pageHeight` (for bbox normalisation), `pageType` (`digital`/`scanned`).
-- Response per suggestion gains: `zone` (text), `boundingBox` (normalised 0–1000 jsonb), `extractionMethod` (`'layoutlmv3'`).
-- `FieldSuggestionService` persists `zone`, `bounding_box`, `extraction_method`, `confidence_score` on `baseline_field_assignments`.
-- Remove hardcoded `'all-MiniLM-L6-v2'` model name; resolve active `layoutlmv3-extraction` model from `extraction_models`.
+**Milestone 8.10.H2: Ollama Service**
+- `ollama` service in `docker-compose.yml` on backend network, port 11434, named `ollama_models` volume.
+- Entrypoint: pulls `qwen2.5:1.5b` and `nomic-embed-text` on first start; cached in volume.
+- Health check: `GET /api/tags` returns both model names.
 
 ---
 
-### Capability D — Per-Field Confidence Tiers
+### Capability D — pgvector + RAG Infrastructure (new — F3/M1–M4) 📋 Pending
 
-**Milestone 8.10.8: Confidence Tier Logic**
-- Backend: after LayoutLMv3 inference, classify each field's `confidence_score` into tier:
-  - **Auto-confirm** ≥ 0.90: pre-populated and surfaced as confirmed-pending-review
-  - **Verify** 0.70–0.89: highlighted for user review
-  - **Flag** < 0.70: prominently surfaced; PDF viewer scrolls to region
-- Tier thresholds configurable via env (`ML_TIER_AUTOCONFIRM=0.90`, `ML_TIER_VERIFY=0.70`).
-- Tier stored as derived field (not persisted; computed on read from `confidence_score`).
+**Milestone 8.10.F3: pgvector Migration**
+- Postgres image → `pgvector/pgvector:pg16`. `CREATE EXTENSION vector`. `baseline_embeddings` table per schema above. ivfflat index.
 
-**Milestone 8.10.9: Bulk Confirm Auto-Confirm Tier**
-- Review page: new "Confirm High-Confidence Fields" button visible when ≥1 auto-confirm field exists.
-- Clicking bulk-accepts all auto-confirm fields in a single API call with `suggestionAccepted=true`.
-- Keyboard shortcut: `Shift+Enter` to bulk confirm.
-- Does not affect verify or flag fields.
+**Milestone 8.10.M1: Embed-on-Confirm**
+- After baseline confirmed: run quality gate (math pass OR zero corrections OR admin gold).
+- If gate passes: serialize confirmed fields (Phase 2 format) → embed with `nomic-embed-text` via Ollama → store in `baseline_embeddings`.
+- Volume cap: max 5 per `document_type_id`; oldest non-gold evicted on overflow; gold never evicted.
+- Fire-and-forget: embed failure never blocks confirmation.
 
----
+**Milestone 8.10.M2: RAG Retrieval Service**
+- Given serialized document text + `document_type_id`: embed with `nomic-embed-text` → cosine similarity query `baseline_embeddings` → top-3 results.
+- Graceful degradation: pgvector unavailable → return empty list; never crash.
 
-### Capability E — Verification UI
+**Milestone 8.10.M3: Prompt Builder Serialization Endpoint**
+- `POST /ml/serialize` on ml-service: converts zone-tagged segments into Phase 2 structured text.
+- Reuses `serialize_segments()` from `prompt_builder.py` (built in I1).
 
-**Milestone 8.10.10: Side-by-Side Verification Layout**
-- Amend `/attachments/[attachmentId]/review` to a two-panel verification mode when LayoutLMv3 extraction data is present:
-  - Left 50%: PDF viewer (existing `PdfDocumentViewer`)
-  - Right 50%: extracted fields panel, sorted by confidence tier (flag → verify → auto-confirm)
-- Confidence-driven field highlighting:
-  - Flag fields: red background + red PDF region overlay
-  - Verify fields: amber background + amber PDF region overlay
-  - Auto-confirm fields: green background
-- PDF auto-scrolls to the page/region corresponding to the currently focused field (using `bounding_box`).
-- New component: `apps/web/app/components/ocr/VerificationPanel.tsx`.
-
-**Milestone 8.10.11: Keyboard Flow**
-- `Tab` / `Shift+Tab`: move focus to next/previous field in the panel (by confidence tier order).
-- `Enter`: accept currently focused suggestion (`suggestionAccepted=true`).
-- `Escape`: skip field (move focus without accepting).
-- `Shift+Enter`: bulk confirm all auto-confirm fields.
-- Keyboard hints visible in panel footer.
+**Milestone 8.10.M4: Wire RAG into Field Suggestion Flow**
+- `field-suggestion.service.ts`: call M2 before ML request; pass `ragExamples` in request body.
+- `baseline.service.ts`: call M1 after `confirmBaseline()` (non-blocking).
+- `ragAgreement` re-evaluated post-I4 normalization.
 
 ---
 
-### Capability F — LayoutLMv3 Fine-Tuning Pipeline (training-worker)
+### Capability E — SLM Inference via Ollama (I1 rewrite) 🔄 In progress
 
-**Milestone 8.10.12: training-worker Container Setup**
-- New service: `apps/training-worker/` (FastAPI + HuggingFace `transformers`, `datasets`, `torch`).
-- `training-worker.Dockerfile`: GPU-compatible base image, mounts model volume.
-- `docker-compose.yml`: add `training-worker` service on backend network; no host port mapping.
-- Separate from `ml-worker` so inference is not blocked during training.
-- `codemapcc.md` entry required.
+**Milestone 8.10.5 (rewrite): Ollama/RAG Orchestrator**
+- `apps/ml-service/model.py`: `httpx` POST to `http://ollama:11434/api/generate` with `qwen2.5:1.5b`, grammar-constrained structured output (all fields nullable).
+- `apps/ml-service/model_registry.py`: warm-up replaced by `GET /api/tags` health-check ping.
+- `apps/ml-service/prompt_builder.py` (new): Phase 2 serialization + prompt assembly.
+- Request gains `ragExamples[]`; response per suggestion: `{fieldKey, suggestedValue, zone, boundingBox, extractionMethod: 'qwen-1.5b-rag', rawOcrConfidence, ragAgreement, modelConfidence: null}`.
+- Graceful degradation: Ollama unreachable → `{ok: false, error: {code: "model_not_ready"}}`.
 
-**Milestone 8.10.13: LayoutLMv3 Fine-Tuning Script**
-- `apps/training-worker/finetune.py`:
-  - Load `extraction_training_examples` export (JSON with tokens, bboxes, zone labels, field labels).
-  - Apply data augmentation: rotation ±5°, brightness ±15%, horizontal scale ±10% (image augmentation on rendered page images).
-  - Split 80/10/10 with fixed seed; validation/test exclude `isSynthetic=true` rows.
-  - Fine-tune `LayoutLMv3ForTokenClassification` using HuggingFace Trainer.
-  - Save checkpoint to `/app/models/<candidateVersion>/`; write `metrics.json` (per-field F1, zone accuracy, overall).
-  - Emit callback to `POST /admin/ml/training-runs/:id/complete` on success.
-
-**Milestone 8.10.14: Spatially-Annotated Training Data Export**
-- Extend `MlTrainingDataService` (or new `ExtractionTrainingExportService`) to export `extraction_training_examples` rows with `boundingBox` and `zone`.
-- Export format per row: `{tokens, bboxes, zoneLabel, fieldKey, isSynthetic}` matching LayoutLMv3 input convention (bboxes normalised 0–1000).
-- Endpoint: `GET /admin/ml/training-data/spatial` (admin-only, extends existing training data route).
-
-**Milestone 8.10.15: Synthetic Data Generator (Spatial)**
-- `apps/training-worker/generate_synthetic.py`:
-  - Templates include field-key, label variants, value patterns, AND synthetic bounding boxes (grid positions for common document layouts).
-  - Output per row: `{tokens, bboxes, zoneLabel, fieldKey, assignedValue, isSynthetic: true}`.
-  - CLI: `python generate_synthetic.py --templates templates.json --output synthetic.json --count 200 --seed 42`.
+**Milestone 8.10.6: Zone Classifier Integration** ✅ Complete (I2)
+- Rule-based y-ratio zone assignment; reading-order sort (pageNumber ASC, y ASC, x ASC).
+- `zone_classifier.py` in ml-service.
 
 ---
 
-### Capability G — Training Data Capture from Corrections
+### Capability F — Deterministic Post-Processing Pipeline ✅ Complete (I3–I6)
 
-**Milestone 8.10.16: Populate extraction_training_examples** ✅ Complete (2026-02-23, L4)
-- When a field assignment is saved (via `BaselineAssignmentsService.upsertAssignment`), if `bounding_box`, `zone`, and `extraction_method` are present, insert a row into `extraction_training_examples`.
-- No mutation of existing audit or correction flows.
-- `isSynthetic=false` for all user-sourced examples.
-- **What was built:** Silent append-only insert in `upsertAssignment()` post-upsert spatial check. `apps/api/src/baseline/baseline-assignments.service.ts` modified.
+**Milestone 8.10.I3: DSPP + Type Validation + Confidence Scoring** ✅ Complete
+- DSPP cleaning (S→5, O→0 etc.) per field type before validation.
+- Type validation: currency/date/number → 0.0 on fail.
+- Conflicting zones: confidence zeroed on all but highest-confidence occurrence.
+- **Updated confidence formula (ADR 2026-02-24):**
+  - Hard overrides first: math pass → 1.0; math fail / type fail / conflict → 0.0.
+  - Fallback: `clamp(0.65 * ragAgreement + 0.35 * rawOcrConfidence, 0.0, 1.0)` minus 0.10 if dsppApplied.
+- `llm_reasoning` sidecar: full causal trace per field.
+
+**Milestone 8.10.I4: Value Normalization Layer** ✅ Complete
+- `field-value-normalizer.ts`: currency, date, boolean, number, text normalization.
+- Writes `normalized_value` + `normalization_error`; raw `value` preserved.
+
+**Milestone 8.10.I5: Multi-Page Field Conflict Resolution** ✅ Complete
+- Same `fieldKey`, different `normalizedValue` across pages → `confidence_score = 0.0` on all occurrences.
+
+**Milestone 8.10.I6: Line-Item Math Reconciliation** ✅ Complete
+- `math-reconciliation.service.ts`: sum(line_items) ≈ subtotal; subtotal + tax ≈ total (±0.02).
+- Pass → all participating fields `confidence_score = 1.0` (auto_confirm). Fail → 0.0 (flag).
 
 ---
 
-### Execution Order
+### Capability G — Training Data Capture ✅ Complete (L4)
 
-1. **8.10.1** PyMuPDF integration — no dependencies
-2. **8.10.3** Preprocessor container setup — no dependencies (parallel with 8.10.1)
-3. **8.10.4** OpenCV preprocessing pipeline — depends on 8.10.3
-4. **8.10.5** LayoutLMv3 model loading — depends on 8.10.3/8.10.4 (preprocessor feeds images)
-5. **8.10.6** Zone classifier — depends on 8.10.5
-6. **8.10.7** Updated suggestion endpoint contract — depends on 8.10.5/8.10.6
-7. **8.10.2** Page routing metadata — depends on 8.10.1
-8. **8.10.8** Confidence tier logic — depends on 8.10.7
-9. **8.10.16** Populate extraction_training_examples — depends on 8.10.7 (new columns must exist)
-10. **8.10.10** Verification UI layout — depends on 8.10.8
-11. **8.10.11** Keyboard flow — depends on 8.10.10
-12. **8.10.9** Bulk confirm — depends on 8.10.10
-13. **8.10.12** training-worker container — depends on 8.10.5 (model family known)
-14. **8.10.14** Spatial training data export — depends on 8.10.16
-15. **8.10.15** Synthetic data generator (spatial) — depends on 8.10.12
-16. **8.10.13** LayoutLMv3 fine-tuning script — depends on 8.10.12/8.10.14/8.10.15
+**Milestone 8.10.16: Populate extraction_training_examples** ✅ Complete (2026-02-23)
+- Silent append-only insert in `upsertAssignment()` when spatial fields present.
+
+---
+
+### Capability H — Seed Corpus (new — L6) 📋 Pending
+
+**Milestone 8.10.L6: Seed Corpus**
+- `seed_corpus/` directory in repo root — one JSON file per document type (5–10 files).
+- `apps/api/src/scripts/seed-corpus.ts`: idempotent deploy script; embeds and inserts with `gold_standard=true`, `is_synthetic=true`.
+
+---
+
+### Capability I — Per-Field Confidence Tiers + Verification UI 📋 Pending (J1/K1/K2)
+
+**Milestone 8.10.8: Confidence Tier Logic + Bulk Confirm** 📋 Pending (J1)
+- Tiers derived from `confidence_score`: auto_confirm ≥ 0.90, verify ≥ 0.70, flag < 0.70.
+- `POST /baselines/:id/suggestions/bulk-confirm` — accepts all auto_confirm-tier fields.
+
+**Milestone 8.10.10: Side-by-Side Verification Layout** 📋 Pending (K1)
+- Flattened JSON manifest (`GET /baselines/:id/review-manifest`) — single request; zero-request hover/highlight.
+- Left 50%: PDF viewer. Right 50%: `VerificationPanel` + `JumpBar`.
+- Spatial ordering; bidirectional hover sync; tier indicators.
+
+**Milestone 8.10.11: Keyboard Flow** 📋 Pending (K2)
+- Tab/Enter/Escape/F/Shift+Enter keyboard navigation.
+
+---
+
+### Execution Order (revised for SLM+RAG pivot)
+
+1. F1/F2 schema migrations ✅ Done
+2. F3 pgvector migration 📋 (parallel with G1/H2)
+3. G1 preprocessor container ✅ Done
+4. H1 PyMuPDF OCR routing ✅ Done
+5. H2 Ollama service 📋
+6. C1/C2 A/B tracking ✅ Done
+7. I1 Ollama/RAG orchestrator rewrite 🔄 (depends H2, F3)
+8. I2 Zone classifier ✅ Done
+9. I3–I6 post-processing pipeline ✅ Done
+10. M3 prompt builder endpoint (depends I1)
+11. M2 RAG retrieval (depends F3, H2)
+12. M4 wire RAG into suggestion flow (depends M2, M3, I1)
+13. M1 embed-on-confirm (depends F3, H2, M3)
+14. L4 training examples capture ✅ Done
+15. L6 seed corpus 📋 (depends I1, F3, H2)
+16. J1 confidence tiers + bulk confirm 📋 (depends I3)
+17. K1 verification UI layout 📋 (depends J1)
+18. K2 keyboard flow 📋 (depends K1)
+19. D3 volume trigger ✅ Done
+20. D5 activation gate (online only) 📋
+21. E1/E2 performance dashboard 📋
 
 ---
 
 **Governance Alignment**
-- **Explicit Intent:** All field acceptance requires user action; bulk confirm is a separate explicit action
-- **Auditability:** Zone, bounding box, extraction method, and confidence stored per assignment; training example capture is append-only
-- **Backend authority:** Tier thresholds configurable server-side only; UI renders tiers from API response
-- **No background automation:** Training-worker runs only when triggered by `training_runs` job record; activation always manual
+- **Explicit Intent:** All field acceptance requires user action; bulk confirm is a separate explicit action; embedding never mutates suggested values
+- **Auditability:** Zone, bounding box, extraction method, confidence, RAG trace stored per assignment; embed-on-confirm is append-only; seed corpus is gold-standard only
+- **Backend authority:** Tier thresholds configurable server-side; RAG toggle server-side; activation gate server-enforced
+- **No background automation:** Embed-on-confirm is post-confirmation hook, not a cron job; volume trigger (D3) is the only scheduled task (already built)
 
 **Status**
-🚧 In Progress — 8.10.16 (training data capture) complete. Preprocessor container (B/C/D), LayoutLMv3 (E/F/G), verification UI (H) built and operational. Fine-tuning pipeline (training-worker, 8.10.12–8.10.15) and confirm→training-examples bridge (confirmBaseline not yet wiring examples) remain.
+🚧 In Progress — F1/F2/G1/H1/C1/C2/D3/I2/I3/I4/I5/I6/L4 complete. I1 rewrite (Ollama), H2 (Ollama container), F3 (pgvector), M1–M4 (RAG loop), L6 (seed corpus), J1/K1/K2 (UI) pending. Fine-tuning pipeline (L2/L3/L5/D4) dropped by SLM+RAG pivot.
 
 ---
 
-## v8.11 — RAG + Semantic Search + Data Governance Hardening 📋
+## v8.11 — Semantic Search 📋 (Planned)
+
+**Pivot note (ADR 2026-02-24):** The original v8.11 scope included pgvector infrastructure (F3), embed-on-confirm (M1), RAG retrieval (M2/M4), Golden Set (N1), and field similarity check (N2). All of F3/M1–M4 were **pulled into v8.10** as core requirements of the SLM+RAG pivot. N1 (Golden Set gate) was dropped — the D5 activation gate now uses online gate only. N2 (field similarity) deferred to v8.12. v8.11 scope is now limited to semantic search on top of the v8.10 RAG corpus.
 
 **What this is**
-- pgvector on existing Postgres — HNSW index, `embedding_model_version` column for vector versioning, `document_type_id` for metadata-filtered retrieval
-- Embed confirmed baselines (document-level + field-level + bbox centroid) using `all-MiniLM-L6-v2` loaded alongside LayoutLMv3 in `ml-service` (embedding only, not field extraction)
-- Semantic search over confirmed extraction data — metadata-filtered by document type, version-filtered to exclude stale embeddings
-- Flattened JSON manifest for review page — single page-load request, zero-request hover/highlight interactions
-- Reviewer context panel — similar past confirmed values pre-fetched in manifest, shown inline on flag/verify fields
-- Extraction confidence RAG — feature-flagged, metadata-filtered by document type, adjusts confidence score only
-- Golden Set — git-based, air-gapped benchmark dataset; D5 activation gate enforces Golden Set regression check
-- Field library similarity check — warns on ≥0.85 cosine similarity at field creation to prevent label noise
+- Semantic search over confirmed extraction data using `nomic-embed-text` (already running in Ollama from v8.10)
+- Metadata-filtered by document type; results ranked by cosine similarity
+- Search UI with document type filter, date range, field value previews
 
 **What this is not**
-- Not a replacement for LayoutLMv3 field extraction
-- Not a new database or vector service — pgvector is a Postgres extension
-- RAG does not change suggested values, only confidence scores
-- Golden Set is not created through the confirm flow — admin-only PR governance
+- Not a new embedding infrastructure — pgvector and Ollama embedding are both live from v8.10
+- Not RAG (that is v8.10) — this is user-facing search, not few-shot injection
+- Not a replacement for the review/baseline flow
 
 **Tasks**
-- F3 — pgvector migration + `baseline_embeddings` table with HNSW index + versioning columns (P0)
-- M1 — Embed on confirm with `embedding_model_version`, bbox centroid, document type (P0, blocks M2/M3/M4)
-- M2 — Semantic search endpoint + UI with metadata filtering (P1)
-- M3 — Reviewer context panel pre-fetched in manifest (P1)
-- M4 — Extraction confidence RAG with metadata filtering, feature-flagged (P2)
-- K1 — Flattened JSON manifest + zero-request review UI (P1, amends v8.10 K1)
-- N1 — Golden Set repository + D5 gate integration (P0, amends v8.10 D5)
-- N2 — Field library similarity check at creation (P1)
+- S1 — Semantic search endpoint (`GET /search/extractions`) + search UI page
 
 **Capability detail**
 
-*F3 — pgvector Migration*
-Postgres image → `pgvector/pgvector:pg16`. `baseline_embeddings` table: `id`, `baseline_id` (fk, cascade delete), `field_key`, `embedding vector(384)`, `embedding_model_version` (e.g. `'all-MiniLM-L6-v2'`), `bbox_centroid_x/y` (normalised 0–1000, nullable), `document_type_id` (fk, nullable), `confirmed_at`. HNSW index (`m=16, ef_construction=64`). drizzle-orm custom `vector(n)` column type via `customType`.
-
-*M1 — Embed on Confirm*
-`all-MiniLM-L6-v2` loaded in `ml-service` + warm-up on startup. `POST /ml/embed` accepts `documentText` + `fields[]`; returns embeddings. Stored with `embedding_model_version`, `bbox_centroid_x/y` (median of confirmed bboxes), `document_type_id`. Fire-and-forget — confirm never blocked. Vector versioning: stale rows identifiable by `embedding_model_version` mismatch.
-
-*M2 — Semantic Search*
-`GET /search/extractions?q=&documentType=&dateFrom=&dateTo=&limit=`. Metadata-filtered pgvector query scoped by `document_type_id` (when provided) and `embedding_model_version`. Stale embeddings automatically excluded. Search UI with document type filter dropdown.
-
-*M3 — Reviewer Context Panel*
-Similar past extractions pre-fetched in review manifest (not on hover). Rendered as collapsed section on flag/verify field cards. Read-only, informational.
-
-*M4 — Extraction Confidence RAG*
-`RAG_CONFIDENCE_ENABLED` env flag (default `false`). Metadata-filtered retrieval by `document_type_id` + `embedding_model_version`. Agreement ratio → boost (max +0.10) or penalty (max -0.15). `ragAdjustment` + `documentTypeScoped` persisted in `llm_reasoning`.
-
-*K1 — Flattened JSON Manifest*
-`GET /baselines/:id/review-manifest` returns all fields, bboxes, tiers, similarContext (top-3 per field), tierCounts in one response. Review page is zero-request after load — all hover/highlight driven by local state.
-
-*N1 — Golden Set*
-`golden_set/*.json` in repo root — admin-only PR governance, never written by automated process. D5 gate runs candidate + active model against Golden Set; regression on Golden Set auto-kills activation. Empty Golden Set → gate skipped with warning.
-
-*N2 — Field Library Similarity Check*
-On field create: embed new field label via `POST /ml/embed`; query existing field embeddings; warn if similarity ≥ 0.85. Admin confirmation modal required to proceed. `forceCreate=true` flag + audit log on override.
+*S1 — Semantic Search*
+`GET /search/extractions?q=&documentType=&dateFrom=&dateTo=&limit=`. Embed query with `nomic-embed-text` via Ollama. Cosine similarity query on `baseline_embeddings` scoped by `document_type_id` when provided. Response: `{results: [{baselineId, similarity, confirmedAt, fieldPreview[]}]}`. Search UI with filter controls; result cards link to review page.
 
 **Governance Alignment**
-- Explicit Intent: Search read-only; RAG adjusts confidence only; Golden Set never auto-updated; field similarity is a warning not a block
-- Auditability: `ragAdjustment` + `documentTypeScoped` per assignment; search queries logged; field similarity overrides audited
-- Backend authority: `RAG_CONFIDENCE_ENABLED` server-side only; activation gates server-enforced
-- Resilience: embed failure never blocks confirm; field create never blocked by embed failure; Golden Set empty → gate skipped not crashed
+- Explicit Intent: Search is read-only; no mutations triggered by search
+- Auditability: search queries logged with query hash, filter applied, result count
+- Backend authority: similarity threshold and result cap server-side
 
-**REQUIRES:** v8.10 complete. `RAG_CONFIDENCE_ENABLED` must not be set to `true` until ≥200 confirmed baselines exist. N1 (Golden Set) must be populated before first production model activation.
+**REQUIRES:** v8.10 complete. `baseline_embeddings` must have entries (seed corpus from L6 sufficient for initial queries).
 
 **Status**
 📋 Planned — depends on v8.10 completion
