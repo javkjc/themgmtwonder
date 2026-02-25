@@ -18,10 +18,11 @@
   - requirements.txt (fastapi, uvicorn, paddleocr, paddlepaddle, Pillow, numpy, PyMuPDF)
   - ocrw.Dockerfile (python:3.10-slim build, apt deps, uvicorn main:app --host 0.0.0.0 --port 4000)
 - apps/ml-service (FastAPI inference microservice for ML suggestions; internal-only)
-  - main.py (FastAPI app; GET /health returns {status: "ok"}; /ml/suggest-fields runs LayoutLMv3 token classification with bbox normalization and segment-level aggregation)
-  - model.py (loads LayoutLMv3Processor + LayoutLMv3ForTokenClassification; supports startup load and hot-swap load from path)
-  - model_registry.py (ModelRegistry singleton: holds activeVersion, processor, model, modelPath in memory; thread-safe swap; includes LayoutLMv3 warm-up forward pass validation)
-  - requirements.txt (fastapi, uvicorn, transformers, torch, numpy, Pillow)
+  - main.py (FastAPI app; GET /health returns {status: "ok"}; /ml/suggest-fields builds zone-aware serialized text, injects RAG few-shot examples, and calls Ollama Qwen 2.5 1.5B for nullable JSON field extraction with per-field ragAgreement/rawOcrConfidence)
+  - model.py (Ollama HTTP client using httpx; POST /api/generate with model qwen2.5:1.5b and JSON schema format; graceful model_not_ready errors when Ollama is unavailable)
+  - model_registry.py (ModelRegistry singleton for Ollama readiness; warm-up is GET /api/tags and validates qwen2.5:1.5b is pulled)
+  - requirements.txt (fastapi, uvicorn, torch, numpy, Pillow, httpx)
+  - prompt_builder.py (Phase 2 serializer for zone-tagged OCR segments and prompt assembly for Ollama payload with nullable JSON schema)
   - ml.Dockerfile (python:3.14-slim build, installs requirements.txt, copies main.py/model.py/model_registry.py/table_detect.py, preloads microsoft/layoutlmv3-base, uvicorn main:app on port 5000; internal only — no host port mapping)
 - docker-compose.yml (to wire ml-service container on backend network)
 - docker-compose.yml (services include Ollama model serving on backend network; named volume `ollama_models`)
@@ -128,15 +129,19 @@
   - Base route: /
   - Endpoints:
     - POST /ml/suggest-fields
-      - Request: { baselineId: string, pageWidth: int, pageHeight: int, pageType: "digital"|"scanned", segments: [{ id: string, text: string, boundingBox?: {x, y, width, height} }], fields: [{ fieldKey: string, label: string }], threshold?: number, pairCandidates?: [{ labelSegmentId, valueSegmentId, pairConfidence, relation, pageNumber }], segmentContext?: [{ segmentId, contextText, contextSegmentIds: string[] }] }
-      - Response: { ok: boolean, modelVersion: string, threshold: number, suggestions: [{ segmentId: string, fieldKey: string, confidence: number, zone: string, boundingBox: {x,y,width,height}, extractionMethod: "layoutlmv3" }], error?: { code: string, message: string } }
-      - Model: LayoutLMv3ForTokenClassification (default checkpoint `microsoft/layoutlmv3-base`)
+      - Request: { baselineId: string, documentTypeId: string | null, segments: [{ id: string, text: string, boundingBox: {x, y, width, height} | null, pageNumber: number, confidence: number }], fields: [{ fieldKey: string, label: string, fieldType: string }], pageWidth: number, pageHeight: number, pageType: "digital"|"scanned", ragExamples: [{ serializedText: string, confirmedFields: Record<string,string|null> }] }
+      - Response: { ok: boolean, modelVersion: string, ragAgreementNote: string, suggestions: [{ fieldKey: string, suggestedValue: string | null, zone: string, boundingBox: {x,y,width,height} | null, extractionMethod: "qwen-1.5b-rag", rawOcrConfidence: number | null, ragAgreement: number, modelConfidence: null }], error?: { code: string, message: string } }
+      - Model: Ollama `qwen2.5:1.5b` via `POST http://ollama:11434/api/generate`
       - Algorithm:
-        1. Validate and normalize segment bounding boxes to 0–1000 scale (supports fractional, page-space, and pre-normalized inputs).
-        2. Tokenize words + bboxes with LayoutLMv3Processor and run forward pass with `{input_ids, attention_mask, bbox, pixel_values}`.
-        3. Argmax per-token class logits and aggregate token confidences to segment-level field predictions.
-        4. Emit per-suggestion `zone`, normalized `boundingBox`, and `extractionMethod="layoutlmv3"`.
-      - Graceful degradation: if model is not ready, returns `{ ok: false, error: { code: "model_not_ready" } }`.
+        1. Sort segments in reading order, classify zones with `zone_classifier.py`, and serialize zone blocks using `prompt_builder.py` (same-zone y-band merge +/-5px, table left-to-right, left column before right column).
+        2. Build Ollama prompt from system instructions + field schema + RAG examples + serialized document.
+        3. Force nullable JSON output schema for every field (`type: [\"string\", \"null\"]`, `default: null`) and call `/api/generate`.
+        4. Build per-field suggestions with `extractionMethod=\"qwen-1.5b-rag\"`, best contributing OCR segment bbox/confidence when determinable, and pre-normalization `ragAgreement`.
+      - Graceful degradation: if Ollama is unreachable, returns `{ ok: false, error: { code: "model_not_ready" } }`; if ragExamples is empty, logs warning and runs zero-shot.
+    - POST /ml/serialize
+      - Request: { segments: [{ text: string, boundingBox: {x, y, width, height} | null, pageNumber: number, zone: string }], pageWidth: number }
+      - Response: { serializedText: string }
+      - Behavior: wraps `serialize_segments()` from `prompt_builder.py` to emit Phase 2 zone-tagged text blocks without duplicating serializer logic in API code.
     - POST /ml/models/activate
       - Request: { version: string, filePath: string }
       - Response: { ok: boolean, activeVersion?: string, error?: { code: string, message: string } }
@@ -151,7 +156,8 @@
       - Audit: logs `ignoredOverlapFiltered` count in `ml.table.detect` details
   - Utilities:
     - apps/ml-service/table_detect.py - Rule-based table detection heuristics
-    - apps/ml-service/model.py - LayoutLMv3 model loading + warm-up helpers
+    - apps/ml-service/model.py - Ollama Qwen inference client (`/api/generate`) and `model_not_ready` handling
+    - apps/ml-service/prompt_builder.py - phase-2 zone serialization + nullable JSON schema/prompt assembly for Ollama
     - apps/ml-service/zone_classifier.py - Rule-based zone classifier: assigns header/addresses/line_items/instructions/footer zone to each segment by normalised y-midpoint ratio (y_ratio = (bbox.y + bbox.height/2) / pageHeight); returns 'unknown' for segments without a bounding box
 - Utility: FieldTypeValidator
   - Path: apps/api/src/ml/field-type-validator.ts
@@ -250,10 +256,10 @@
   - Guards/errors: JwtAuthGuard + AdminGuard class-wide; NotFoundException on unknown user; AuditService.log called after reset
 - Module: MlModule
   - Path: apps/api/src/ml/ml.module.ts
-  - Purpose: ML service client module for field suggestions, table detection, admin metrics, training data export, and assisted training job orchestration
+  - Purpose: ML service client module for field suggestions, table detection, admin metrics/performance, training data export, and assisted training job orchestration
   - Imports: DbModule, AuditModule, CommonModule, BaselineModule
-  - Controllers: FieldSuggestionController, TableSuggestionController, MlMetricsController, MlTrainingDataController, MlModelsController, MlTrainingJobsController
-  - Providers: MlService, FieldSuggestionService, TableSuggestionService, FieldAssignmentValidatorService, MlMetricsService, MlTrainingDataService, MlModelsService, MlTrainingJobsService, MlTrainingAutomationService, MathReconciliationService
+  - Controllers: FieldSuggestionController, TableSuggestionController, MlMetricsController, MlTrainingDataController, MlModelsController, MlTrainingJobsController, MlPerformanceController
+  - Providers: MlService, FieldSuggestionService, TableSuggestionService, FieldAssignmentValidatorService, MlMetricsService, MlTrainingDataService, MlModelsService, MlTrainingJobsService, MlTrainingAutomationService, MathReconciliationService, MlPerformanceService
 - Service: MlTrainingAutomationService
   - Path: apps/api/src/ml/ml-training-automation.service.ts
   - Purpose: Polls qualified correction volume and enqueues global training jobs when threshold (>=1000) is reached
@@ -283,6 +289,13 @@
   - Error handling: Normalizes errors to { ok: false, error: { code, message } }
   - Logging: Logs failures with service, endpoint, statusCode, errorType fields
   - Config: Reads ML_SERVICE_URL from env (defaults to http://ml-service:5000)
+- Service: RagRetrievalService
+  - Path: apps/api/src/ml/rag-retrieval.service.ts
+  - Purpose: retrieve(serializedText, documentTypeId): embeds via Ollama nomic-embed-text, queries baseline_embeddings with pgvector cosine distance, returns top-3 {serializedText, confirmedFields}; graceful degradation to [] on failure.
+- Service: RagEmbeddingService
+  - Path: apps/api/src/ml/rag-embedding.service.ts
+  - Purpose: quality gate check (math_pass/zero_corrections/admin), ML service Phase-2 serialization call (POST /ml/serialize), Ollama nomic-embed-text embedding call, volume cap enforcement (max 5 per document_type_id, evict oldest non-gold), insert into baseline_embeddings, audit/log events (rag.embed.stored / rag.embed.skipped).
+  - Called from: BaselineManagementService.confirmBaseline() (non-blocking)
 - Service: TableSuggestionService
   - Path: apps/api/src/ml/table-suggestion.service.ts
   - Purpose: Orchestrates ML table detection, persistence, ignore, and convert workflows
@@ -316,9 +329,20 @@
   - Endpoints:
     - GET /admin/ml/metrics → MlMetricsService.getMetrics()
   - Guards/errors: JwtAuthGuard + CsrfGuard + AdminGuard
+- Controller: MlPerformanceController
+  - Path: apps/api/src/ml/ml-performance.controller.ts
+  - Base route: /admin/ml
+  - Purpose: Admin-only performance endpoint returning per-model performance, 12-week trend, 7-day confidence histogram, and candidate recommendation
+  - Endpoints:
+    - GET /admin/ml/performance → MlPerformanceService.getPerformance(startDate?, endDate?)
+  - Audit: emits action="ml.performance.fetch" with requested date range
+  - Guards/errors: JwtAuthGuard + CsrfGuard + AdminGuard
 - Service: MlMetricsService
   - Path: apps/api/src/ml/ml-metrics.service.ts
   - Purpose: Computes acceptance/modify/clear rates, top-1 accuracy, and field confusion from assignments/audit logs
+- Service: MlPerformanceService
+  - Path: apps/api/src/ml/ml-performance.service.ts
+  - Purpose: Aggregates per-model suggestion/acceptance stats, computes D5 online gate status (`getGateStatus(candidateVersionId)`), builds 12-week trend buckets from `assigned_at`, produces 7-day `confidence_score` histogram bands, and emits recommendation when candidate beats active by >=5% with >=1000 suggestions
 - Controller: MlTrainingDataController
   - Path: apps/api/src/ml/ml-training-data.controller.ts
   - Base route: /admin/ml
@@ -476,7 +500,7 @@
   - Methods:
     - createDraftBaseline(attachmentId, userId): Creates baseline with status='draft', auto-populates segments from OCR, pre-fills assignments from parsed fields
     - markReviewed(baselineId, userId): Transitions draft â†’ reviewed (still editable)
-    - confirmBaseline(baselineId, userId): Transactional confirm (reviewed â†’ confirmed) + auto-archives previous confirmed baseline atomically; blocked if any draft tables exist
+    - confirmBaseline(baselineId, userId): Transactional confirm (reviewed â†’ confirmed) + auto-archives previous confirmed baseline atomically; blocked if any draft tables exist; triggers non-blocking RagEmbeddingService.embedOnConfirm() after commit
     - markBaselineUtilized(baselineId, type, metadata): First-write-wins utilization tracking (record_created/workflow_committed/data_exported)
   - Audit: all transitions emit baseline.create/review/confirm/archive/utilized events
 - Service: TableManagementService

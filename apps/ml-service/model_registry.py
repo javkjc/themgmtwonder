@@ -1,29 +1,17 @@
-"""
-model_registry.py - Thread-safe in-memory registry for the active LayoutLMv3 model.
-
-Holds:
-  - activeVersion: version string of the currently loaded model
-  - processor: LayoutLMv3Processor instance
-  - model: LayoutLMv3ForTokenClassification instance
-  - modelPath: file path from which the model was loaded
-"""
-
+﻿import logging
+import os
 import threading
 from typing import Optional
 
-import torch
-from PIL import Image
+import httpx
 
 
 class ModelRegistry:
-    """Singleton registry holding the active LayoutLMv3 processor and model."""
-
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._active_version: Optional[str] = None
-        self._processor = None
-        self._model = None
-        self._model_path: Optional[str] = None
+        self._ready = False
+        self._last_error: Optional[str] = None
 
     @property
     def active_version(self) -> Optional[str]:
@@ -31,69 +19,60 @@ class ModelRegistry:
             return self._active_version
 
     @property
-    def processor(self):
+    def ready(self) -> bool:
         with self._lock:
-            return self._processor
+            return self._ready
 
     @property
-    def model(self):
+    def last_error(self) -> Optional[str]:
         with self._lock:
-            return self._model
+            return self._last_error
 
-    @property
-    def model_path(self) -> Optional[str]:
-        with self._lock:
-            return self._model_path
-
-    def swap(self, version: str, processor, model, model_path: str) -> None:
-        """Atomically replace the active processor/model, version, and path."""
+    def mark_ready(self, version: str) -> None:
         with self._lock:
             self._active_version = version
-            self._processor = processor
-            self._model = model
-            self._model_path = model_path
+            self._ready = True
+            self._last_error = None
 
-    def seed(self, version: str, processor, model, model_path: str) -> None:
-        """Set initial model state (used during startup, no-op if already set)."""
+    def mark_error(self, error: str) -> None:
         with self._lock:
-            if self._model is None:
-                self._active_version = version
-                self._processor = processor
-                self._model = model
-                self._model_path = model_path
+            self._ready = False
+            self._last_error = error
+
+    def warm_up_model(self, timeout_seconds: float = 10.0, model_name: Optional[str] = None) -> bool:
+        target_model = model_name or os.getenv("ML_MODEL_VERSION", "qwen2.5:1.5b")
+        base_url = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
+        tags_url = f"{base_url}/api/tags"
+
+        try:
+            with httpx.Client(timeout=timeout_seconds) as client:
+                response = client.get(tags_url)
+                response.raise_for_status()
+                body = response.json()
+        except Exception as exc:  # noqa: BLE001
+            error = f"{type(exc).__name__}: {exc}"
+            self.mark_error(error)
+            logging.warning("ml.ollama.tags.unreachable", extra={"error": error})
+            return False
+
+        models = body.get("models") or []
+        names = {m.get("name") for m in models if isinstance(m, dict)}
+
+        if target_model in names:
+            self.mark_ready(target_model)
+            logging.info("ml.ollama.tags.ready", extra={"model": target_model})
+            return True
+
+        self.mark_error(f"Model not found in /api/tags: {target_model}")
+        logging.warning(
+            "ml.ollama.tags.model_missing",
+            extra={
+                "model": target_model,
+                "availableModels": sorted(name for name in names if isinstance(name, str)),
+            },
+        )
+        return False
 
 
-# Global singleton instance
 registry = ModelRegistry()
 
-
-def warm_up_model(processor, model) -> str:
-    """Run a warm-up forward pass and return the output shape representation."""
-    image = Image.new("RGB", (224, 224), color=(255, 255, 255))
-    words = ["warm", "up"]
-    boxes = [[0, 0, 100, 100], [120, 0, 220, 100]]
-
-    with torch.no_grad():
-        batch = processor(
-            image,
-            words,
-            boxes=boxes,
-            truncation=True,
-            padding="max_length",
-            return_tensors="pt",
-        )
-        # Explicitly touch the expected tensor keys for checkpoint visibility.
-        warmup_tensors = {
-            "input_ids": batch["input_ids"],
-            "attention_mask": batch["attention_mask"],
-            "bbox": batch["bbox"],
-            "pixel_values": batch["pixel_values"],
-        }
-        outputs = model(**warmup_tensors)
-
-    shape = tuple(outputs.logits.shape)
-    if len(shape) != 3 or shape[2] != model.config.num_labels:
-        raise RuntimeError(
-            f"Warm-up output shape mismatch: logits{shape}, expected last dim {model.config.num_labels}"
-        )
-    return repr(shape)

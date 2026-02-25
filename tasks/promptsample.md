@@ -478,7 +478,8 @@ tasks/plan.md is the single source of truth. Follow it exactly.
 
 ## Scope
 CONSTRAINT: [copy scope from plan.md task section]
-Work ONLY on files in ## Files. Do NOT touch other files.
+Work ONLY on files in ## Files for implementation. Do NOT touch other files.
+**Exception:** The post-completion writes in ## After Completion are mandatory governance writes and are NOT subject to this constraint — execute them after all verification passes.
 
 ## Task
 **[Task ID] — [Task Name]**

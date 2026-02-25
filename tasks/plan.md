@@ -530,7 +530,7 @@ CREATE INDEX ON baseline_embeddings
 ## 7) SLM Inference via Ollama (P0 — blocks I1, J1)
 
 ### I1 — Ollama/RAG Orchestrator in ml-service (Complexity: Complex)
-**Status:** 🔄 REOPEN — REWRITE (previously marked Completed as LayoutLMv3; reopened by ADR 2026-02-24 pivot to Qwen 2.5 1.5B via Ollama)
+**Status:** ✅ Completed on 2026-02-24
 
 **Problem statement**
 Replace LayoutLMv3 with a locally-running Qwen 2.5 1.5B model (via Ollama) guided by RAG few-shot context pulled from pgvector-confirmed baselines. The deterministic post-processing pipeline (I2–I6) is preserved unchanged.
@@ -1042,6 +1042,7 @@ Training examples must be captured automatically when field assignments are save
 ## 11) RAG Learning Loop (P1 — depends on I1, F3)
 
 ### M1 — Embed-on-Confirm (Complexity: Medium)
+**Status:** ✅ Completed on 2026-02-24
 
 **Problem statement**
 After a baseline is confirmed, qualifying extractions must be embedded and stored in `baseline_embeddings` so future similar documents can retrieve them as few-shot examples. This is the learning loop replacing fine-tuning.
@@ -1085,6 +1086,7 @@ After a baseline is confirmed, qualifying extractions must be embedded and store
 ---
 
 ### M2 — RAG Retrieval Service (Complexity: Simple)
+**Status:** ✅ Completed on 2026-02-24
 
 **Problem statement**
 Before calling the SLM, retrieve the top-3 most similar confirmed baselines from pgvector filtered by `document_type_id`. These become the few-shot examples in the prompt.
@@ -1121,6 +1123,7 @@ Before calling the SLM, retrieve the top-3 most similar confirmed baselines from
 ---
 
 ### M3 — Prompt Builder Serialization Endpoint (Complexity: Simple)
+**Status:** ✅ Completed on 2026-02-24
 
 **Problem statement**
 The API needs a way to serialize OCR segments into Phase 2 format (zone-tagged text blocks) without duplicating the logic from `prompt_builder.py` in TypeScript. Expose a lightweight serialization endpoint on the ML service.
@@ -1161,7 +1164,7 @@ The field suggestion entry point must call M2 (RAG retrieval) before the ML serv
 
 **Files / Locations**
 - Amend: `apps/api/src/ml/field-suggestion.service.ts` — add M2 call before ML request; pass `ragExamples`.
-- Amend: `apps/api/src/baseline/baseline.service.ts` — call M1 after `confirmBaseline()`.
+- Amend: `apps/api/src/baseline/baseline.service.ts` — call M1 after `confirmBaseline()`; call `OcrService.markOcrUtilized()` to lock OCR.
 - Docs: `tasks/codemapcc.md`.
 
 **Implementation plan**
@@ -1172,6 +1175,8 @@ The field suggestion entry point must call M2 (RAG retrieval) before the ML serv
    - Log `rag.retrieval.used` with `retrievedCount` and `documentTypeId`.
 2. In `baseline.service.ts`, after `status = 'confirmed'` is persisted:
    - Call `RagEmbeddingService.embedOnConfirm(baselineId)` in a non-blocking fire-and-forget (do not await; wrap in try/catch; log any error).
+   - Call `OcrService.markOcrUtilized(ocrId, 'authoritative_record', userId)` to lock the source OCR output. Fetch `ocrId` from the current confirmed OCR for the attachment. If no confirmed OCR exists (draft only), call on the current draft OCR. Wrap in try/catch — OCR lock failure must never block baseline confirmation.
+   - Reason: baseline confirmation is the correct governance trigger for OCR lock. The "Confirm Extraction" button on the task detail page is a vestigial manual step that pre-dates this coupling; locking here makes it redundant.
 3. Ensure `ragAgreement` in `llm_reasoning` is re-evaluated post-I4 normalization using the retrieved examples.
 4. Update `tasks/codemapcc.md`.
 
@@ -1179,10 +1184,41 @@ The field suggestion entry point must call M2 (RAG retrieval) before the ML serv
 - Manual: Generate suggestions on a baseline with a confirmed similar baseline in `baseline_embeddings` → `llm_reasoning.ragRetrievedCount > 0`; `ragAgreement = 1.0` for matching fields.
 - Manual: No matching embeddings → `ragRetrievedCount = 0`; `ragAgreement = 0.0`; suggestion still returned.
 - Manual: Confirm a qualifying baseline → `baseline_embeddings` row appears (M1 called).
+- Manual: Confirm a qualifying baseline → `GET /attachments/:id/ocr/redo-eligibility` returns `allowed: false`, `reason: 'Authoritative record created from this data'`.
+- Manual: Confirm a qualifying baseline → `GET /attachments/:id/ocr/current` shows `utilizationType = 'authoritative_record'`.
 - Regression: Suggestions still generated when pgvector unavailable (M2 returns empty; zero-shot path).
+- Regression: Baseline confirmation succeeds even if OCR lock call throws (non-blocking).
 
 **Estimated effort:** 2–3 hours
 **Complexity flag:** Medium
+
+---
+
+### M5-pre — Remove "Confirm Extraction" Button (Complexity: Simple)
+**Depends on:** M4 (OCR lock wired to baseline confirm)
+
+**Problem statement**
+The "Confirm Extraction" button on the task detail page is vestigial. Since M4 wires OCR locking to baseline confirmation, the button serves no purpose and creates user confusion (users don't know it exists; the real lock now happens automatically). Remove it from the UI and hide the "A confirmed extraction already exists" message that replaces it.
+
+**Files / Locations**
+- Amend: `apps/web/app/task/[id]/page.tsx` — remove the "Confirm Extraction" button block and associated modal.
+
+**Implementation plan**
+1. In `page.tsx`, remove the conditional block rendering "Confirm Extraction" button (currently guarded by `recordLifecycleStatus === 'draft' && recordProcessingStatus === 'completed'`).
+2. Remove the `showConfirmOcrModal` state, `handleConfirmOcr`, `executeConfirmOcr`, `ocrConfirming` state, `pendingOcrConfirmation` state, and the OCR Confirmation Modal JSX block — all are exclusively used by this button.
+3. Remove the import of `confirmOcrOutput` from `../../lib/api/ocr` if it is no longer referenced elsewhere in the file.
+4. The `POST /ocr/:ocrId/confirm` backend endpoint is retained — it remains a valid API call made internally by M4 via `markOcrUtilized`. Do not remove the backend.
+5. Update `tasks/codemapcc.md` if the frontend route entry references the confirm button.
+
+**Checkpoint M5-pre — Verification**
+- Manual: Task detail page loads; no "Confirm Extraction" button visible anywhere on the attachments panel.
+- Manual: No "A confirmed extraction already exists" message visible.
+- Manual: Confirm a baseline → redo-eligibility correctly blocks re-OCR (M4 lock fires; UI shows "Redo Retrieval" disabled with correct reason).
+- Regression: "Retrieve Data", "Redo Retrieval", "Review Extraction", "Apply to Remark", "Apply to Description" buttons all still function correctly.
+- Regression: No TypeScript build errors after state/handler removal.
+
+**Estimated effort:** 1 hour
+**Complexity flag:** Simple
 
 ---
 
@@ -1384,6 +1420,572 @@ RAG retrieval returns no results until confirmed baselines accumulate. A seed co
 - [ ] Update `tasks/features.md` v8.9 status to ✅ Complete; v8.10 status to ✅ Complete.
 - [ ] Run full regression suite.
 - [ ] Tag commit: `git tag v8.10 -m "Optimal Extraction Accuracy complete"`
+
+---
+
+## v8.12 — Norma: Self-Healing Document Intelligence
+
+**Date:** 2026-02-25
+**Status:** MISSION READY — Pending E1/E2 completion (v8.9 remainder)
+**Prerequisite:** E1 + E2 must be complete and verified before Norma begins.
+
+**Vision:** Transition from a Sequential Extractor to a Self-Healing Document Agent. Address the three core failure points of document AI — OCR noise, layout variance, and silent math failures — using the existing local hardware stack. No new infrastructure. No new dependencies beyond what is already approved.
+
+**Architect's Guardrails (non-negotiable):**
+1. **The Immune System Signal (Task N0):** Confidence Propagation Audit is a hard blocker. If null rate > 20% at any pipeline layer, fix that layer before Feature N1 ships. Document the null rate at all four checkpoints in `tasks/executionnotes.md`.
+2. **Layout Tolerance without model training (Tasks N2b/N2c):** The 2+8 Truncation Rule and Keyword Anchor Normalization solve layout variance by giving Qwen column semantics (headers) and target data (totals). No changes to `zone_classifier.py` — ever.
+3. **Ethical Learning Loop (Tasks N5/N6 — Hard Gate):** Rule Graduation is strictly gated. Correction events generate `PROPOSED` rules only. A human must `[Approve]` in `/admin/rules` before any alias becomes `ACTIVE`. Tasks N5 and N6 ship as a locked pair. N5 data tracking code must not activate rules until N6 UI is live.
+
+**Approved packages:** None new. All features use existing stack (NestJS, Drizzle, Postgres, Ollama/Qwen, PaddleOCR, FastAPI, httpx).
+
+**Out of scope:**
+- [NO] `zone_classifier.py` changes of any kind.
+- [NO] New Docker services or queue infrastructure.
+- [NO] Global (non-vendor-scoped) alias rules.
+- [NO] Auto-activation of alias rules without human approval.
+- [NO] SSE — polling only for retry status.
+
+**STOP Events:**
+- **STOP — N0 null rate > 20%:** Fix confidence propagation before any further Norma work.
+- **STOP — N5 without N6:** Do not ship correction event tracking unless the `/admin/rules` UI is scheduled in the same sprint.
+- **STOP — zone_classifier.py touched:** Revert immediately. Use prompt annotation only.
+
+---
+
+## PART 4 — Norma v8.12: Signal Layer
+
+### N0 — Confidence Propagation Audit (Prerequisite — Hard Blocker)
+
+**Problem statement**
+`[LOW_CONF]` tagging (N1) is only meaningful if PaddleOCR confidence values survive the full pipeline from OCR Worker to ML Service. Currently there is no verification that confidence is non-null at each layer. This audit must be completed and documented before any Signal Layer feature is written.
+
+**Four checkpoints (must verify in order):**
+1. **OCR Worker output** — `docker logs todo-ocr-worker --tail 50` after processing an attachment; confirm `segments[].confidence` is non-null in the JSON response.
+2. **DB persistence** — Run:
+   ```sql
+   SELECT
+     COUNT(*) AS total_segments,
+     COUNT(*) FILTER (WHERE segments IS NOT NULL) AS with_segments
+   FROM attachment_ocr_outputs
+   LIMIT 1;
+   ```
+   Then inspect a stored `segments` JSONB value: confirm individual segment objects contain a `confidence` key with a numeric value.
+3. **NestJS → ML service payload** — Add a temporary `console.log` in `field-suggestion.service.ts` before the ML HTTP call; confirm outbound `segments[].confidence` is numeric (not null/undefined) for at least 5 segments.
+4. **ML service receipt** — Check `ml-service` logs after a suggestion call; confirm `_find_contributing_segment()` is finding a contributing segment with non-null `confidence` for at least one field.
+
+**Pass criteria:** Null rate < 20% at all four checkpoints.
+
+**On failure:** Identify the layer that drops confidence. Fix it. Re-run the audit. Only then proceed to N1.
+
+**Output (mandatory):** Append to `tasks/executionnotes.md`:
+- Null rate at each of the four checkpoints
+- Whether a fix was required and what it was
+- Confirmation that N1 is unblocked
+
+**Files / Locations:**
+- No code changes if audit passes cleanly.
+- If fix required: amend the layer that drops confidence (NestJS serializer, DB query, or ML service segment lookup).
+- Docs: `tasks/executionnotes.md` — append audit result.
+
+**Estimated effort:** 1–2 hours
+**Complexity flag:** Simple (audit) / Medium (if fix required)
+
+---
+
+### N1 — Contextual Linguistic Correction via LOW_CONF Tagging
+
+**Problem statement**
+PaddleOCR produces a confidence score per segment but this signal is discarded before serialization. Segments with low confidence (e.g. `5tory` at 0.42) are treated identically to high-confidence segments (e.g. `Story` at 0.97). Qwen has no signal to distrust the literal string and apply linguistic correction.
+
+**Depends on:** N0 audit passing (confidence non-null at ML service).
+
+**Files / Locations:**
+- Amend: `apps/ml-service/prompt_builder.py` — `PromptSegment` dataclass + `serialize_segments()`.
+- Amend: `apps/ml-service/main.py` — pass `confidence` through to `PromptSegment` construction.
+- Docs: `tasks/codemapcc.md`.
+
+**Implementation plan:**
+1. Add `confidence: Optional[float]` field to `PromptSegment` dataclass (default `None`).
+2. In `main.py` `suggest_fields()`, when constructing `PromptSegment` from each segment, pass `confidence=segment.confidence`.
+3. In `serialize_segments()`, when building the cell text: if `seg.confidence is not None and seg.confidence < 0.6`, append `[LOW_CONF]` to the cell text string.
+   - Example: `"5tory"` at confidence 0.42 → cell text becomes `"5tory [LOW_CONF]"`
+   - Example: `"Story"` at confidence 0.97 → cell text remains `"Story"` (unchanged)
+4. In `build_prompt_payload()`, add the following sentence to `system_prompt`:
+   `"Segments tagged [LOW_CONF] have unreliable OCR character recognition. Use surrounding context and linguistic reasoning to infer the correct value. Do not rely on the literal character string of a [LOW_CONF] segment."`
+5. Segments that have been alias-corrected (N2 alias engine sets `aliasApplied: true`) must NOT receive `[LOW_CONF]` tagging regardless of confidence — the alias already makes them trusted. This flag is set on the NestJS side before the ML call; the ML service receives the corrected text without `[LOW_CONF]`.
+
+**Checkpoint N1 — Verification:**
+- Manual: Upload a document with a known low-confidence OCR segment; check serialized text in ML service logs (add temporary `logging.info` of `serialized_document`); confirm `[LOW_CONF]` appears on that segment.
+- Manual: High-confidence segment (≥0.6) → no `[LOW_CONF]` tag in serialized output.
+- Manual: Suggestion quality check — for a field where `[LOW_CONF]` is tagged, verify Qwen returns a linguistically plausible value rather than the literal OCR noise string.
+- Regression: Segments without confidence (None) → no `[LOW_CONF]` tag (tag only fires when confidence is explicitly below threshold, not when absent).
+
+**Estimated effort:** 2 hours
+**Complexity flag:** Simple
+
+---
+
+## PART 5 — Norma v8.12: Alias Engine
+
+### N2 — M5 Alias Engine (Vendor-Scoped, Pre-LLM)
+
+**Problem statement**
+Known OCR noise patterns for specific vendors (e.g. `5tory → Story` for vendor X) are currently corrected manually on every document. A deterministic pre-LLM substitution pass using a vendor-scoped alias table eliminates recurring corrections before they reach Qwen.
+
+**Files / Locations:**
+- New: `apps/api/src/ml/alias-engine.service.ts` — alias lookup + segment correction.
+- Amend: `apps/api/src/ml/field-suggestion.service.ts` — call alias engine before segment serialization.
+- Amend: `apps/api/src/ml/ml.module.ts` — register `AliasEngineService`.
+- Docs: `tasks/codemapcc.md`.
+
+**Schema dependency:** Requires `alias_rules` table from migration N_MIG (see below).
+
+**Implementation plan:**
+1. `AliasEngineService.applyAliases(segments, vendorId)`:
+   - Load all `alias_rules` where `vendor_id = vendorId` AND `status = 'active'` from DB.
+   - Cache per vendor with 5-minute TTL (use a simple `Map<vendorId, {rules, loadedAt}>` in-memory cache — no Redis).
+   - For each segment: check if `segment.text` matches any `raw_pattern` (exact match, case-insensitive).
+   - If match: replace `segment.text` with `corrected_value`; set `aliasApplied: true` on the segment object.
+   - Return modified segments with `aliasApplied` flags.
+2. In `field-suggestion.service.ts`, before building the ML payload:
+   - Resolve `vendorId` from the document's metadata (e.g. vendor field on the baseline or attachment). If no vendor is identifiable, skip alias pass (do not error).
+   - Call `AliasEngineService.applyAliases(segments, vendorId)`.
+   - Pass `aliasApplied` flag per segment to ML service payload for `[LOW_CONF]` suppression logic.
+3. **Hard constraint:** Alias rules are vendor-scoped only. The `alias_rules` table has a `CHECK (vendor_id IS NOT NULL)` constraint enforced at schema level. Global aliases are architecturally prohibited.
+4. Log `alias.engine.applied` with `vendorId`, `ruleCount`, and count of segments corrected.
+
+**Checkpoint N2 — Verification:**
+- DB: Insert a test `active` alias rule `{vendor_id: 'vendor-test', raw_pattern: '5tory', corrected_value: 'Story'}`.
+- Manual: Generate suggestions for a document from `vendor-test` containing `"5tory"` → serialized text shows `"Story"` (not `"5tory"`); log shows `alias.engine.applied` with corrected count = 1.
+- Manual: Same segment — confirm no `[LOW_CONF]` tag appears on the alias-corrected segment despite low OCR confidence.
+- Manual: Document from a different vendor → `"5tory"` not corrected (rule is vendor-scoped).
+- Manual: No `active` rules for vendor → alias pass runs, corrects zero segments, no error.
+
+**Estimated effort:** 1 day
+**Complexity flag:** Medium
+
+---
+
+## PART 6 — Norma v8.12: Spatial Layer
+
+### N3 — Selective Terse Annotation + 2+8 Truncation
+
+**Problem statement**
+Zone serialization sends full text blocks to Qwen with no spatial metadata. For `footer` and `line_items` zones, positional context (e.g. "this value is in the bottom-right") meaningfully aids extraction. Dense line-item tables also risk exceeding the effective context window on long invoices.
+
+**Files / Locations:**
+- Amend: `apps/ml-service/prompt_builder.py` — annotation logic + truncation rule.
+- Amend: `apps/ml-service/model.py` — add `num_ctx: 8192` to Ollama payload.
+- Docs: `tasks/codemapcc.md`.
+
+**Implementation plan:**
+1. **`num_ctx: 8192` in Ollama payload** — in `generate_fields()` in `model.py`, add `"num_ctx": 8192` to the payload dict sent to Ollama. Single line change.
+2. **Terse annotation** — in `serialize_segments()`, for segments in `footer` and `line_items` zones only:
+   - Compute `y_pct = round(seg.bounding_box['y'] * 100)` as integer percentage.
+   - Compute `side = 'r' if seg.bounding_box['x'] > 0.5 else 'l'` (left/right of page centre).
+   - Append ` [b{y_pct}%,{side}]` to the cell text. Example: `"1,234.56 [b87%,r]"`.
+   - Only annotate if `seg.bounding_box` is not None. No annotation for segments without bbox.
+   - Do NOT annotate `header`, `addresses`, `instructions`, or `unknown` zones — token budget preservation.
+3. **2+8 Truncation rule** — after building zone line lists, if `line_items` zone has > 10 rows AND total serialized character count > 6000:
+   - Keep first 2 rows (table headers with column semantics).
+   - Keep last 8 rows (totals area).
+   - Drop middle rows silently — no marker or ellipsis inserted.
+   - Log `prompt.truncated` with `droppedRowCount`.
+4. Character count threshold (6000) is checked on the fully serialized output before returning from `serialize_segments()`.
+
+**Checkpoint N3 — Verification:**
+- Manual: Upload a dense invoice; check ML service logs for serialized text; confirm `[b87%,r]` style annotations appear on `footer` and `line_items` segments only.
+- Manual: Header zone segments → no annotation tags.
+- Manual: Invoice with > 10 line items → log shows `prompt.truncated`; serialized `line_items` block contains first 2 + last 8 rows only.
+- Manual: Invoice with ≤ 10 line items → no truncation; all rows present.
+- Manual: Verify `num_ctx` appears in Ollama request payload (add temporary log).
+- Regression: `POST /ml/serialize` endpoint still works correctly (uses same `serialize_segments()` function).
+
+**Estimated effort:** 4 hours
+**Complexity flag:** Medium
+
+---
+
+### N4 — Keyword Anchor Normalization (Option B — Prompt Annotation Only)
+
+**Problem statement**
+Zone boundaries are fixed Y-coordinate thresholds. If a vendor places "Subtotal" at Y=0.70 instead of the expected Y=0.82, the zone classifier assigns it correctly but Qwen has no spatial landmark to anchor its understanding of the document's financial structure. Keyword anchors provide layout-tolerant spatial context without touching `zone_classifier.py`.
+
+**Files / Locations:**
+- Amend: `apps/ml-service/prompt_builder.py` — anchor detection + annotation post-processing.
+- Docs: `tasks/codemapcc.md`.
+
+**Constraint:** `zone_classifier.py` must not be modified. This feature operates exclusively on the serialized output string.
+
+**Implementation plan:**
+1. Define anchor keyword list (hardcoded, not configurable):
+   ```python
+   ANCHOR_KEYWORDS = ["Subtotal", "Sub-total", "Total", "Tax", "GST", "VAT",
+                      "Invoice", "Bill To", "Ship To", "Due Date", "Invoice Date"]
+   ```
+2. In `serialize_segments()`, after building all zone blocks, scan the original `segments` list for segments whose `text` contains any anchor keyword (case-insensitive, strip punctuation for matching).
+3. For each anchor found: record `{keyword, y_value}` where `y_value = seg.bounding_box['y']` (normalized 0.0–1.0). Only record anchors where `bounding_box` is not None.
+4. After the zone block text is assembled, append an anchor summary block at the end of the serialized output:
+   ```
+   [ANCHORS]
+   "Total" at Y=0.82
+   "Subtotal" at Y=0.76
+   "Invoice Date" at Y=0.08
+   ```
+5. Deduplicate anchors — if the same keyword appears multiple times, keep the one with the highest-confidence segment.
+6. If no anchors found: omit the `[ANCHORS]` block entirely (no empty block).
+
+**Checkpoint N4 — Verification:**
+- Manual: Upload invoice containing "Total Due:" → serialized text ends with `[ANCHORS]` block showing `"Total" at Y=0.XX`.
+- Manual: Invoice without any anchor keywords → no `[ANCHORS]` block in output; no error.
+- Manual: Multiple "Total" occurrences (e.g. "Line Total" in line_items + "Grand Total" in footer) → only highest-confidence occurrence recorded per keyword.
+- Regression: `zone_classifier.py` unchanged; existing zone assignments unaffected.
+- Regression: `POST /ml/serialize` still returns correct output.
+
+**Estimated effort:** 3 hours
+**Complexity flag:** Simple
+
+---
+
+## PART 7 — Norma v8.12: Immune System
+
+### N_MIG — Migration: Three New Tables (Prerequisite for N2, N5, N6_RETRY)
+
+**Problem statement**
+The alias engine (N2), correction event tracking (N5), and the async retry loop (N6_RETRY) all require new DB tables. This migration must run before any of those features are implemented.
+
+**Files / Locations:**
+- Amend: `apps/api/src/db/schema.ts` — add three table definitions.
+- Backend: `apps/api/drizzle/` — generate and run migration.
+- Docs: `tasks/codemapcc.md`.
+
+**Schema:**
+
+```sql
+-- Alias Rules: vendor-scoped OCR correction rules
+CREATE TABLE alias_rules (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  vendor_id TEXT NOT NULL,  -- CHECK (vendor_id IS NOT NULL) enforced in schema
+  field_key TEXT NOT NULL,
+  raw_pattern TEXT NOT NULL,
+  corrected_value TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'proposed',  -- proposed | active | rejected
+  proposed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  approved_at TIMESTAMP,
+  approved_by TEXT,
+  correction_event_count INT NOT NULL DEFAULT 0
+);
+
+-- Correction Events: raw log of every human edit
+CREATE TABLE correction_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  vendor_id TEXT NOT NULL,
+  field_key TEXT NOT NULL,
+  raw_ocr_value TEXT NOT NULL,
+  corrected_value TEXT NOT NULL,
+  baseline_id UUID NOT NULL REFERENCES extraction_baselines(id),
+  user_id TEXT NOT NULL,
+  corrected_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Extraction Retry Jobs: state machine for async math retry
+CREATE TABLE extraction_retry_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  attachment_id UUID NOT NULL,
+  baseline_id UUID NOT NULL,
+  status TEXT NOT NULL DEFAULT 'PENDING',  -- PENDING | RUNNING | COMPLETED | FAILED | RECONCILIATION_FAILED
+  failing_field_keys TEXT[] NOT NULL,
+  failing_y_min DECIMAL(6,4) NOT NULL,
+  failing_y_max DECIMAL(6,4) NOT NULL,
+  preliminary_values JSONB NOT NULL,
+  final_values JSONB,
+  retry_count INT NOT NULL DEFAULT 0,
+  error_message TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+```
+
+**Implementation plan:**
+1. Add all three table definitions to `apps/api/src/db/schema.ts` using Drizzle ORM syntax.
+2. Add `CHECK (vendor_id IS NOT NULL)` constraint on `alias_rules` at schema level (Drizzle `.notNull()` on `vendorId` column — already implied, but make explicit).
+3. Run migration inside container: `docker compose exec api npx drizzle-kit migrate`.
+4. Update `tasks/codemapcc.md` with all three tables.
+
+**Checkpoint N_MIG — Verification:**
+- DB: `\d alias_rules`, `\d correction_events`, `\d extraction_retry_jobs` — all three tables present with correct columns.
+- DB: `INSERT INTO alias_rules (vendor_id, ...) VALUES (NULL, ...)` → should fail with NOT NULL constraint.
+- Build: `npm run build` exits 0 after schema.ts update.
+
+**Estimated effort:** 1–2 hours
+**Complexity flag:** Simple
+
+---
+
+### N5 — I6 Async Math Retry Loop
+
+**Problem statement**
+The existing I6 math reconciliation runs synchronously and flags failures with `confidence_score = 0.0`. It has no retry mechanism. If math fails due to OCR noise on one field (e.g. `"33O.OO"` misread as `"330.00"` vs the correct `"300.00"`), the entire extraction is flagged with no recovery attempt. A targeted single retry re-prompts Qwen with only the failing region's segments.
+
+**Depends on:** N_MIG (extraction_retry_jobs table), I6 (existing math reconciliation).
+
+**Hardware guard:** Entire feature is gated by `ML_MATH_RETRY_ENABLED` env flag (default `false`). If false, math failures remain flagged as before (I6 behaviour unchanged). No retry job is created.
+
+**Files / Locations:**
+- Amend: `apps/api/src/ml/field-suggestion.service.ts` — post-I6 retry trigger.
+- New: `apps/api/src/ml/ml-retry-worker.service.ts` — bounded setInterval worker.
+- Amend: `apps/api/src/ml/ml.module.ts` — register `MlRetryWorkerService`.
+- New: endpoint on existing attachments controller: `GET /attachments/:attachmentId/retry-status` — polling endpoint.
+- Docs: `tasks/codemapcc.md`.
+
+**Implementation plan:**
+
+**Retry trigger (in `field-suggestion.service.ts`, after I6):**
+1. After I6 math reconciliation, check: `ML_MATH_RETRY_ENABLED === 'true'` AND any field has `validationOverride = 'math_reconciliation_failed'`.
+2. If retry warranted:
+   - Identify failing fields: all with `validationOverride = 'math_reconciliation_failed'`.
+   - Find contributing segments for failing fields using `bounding_box.y` from the failing field assignments.
+   - Compute `failing_y_min = min(failing segments y)`, `failing_y_max = max(failing segments y + height)` with ±0.05 padding.
+   - Write `extraction_retry_jobs` record:
+     ```json
+     {
+       "attachmentId": "...",
+       "baselineId": "...",
+       "status": "PENDING",
+       "failingFieldKeys": ["invoice_total", "tax"],
+       "failingYMin": 0.78,
+       "failingYMax": 0.93,
+       "preliminaryValues": { "invoice_total": "999.00", "tax": "30.00", "subtotal": "300.00" },
+       "retryCount": 0
+     }
+     ```
+   - Return to client immediately with `{status: "preliminary", retryJobId: "<uuid>"}` alongside the preliminary suggestion results.
+3. If `ML_MATH_RETRY_ENABLED` is false OR no math failures: return as normal (no retry job created).
+
+**Background worker (`MlRetryWorkerService`):**
+1. On module init (when `ML_MATH_RETRY_ENABLED=true`): start `setInterval` at 5000ms.
+2. Each tick: query for exactly ONE `PENDING` record from `extraction_retry_jobs` (ORDER BY `created_at ASC`, LIMIT 1).
+3. If none found: return immediately (no-op tick).
+4. Set status to `RUNNING`, update `updated_at`.
+5. Load original OCR segments for `attachmentId` from `attachment_ocr_outputs`.
+6. Filter segments to those with `bounding_box.y` between `failing_y_min` and `failing_y_max`.
+7. Re-serialize filtered segments via `POST /ml/serialize` (ML service endpoint M3).
+8. Build targeted re-prompt: inject into `build_prompt_payload()` with a focused system message: `"The following fields failed math reconciliation: [failingFieldKeys]. Re-examine only the provided sub-document region and return corrected values."`.
+9. Call `POST /ml/suggest-fields` with filtered segments and the targeted prompt.
+10. Run I6 math check on the retry result.
+11. **If math passes:** set status `COMPLETED`, write `final_values`, update `updated_at`.
+12. **If math fails (or any error):** set status `RECONCILIATION_FAILED`, write `error_message`, update `updated_at`. **No further retry.** `retry_count` enforces `MAX_MATH_RETRIES = 1`.
+13. Guard: if `retry_count >= 1` on any record picked up (should not happen, but defensive): set `RECONCILIATION_FAILED` immediately without calling ML.
+
+**Polling endpoint:**
+- `GET /attachments/:attachmentId/retry-status` — returns:
+  ```json
+  {
+    "status": "PENDING | RUNNING | COMPLETED | RECONCILIATION_FAILED",
+    "finalValues": { "invoice_total": "330.00", "tax": "30.00" },
+    "errorCode": "RECONCILIATION_FAILED | null"
+  }
+  ```
+- Returns most recent `extraction_retry_jobs` record for `attachmentId`.
+- If no record: returns `{status: "none"}`.
+
+**Frontend behaviour (review page):**
+- If suggestion response contains `retryJobId`: display `"Verifying math..."` indicator.
+- Poll `GET /attachments/:id/retry-status` every 3 seconds.
+- On `COMPLETED`: update the display values for failing fields with `final_values`; remove indicator.
+- On `RECONCILIATION_FAILED`: show `"Math reconciliation failed — manual review required"` with the specific failing fields highlighted.
+- On `status: "none"` or non-retry document: no indicator shown.
+
+**Checkpoint N5 — Verification:**
+- Manual: Upload invoice where subtotal + tax ≠ total; `ML_MATH_RETRY_ENABLED=true` → suggestion response includes `retryJobId`; `extraction_retry_jobs` row created with `status: PENDING`.
+- DB: `SELECT * FROM extraction_retry_jobs ORDER BY created_at DESC LIMIT 1` → shows correct `failing_field_keys`, `failing_y_min/max`, `preliminary_values`.
+- Manual: Wait 5–10 seconds → row status updates to `RUNNING` then `COMPLETED` or `RECONCILIATION_FAILED`.
+- Manual: `GET /attachments/:id/retry-status` returns updated status.
+- Manual: `ML_MATH_RETRY_ENABLED=false` → math failure returns immediately with flag; no retry job created.
+- Manual: Retry fails math again → status = `RECONCILIATION_FAILED`; `retry_count = 1`; no third attempt ever made.
+- Regression: Documents without math failures → no retry job created; normal suggestion flow unaffected.
+- Regression: I6 math pass → no retry job regardless of `ML_MATH_RETRY_ENABLED`.
+
+**Estimated effort:** 1 day
+**Complexity flag:** Complex
+
+---
+
+## PART 8 — Norma v8.12: Learning Layer (Hard Gate)
+
+### N6 — Correction Event Tracking (Phase 1 — Data Only)
+
+**Problem statement**
+Every human edit on the review page that corrects a suggested value is a learning signal. Currently these corrections are stored in `baseline_field_assignments` (`correctedFrom` field) but are not aggregated into a trainable alias corpus. This task captures the raw correction signal.
+
+**Hard Gate:** This task ships ONLY alongside N7 (Rule Management UI). Deploying correction tracking without the approval UI is architecturally prohibited — it creates a path where proposed rules could never be acted on, producing unbounded table growth.
+
+**Files / Locations:**
+- Amend: `apps/api/src/baseline/baseline-assignments.service.ts` — write to `correction_events` on human edit.
+- Docs: `tasks/codemapcc.md`.
+
+**Schema dependency:** Requires `correction_events` and `alias_rules` tables from N_MIG.
+
+**Implementation plan:**
+1. In `upsertAssignment()` in `baseline-assignments.service.ts`, after persisting the assignment: check if `correctedFrom` is non-null AND `suggestionAccepted = false` (human modified a suggestion).
+2. If yes: resolve `vendorId` from the baseline/attachment metadata. If no `vendorId` resolvable: skip (do not write a correction event with null vendor — schema prohibits it).
+3. Insert into `correction_events`:
+   ```json
+   {
+     "vendorId": "vendor-abc",
+     "fieldKey": "invoice_total",
+     "rawOcrValue": "5tory",
+     "correctedValue": "Story",
+     "baselineId": "...",
+     "userId": "..."
+   }
+   ```
+4. After insert: count `correction_events` for `(vendor_id, field_key, raw_ocr_value)`.
+   - If count >= 3: upsert into `alias_rules` with `status = 'proposed'`, `correction_event_count = count`.
+   - **Status remains `'proposed'` — never `'active'`.** The alias engine (N2) only loads `'active'` rules, so no rule takes effect until a human approves it in N7.
+5. Log `correction.event.recorded` with `vendorId`, `fieldKey`, `correctionCount`. If count >= 3, also log `alias.rule.proposed` with `ruleId`.
+
+**Checkpoint N6 — Verification:**
+- Manual: Correct a suggested field 3 times for the same vendor → `correction_events` has 3 rows; `alias_rules` has one row with `status = 'proposed'`.
+- DB: `SELECT status FROM alias_rules WHERE vendor_id = 'vendor-test'` → `proposed` (never `active`).
+- Manual: The alias engine (N2) produces zero corrections for this rule (not yet active) — confirmed by absence of `alias.engine.applied` log with this vendor/pattern.
+- Manual: Correct a field for a different vendor → separate `correction_events` row; no cross-vendor contamination.
+- Regression: Assignments with `suggestionAccepted = true` (accepted without modification) → no correction event written.
+- Regression: Manual assignments (no suggestion) → no correction event written.
+
+**Estimated effort:** 3 hours
+**Complexity flag:** Simple
+
+---
+
+### N7 — Rule Management UI: /admin/rules (Hard Gate — unlocks N6)
+
+**Problem statement**
+Proposed alias rules sit in `PROPOSED` state indefinitely without human review. This page gives admins visibility into all proposed rules and the ability to approve or reject them. Only approved rules become `active` and enter the alias engine pipeline. This is the governance gate that prevents rule poisoning.
+
+**Files / Locations:**
+- New: `apps/web/app/admin/rules/page.tsx` — Rule Management UI.
+- New: `apps/web/app/lib/api/rules.ts` — API helpers for rules endpoints.
+- New: `apps/api/src/ml/alias-rules.controller.ts` — `GET /admin/rules`, `POST /admin/rules/:id/approve`, `POST /admin/rules/:id/reject`.
+- New: `apps/api/src/ml/alias-rules.service.ts` — DB queries for rule management.
+- Amend: `apps/api/src/ml/ml.module.ts` — register new controller + service.
+- Amend: `apps/web/app/admin/ml/page.tsx` — add link to `/admin/rules`.
+- Docs: `tasks/codemapcc.md`.
+
+**Implementation plan:**
+
+**Backend:**
+1. `GET /admin/rules?status=proposed` — returns all `alias_rules` for given status, ordered by `proposed_at DESC`. Default to `status=proposed`.
+2. `POST /admin/rules/:id/approve` — sets `status = 'active'`, records `approved_at = NOW()`, `approved_by = req.user.username`. Emits audit log `alias.rule.approved`.
+3. `POST /admin/rules/:id/reject` — sets `status = 'rejected'`. Emits audit log `alias.rule.rejected`.
+4. All endpoints admin-only (reuse existing admin auth guard).
+
+**Frontend (`/admin/rules`):**
+1. Page title: "Rule Management — Proposed Aliases".
+2. On load: fetch all `proposed` rules. Auto-refresh every 30 seconds (same pattern as `/admin/ml`).
+3. Group rules by vendor. For each vendor section: vendor name header, then a table of rules.
+4. Each rule row displays: `field_key`, `raw_pattern → corrected_value`, `correction_event_count` corrections, `proposed_at` date, `[Approve]` and `[Reject]` buttons.
+5. `[Approve]` — calls `POST /admin/rules/:id/approve`; on success: remove row from list; show brief inline confirmation "Rule activated".
+6. `[Reject]` — calls `POST /admin/rules/:id/reject`; on success: remove row from list.
+7. If no proposed rules: show "No pending rules. The system is up to date." — no empty table.
+8. Link from `/admin/ml` page: "Rule Management →" in the navigation area.
+
+**Alias engine cache invalidation:** After `approve` or `reject`, the `AliasEngineService` in-memory cache for that vendor must be invalidated. Since the cache TTL is 5 minutes, the simplest approach is to delete the vendor's cache entry on any state change. The next alias engine call for that vendor will reload from DB.
+
+**Checkpoint N7 — Verification:**
+- Manual: Navigate to `/admin/rules` as admin → proposed rules from N6 appear grouped by vendor.
+- Manual: Click `[Approve]` on a rule → DB shows `status = 'active'`, `approved_at` non-null; row disappears from page.
+- Manual: Generate suggestions for the approved vendor after approval → alias engine applies the rule; `alias.engine.applied` log shows correction.
+- Manual: Click `[Reject]` on a rule → DB shows `status = 'rejected'`; row disappears from page; alias engine never applies it.
+- Manual: Non-admin user → `/admin/rules` returns 403.
+- Manual: No proposed rules → page shows "No pending rules" message.
+- Regression: Existing `/admin/ml` page unaffected; link to `/admin/rules` present.
+
+**Estimated effort:** 1 day
+**Complexity flag:** Medium
+
+---
+
+## PART 9 — Norma v8.12: Execution Order
+
+**Prerequisites (must complete before Norma begins):**
+- E1 Performance API ✅ or in-progress
+- E2 Performance UI ✅ or in-progress
+
+**Norma critical path:**
+```
+N_MIG (migration) ──────────────────────────────────────────────┐
+                                                                 ↓
+N0 (confidence audit) ──→ N1 (LOW_CONF tagging) ──→ N2 (alias engine) ──→ complete
+                                                                 ↑
+N3 (terse annotation + truncation) ────────────────────────────-┘
+N4 (keyword anchor) ──→ independent (no deps beyond N1 complete)
+
+N5 (math retry loop) ──→ depends on N_MIG + existing I6
+N6 (correction tracking) ──→ depends on N_MIG              ┐ ship as
+N7 (rules UI) ──────────────────────────────────────────────┘ locked pair
+```
+
+**Sequence:**
+1. **N_MIG** — migration first, all features depend on it.
+2. **N0** — confidence audit. Hard blocker for N1. Run immediately after N_MIG.
+3. **N1** — LOW_CONF tagging. Requires N0 passing.
+4. **N2** — Alias engine. Requires N_MIG. Can start in parallel with N1 after N_MIG.
+5. **N3** — Terse annotation + truncation. Requires N1 complete (same file, avoid conflicts). `num_ctx` change can be done independently.
+6. **N4** — Keyword anchor. Requires N3 complete (same file, avoid conflicts).
+7. **N5** — Math retry loop. Requires N_MIG + existing I6. Independent of N1–N4 beyond N_MIG.
+8. **N6 + N7** — Ship as locked pair. N6 first (data only), N7 immediately after. Requires N_MIG.
+
+**Parallel opportunities:**
+- N_MIG and N0 can run simultaneously (migration doesn't block the audit).
+- N2 and N1 can be developed in parallel after N_MIG (different files).
+- N5 is independent of N1–N4 and can run in parallel with the spatial layer work.
+- N6+N7 pair is independent of N1–N5 and can run in parallel once N_MIG is done.
+
+---
+
+## PART 10 — Norma v8.12: Definition of Done
+
+**Feature completeness:**
+- [ ] Confidence null rate documented in `executionnotes.md` at all four pipeline checkpoints (N0).
+- [ ] `[LOW_CONF]` tags appear on sub-0.6 confidence segments in serialized ML input (N1).
+- [ ] `num_ctx: 8192` set in Ollama payload (N3).
+- [ ] Terse bbox annotations (`[b87%,r]`) present on footer and line_items segments only (N3).
+- [ ] 2+8 truncation fires on line_items > 10 rows when char count > 6000 (N3).
+- [ ] `[ANCHORS]` block appears in serialized output when anchor keywords found (N4).
+- [ ] `alias_rules`, `correction_events`, `extraction_retry_jobs` tables present in DB (N_MIG).
+- [ ] Alias engine applies vendor-scoped `active` rules before serialization (N2).
+- [ ] Alias-corrected segments do not receive `[LOW_CONF]` tag (N2+N1 integration).
+- [ ] Math retry job created on I6 failure when `ML_MATH_RETRY_ENABLED=true` (N5).
+- [ ] `GET /attachments/:id/retry-status` returns correct status (N5).
+- [ ] Retry worker processes one PENDING job per 5-second tick (N5).
+- [ ] `MAX_MATH_RETRIES = 1` enforced via `retry_count` column — no third attempt ever (N5).
+- [ ] Correction events written on human edits to suggestions (N6).
+- [ ] Alias rules reach `proposed` at 3+ corrections; never reach `active` without approval (N6).
+- [ ] `/admin/rules` page lists proposed rules grouped by vendor (N7).
+- [ ] Approve action sets rule `active`; alias engine loads it on next vendor cache refresh (N7).
+- [ ] Reject action sets rule `rejected`; alias engine never loads it (N7).
+
+**Guardrail compliance:**
+- [ ] `zone_classifier.py` has zero modifications across all Norma tasks.
+- [ ] No alias rule with `vendor_id = NULL` exists in DB (schema constraint enforced).
+- [ ] No alias rule with `status = 'active'` exists before N7 ships (verified by DB query).
+- [ ] `ML_MATH_RETRY_ENABLED=false` default confirmed in `.env` and `docker-compose.yml`.
+
+**No regressions:**
+- [ ] `docker compose exec -T api npm run build` exits 0.
+- [ ] `docker compose exec -T web npm run build` exits 0.
+- [ ] Existing I6 math reconciliation behaviour unchanged when `ML_MATH_RETRY_ENABLED=false`.
+- [ ] `POST /ml/suggest-fields` still works when no alias rules exist for a vendor.
+- [ ] `POST /ml/serialize` still returns correct output after prompt_builder.py changes.
+- [ ] Review page still supports manual assignment and non-spatial baselines.
+
+**Documentation:**
+- [ ] `tasks/codemapcc.md` updated with all new files, endpoints, tables, and routes.
+- [ ] `tasks/executionnotes.md` updated with N0 audit results and completion evidence.
+- [ ] `tasks/features.md` v8.12 section reflects actual state.
+
+**Tag:** `git tag v8.12 -m "Norma: Self-Healing Document Intelligence complete"`
 
 ---
 

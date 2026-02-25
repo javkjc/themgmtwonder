@@ -23,7 +23,7 @@ const vector = customType<{
   driverData: string;
   config: { dimensions: number };
 }>({
-  dataType(config) {
+  dataType(config: { dimensions: number } | undefined) {
     return `vector(${config?.dimensions ?? 768})`;
   },
   toDriver(value) {

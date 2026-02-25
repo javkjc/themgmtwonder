@@ -196,13 +196,8 @@ export class FieldSuggestionService {
       fields: activeFields.map((f) => ({
         fieldKey: f.fieldKey,
         label: f.label,
-        characterType: f.characterType,
+        fieldType: f.characterType,
       })),
-      threshold: 0.75,
-      pairCandidates: [],
-      segmentContext: [],
-      modelVersionId: selectedModel.id,
-      filePath: selectedModel.filePath,
     };
 
     const mlResult = await this.mlService.suggestFields(mlPayload);
@@ -231,8 +226,12 @@ export class FieldSuggestionService {
       .from(baselineFieldAssignments)
       .where(eq(baselineFieldAssignments.baselineId, baselineId));
 
-    // 9. Filter suggestions: only suggest for unassigned fields or fields without manual value
-    const filteredRaw = rawSuggestions.filter((s) => {
+    // 9. Filter suggestions: skip null values and manually-assigned fields.
+    //    Qwen returns a suggestion per field — null suggestedValue means the
+    //    model found nothing for that field, so drop it.
+    const filteredRaw = rawSuggestions.filter((s: any) => {
+      if (!s.suggestedValue || !String(s.suggestedValue).trim()) return false;
+
       const existing = existingAssignments.find(
         (a) => a.fieldKey === s.fieldKey,
       );
@@ -243,44 +242,39 @@ export class FieldSuggestionService {
         existing.assignedValue !== null &&
         String(existing.assignedValue).trim() !== '';
 
-      if (hasManualValue) {
-        return false;
-      }
-
-      return true;
+      return !hasManualValue;
     });
 
     const fieldByKey = new Map(activeFields.map((f) => [f.fieldKey, f]));
-    const segmentById = new Map(segments.map((s) => [s.id, s]));
 
-    // 10. Run DSPP + type validation + weighted FinalScore per suggestion (Steps 3-5 of I3)
+    // 10. Run DSPP + type validation + weighted FinalScore per suggestion (Steps 3-5 of I3).
+    //     Qwen response shape: { fieldKey, suggestedValue, zone, boundingBox,
+    //     extractionMethod, rawOcrConfidence, ragAgreement, modelConfidence: null }.
+    //     There is no segmentId — the contributing segment was identified inside ml-service.
+    //     We use a stable synthetic segmentId (fieldKey) so downstream code that
+    //     references segmentId for auditing still has a non-null string.
     const processedSuggestions: ProcessedSuggestion[] = [];
 
     for (const rawSug of filteredRaw) {
-      const segment = segmentById.get(rawSug.segmentId);
-      if (!segment) continue;
-
-      const segmentText = segment.text ?? '';
-      if (!segmentText.trim()) continue;
-
-      const field = fieldByKey.get(rawSug.fieldKey);
+      const field = fieldByKey.get((rawSug as any).fieldKey);
       if (!field) continue;
+
+      const suggestedValue = String((rawSug as any).suggestedValue ?? '').trim();
+      if (!suggestedValue) continue;
 
       const processed = processSuggestion(
         {
-          segmentId: rawSug.segmentId,
-          fieldKey: rawSug.fieldKey,
-          confidence: rawSug.confidence,
-          zone: rawSug.zone ?? 'unknown',
-          boundingBox: rawSug.boundingBox ?? null,
-          extractionMethod: rawSug.extractionMethod ?? 'layoutlmv3',
+          segmentId: `qwen-${field.fieldKey}`,
+          fieldKey: (rawSug as any).fieldKey,
+          confidence: (rawSug as any).rawOcrConfidence ?? 0.0,
+          ragAgreement: (rawSug as any).ragAgreement ?? 0.0,
+          zone: (rawSug as any).zone ?? 'unknown',
+          boundingBox: (rawSug as any).boundingBox ?? null,
+          extractionMethod: (rawSug as any).extractionMethod ?? 'qwen-1.5b-rag',
         },
         {
-          text: segmentText,
-          confidence:
-            segment.confidence !== null && segment.confidence !== undefined
-              ? Number(segment.confidence)
-              : null,
+          text: suggestedValue,
+          confidence: (rawSug as any).rawOcrConfidence ?? null,
         },
         {
           fieldKey: field.fieldKey,
@@ -294,10 +288,12 @@ export class FieldSuggestionService {
     // 11. Conflicting field detection (Step 6 of I3)
     detectConflictingZones(processedSuggestions);
 
-    // 12. I5 post-aggregation multi-page conflict scan
+    // 12. I5: multi-page conflict scan — Qwen suggestions have no source segment,
+    //     so pageNumber is always null. Conflicts across pages cannot be detected
+    //     without segment provenance; policy is a no-op for Qwen suggestions.
     const processedForPersistence = this.applyMultiPageFieldConflictPolicy(
       processedSuggestions,
-      segmentById,
+      new Map(), // empty — no segment lookup needed; Qwen suggestions are per-field not per-segment
     );
 
     // 13. Drop any suggestion whose finalScore was zeroed by type validation or
@@ -315,8 +311,8 @@ export class FieldSuggestionService {
     for (const processed of validSuggestions) {
       // Preserve the raw OCR value for human review, do not use cleanedValue as assignedValue.
       const assignedValue = processed.originalValue;
-      const sourceSegment = segmentById.get(processed.segmentId);
-      const pageNumber = sourceSegment?.pageNumber ?? null;
+      // Qwen suggestions have no source segment — pageNumber is not available.
+      const pageNumber: number | null = null;
 
       const field = fieldByKey.get(processed.fieldKey);
       const normResult = normalizeFieldValue({

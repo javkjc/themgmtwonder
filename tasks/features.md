@@ -3180,10 +3180,10 @@ Governed training data export from user corrections, model version registry, hot
 - PyMuPDF for PDF ingestion: auto-detect image-based vs text-based pages; use text layer directly for digital PDFs, route scanned pages through OpenCV preprocessing ✅ Built
 - Dedicated `preprocessor` container: OpenCV deskew, orientation correction, shadow removal, contrast enhancement, quality gate ✅ Built
 - Zone classifier: assigns document regions to `header`, `addresses`, `line_items`, `instructions`, `footer` ✅ Built
-- Qwen 2.5 1.5B via Ollama (replacing LayoutLMv3): grammar-constrained JSON extraction with structured output schema; all fields nullable to prevent hallucination 🔄 In progress (I1 rewrite)
-- pgvector RAG: top-3 confirmed baselines retrieved by cosine similarity and injected as few-shot examples before each SLM call 🔄 In progress (F3/M1–M4)
-- Embed-on-confirm learning loop: qualifying baselines embedded with nomic-embed-text and stored in `baseline_embeddings`; no GPU training required 🔄 In progress (M1)
-- Seed corpus: 5–10 synthetic gold-standard examples per document type bootstrap the RAG corpus at cold start 🔄 In progress (L6)
+- Qwen 2.5 1.5B via Ollama (replacing LayoutLMv3): grammar-constrained JSON extraction with structured output schema; all fields nullable to prevent hallucination ✅ Built (I1)
+- pgvector RAG: top-3 confirmed baselines retrieved by cosine similarity and injected as few-shot examples before each SLM call 🔄 In progress (F3 ✅ / M2/M4 pending)
+- Embed-on-confirm learning loop: qualifying baselines embedded with nomic-embed-text and stored in `baseline_embeddings`; no GPU training required 📋 Pending (M1)
+- Seed corpus: 5–10 synthetic gold-standard examples per document type bootstrap the RAG corpus at cold start 📋 Pending (L6)
 - Per-field confidence scoring: hard overrides (math reconciliation, type validation, conflict detection) + RAG-agreement fallback formula; auto-confirm / verify / flag tiers 📋 Pending (J1)
 - Verification UI: side-by-side PDF viewer + extracted fields; PDF auto-scrolls to flagged field region; confidence-driven highlighting; bulk confirm and keyboard flow 📋 Pending (K1/K2)
 
@@ -3226,7 +3226,7 @@ Maximise extraction accuracy on both scanned and digital documents using a local
 
 **NEW TABLE: `training_runs`** ✅ Built (F1)
 
-**NEW TABLE: `baseline_embeddings`** 📋 Pending (F3)
+**NEW TABLE: `baseline_embeddings`** ✅ Built (F3)
 - `id` uuid pk, `baseline_id` uuid fk extraction_baselines, `document_type_id` uuid fk document_types, `embedding vector(768)` (nomic-embed-text output dimension), `serialized_text` text, `confirmed_fields` jsonb, `is_synthetic` boolean default false, `gold_standard` boolean default false, `quality_gate` text (`'math_pass'`|`'zero_corrections'`|`'admin'`), `created_at` timestamp
 - ivfflat index on embedding (cosine ops, lists=100)
 
@@ -3262,44 +3262,44 @@ Maximise extraction accuracy on both scanned and digital documents using a local
 
 ---
 
-### Capability C — Ollama Service (new — H2) 📋 Pending
+### Capability C — Ollama Service (new — H2) ✅ Complete (2026-02-24)
 
-**Milestone 8.10.H2: Ollama Service**
+**Milestone 8.10.H2: Ollama Service** ✅ Complete (2026-02-24)
 - `ollama` service in `docker-compose.yml` on backend network, port 11434, named `ollama_models` volume.
 - Entrypoint: pulls `qwen2.5:1.5b` and `nomic-embed-text` on first start; cached in volume.
 - Health check: `GET /api/tags` returns both model names.
 
 ---
 
-### Capability D — pgvector + RAG Infrastructure (new — F3/M1–M4) 📋 Pending
+### Capability D — pgvector + RAG Infrastructure (new — F3/M1–M4) 🔄 Partially complete
 
-**Milestone 8.10.F3: pgvector Migration**
+**Milestone 8.10.F3: pgvector Migration** ✅ Complete (2026-02-24)
 - Postgres image → `pgvector/pgvector:pg16`. `CREATE EXTENSION vector`. `baseline_embeddings` table per schema above. ivfflat index.
 
-**Milestone 8.10.M1: Embed-on-Confirm**
+**Milestone 8.10.M3: Prompt Builder Serialization Endpoint** ✅ Complete (2026-02-24)
+- `POST /ml/serialize` on ml-service: converts zone-tagged segments into Phase 2 structured text.
+- Reuses `serialize_segments()` from `prompt_builder.py` (built in I1).
+
+**Milestone 8.10.M2: RAG Retrieval Service** 📋 Pending
+- Given serialized document text + `document_type_id`: embed with `nomic-embed-text` → cosine similarity query `baseline_embeddings` → top-3 results.
+- Graceful degradation: pgvector unavailable → return empty list; never crash.
+
+**Milestone 8.10.M1: Embed-on-Confirm** 📋 Pending
 - After baseline confirmed: run quality gate (math pass OR zero corrections OR admin gold).
 - If gate passes: serialize confirmed fields (Phase 2 format) → embed with `nomic-embed-text` via Ollama → store in `baseline_embeddings`.
 - Volume cap: max 5 per `document_type_id`; oldest non-gold evicted on overflow; gold never evicted.
 - Fire-and-forget: embed failure never blocks confirmation.
 
-**Milestone 8.10.M2: RAG Retrieval Service**
-- Given serialized document text + `document_type_id`: embed with `nomic-embed-text` → cosine similarity query `baseline_embeddings` → top-3 results.
-- Graceful degradation: pgvector unavailable → return empty list; never crash.
-
-**Milestone 8.10.M3: Prompt Builder Serialization Endpoint**
-- `POST /ml/serialize` on ml-service: converts zone-tagged segments into Phase 2 structured text.
-- Reuses `serialize_segments()` from `prompt_builder.py` (built in I1).
-
-**Milestone 8.10.M4: Wire RAG into Field Suggestion Flow**
+**Milestone 8.10.M4: Wire RAG into Field Suggestion Flow** 📋 Pending
 - `field-suggestion.service.ts`: call M2 before ML request; pass `ragExamples` in request body.
 - `baseline.service.ts`: call M1 after `confirmBaseline()` (non-blocking).
 - `ragAgreement` re-evaluated post-I4 normalization.
 
 ---
 
-### Capability E — SLM Inference via Ollama (I1 rewrite) 🔄 In progress
+### Capability E — SLM Inference via Ollama (I1 rewrite) ✅ Complete (2026-02-24)
 
-**Milestone 8.10.5 (rewrite): Ollama/RAG Orchestrator**
+**Milestone 8.10.5 (rewrite): Ollama/RAG Orchestrator** ✅ Complete (2026-02-24)
 - `apps/ml-service/model.py`: `httpx` POST to `http://ollama:11434/api/generate` with `qwen2.5:1.5b`, grammar-constrained structured output (all fields nullable).
 - `apps/ml-service/model_registry.py`: warm-up replaced by `GET /api/tags` health-check ping.
 - `apps/ml-service/prompt_builder.py` (new): Phase 2 serialization + prompt assembly.
@@ -3370,18 +3370,18 @@ Maximise extraction accuracy on both scanned and digital documents using a local
 ### Execution Order (revised for SLM+RAG pivot)
 
 1. F1/F2 schema migrations ✅ Done
-2. F3 pgvector migration 📋 (parallel with G1/H2)
+2. F3 pgvector migration ✅ Done (2026-02-24)
 3. G1 preprocessor container ✅ Done
 4. H1 PyMuPDF OCR routing ✅ Done
-5. H2 Ollama service 📋
+5. H2 Ollama service ✅ Done (2026-02-24)
 6. C1/C2 A/B tracking ✅ Done
-7. I1 Ollama/RAG orchestrator rewrite 🔄 (depends H2, F3)
+7. I1 Ollama/RAG orchestrator rewrite ✅ Done (2026-02-24)
 8. I2 Zone classifier ✅ Done
 9. I3–I6 post-processing pipeline ✅ Done
-10. M3 prompt builder endpoint (depends I1)
-11. M2 RAG retrieval (depends F3, H2)
-12. M4 wire RAG into suggestion flow (depends M2, M3, I1)
-13. M1 embed-on-confirm (depends F3, H2, M3)
+10. M3 prompt builder endpoint ✅ Done (2026-02-24)
+11. M2 RAG retrieval 📋 (depends F3, H2)
+12. M4 wire RAG into suggestion flow 📋 (depends M2, M3, I1)
+13. M1 embed-on-confirm 📋 (depends F3, H2, M3)
 14. L4 training examples capture ✅ Done
 15. L6 seed corpus 📋 (depends I1, F3, H2)
 16. J1 confidence tiers + bulk confirm 📋 (depends I3)
@@ -3400,7 +3400,7 @@ Maximise extraction accuracy on both scanned and digital documents using a local
 - **No background automation:** Embed-on-confirm is post-confirmation hook, not a cron job; volume trigger (D3) is the only scheduled task (already built)
 
 **Status**
-🚧 In Progress — F1/F2/G1/H1/C1/C2/D3/I2/I3/I4/I5/I6/L4 complete. I1 rewrite (Ollama), H2 (Ollama container), F3 (pgvector), M1–M4 (RAG loop), L6 (seed corpus), J1/K1/K2 (UI) pending. Fine-tuning pipeline (L2/L3/L5/D4) dropped by SLM+RAG pivot.
+🚧 In Progress — F1/F2/G1/H1/H2/C1/C2/D3/F3/I1/I2/I3/I4/I5/I6/L4/M3 complete. M1 (embed-on-confirm), M2 (RAG retrieval), M4 (wire RAG), L6 (seed corpus), J1/K1/K2 (UI), D5 (activation gate), E1/E2 (performance dashboard) pending. Fine-tuning pipeline (L2/L3/L5/D4) dropped by SLM+RAG pivot.
 
 ---
 
@@ -3438,7 +3438,157 @@ Maximise extraction accuracy on both scanned and digital documents using a local
 
 ---
 
-## v8.12 — Multi-Language OCR Support 📋 (To be confirmed)
+## v8.12 — Self-Correcting Brain (Alias Library + Shadow Editing + Predictive UI) 📋 (Planned)
+
+**Pivot note (2026-02-24):** Original v8.12 was Multi-Language OCR Support (moved to v8.14). This milestone introduces the three components of the self-correction layer, built on top of the v8.10 RAG corpus and v8.11 semantic search foundation.
+
+**What this is**
+- M5 — Alias Override Layer: persistent correction rules scoped by document type and field type, applied at inference time to normalize noisy OCR before the SLM prompt is generated
+- K3 — Shadow Spatial Editing: non-destructive annotation layer on the Extracted Text List; raw OCR text is immutable, `verified_text` is stored as a parallel record
+- M6 — Predictive UI (Glass Box): surfaces M5 alias rules as explicit "Did you mean?" suggestions in the review UI; admin Rules Manager shows all active rules and their confidence levels
+
+**What this is not**
+- Not silent auto-mutation of OCR data (raw `attachment_ocr_outputs` is never overwritten — immutability contract preserved)
+- Not a replacement for the RAG loop (M5 operates on the input side of the SLM call; M1 embeds human-confirmed output values — they are fully decoupled)
+- Not vendor-scoped (Layer 3 vendor/account scoping deferred until a formal `vendor_entity` model exists)
+- Not a training pipeline (rules are derived from human corrections, not ML training runs)
+
+**Design Intent**
+M5 reduces the "reasoning load" on Qwen by providing cleaner input text before the extraction prompt is generated. Higher-quality SLM input → higher confidence scores → more auto-confirms via I6. M6 ensures every active rule is visible to admins, preserving the auditability-first principle. K3 allows spatial OCR corrections without destroying the original evidence layer.
+
+**Dependencies**
+- **REQUIRES:** v8.10 complete (RAG corpus populated, I6 math reconciliation live)
+- **REQUIRES:** v8.11 complete (K1/K2 spatial UI stable — K3 extends the review page layout)
+
+**Capability A: Alias Override Layer (M5)**
+
+*Role:* Pre-Extraction Normalization
+
+*Mechanism:* At inference time, before the OCR segments are serialized into the Ollama prompt, the system queries `correction_overrides` for rules matching the current `documentTypeId` and `fieldType`. Matching rules are applied to the raw segment text (e.g., `"5tory"` → `"Story"` for `text` fields on Invoice documents). The original raw OCR text in `attachment_ocr_outputs` is never modified.
+
+*Scoping layers:*
+- **Layer 1 (Document Type):** Rules scoped to a specific document type do not apply to other types (Invoice fixes do not affect Legal Contracts)
+- **Layer 2 (Field Type):** Character-swap rules (e.g., `5` → `S`) are blocked on `number`/`currency`/`decimal` fields; permitted on `text` fields
+
+*Data model:*
+- New table `correction_overrides`: `id` (uuid pk), `rawPattern` (text), `correctedValue` (text), `documentTypeId` (uuid fk, nullable — null = all types), `fieldType` (text, nullable — null = all field types), `applyCount` (int default 0), `confidenceScore` (decimal 0–1), `isActive` (boolean default true), `createdAt`, `createdBy` (fk users)
+- Rules are created automatically when a human correction is saved on a reviewed baseline (correction event → rule upsert)
+- `applyCount` incremented each time a rule is used at inference time
+
+*Architectural value:* M5 rules are a portable "Logic File" — independent of the vector DB and the SLM. If either is replaced, the alias library remains intact.
+
+**Capability B: Shadow Spatial Editing (K3)**
+
+*Role:* Non-Destructive Annotation
+
+*Mechanism:* Clicking an item in the Extracted Text List on the review page opens an inline editor. Saving writes a `verified_text` value to a new `ocr_spatial_annotations` table linked to the source segment's spatial coordinates. The original `raw_text` in `extracted_text_segments` is never modified.
+
+*Toggle View:* Review page header includes an "OCR View / Human View" toggle. OCR View shows `raw_text` for all segments; Human View shows `verified_text` where available, falling back to `raw_text`. This provides a complete audit trail of what the machine saw versus what the human declared.
+
+*Data model:*
+- New table `ocr_spatial_annotations`: `id` (uuid pk), `segmentId` (uuid fk `extracted_text_segments`), `baselineId` (uuid fk `extraction_baselines`), `rawText` (text — copied from segment at annotation time for snapshot), `verifiedText` (text), `annotatedBy` (uuid fk users), `annotatedAt` (timestamp)
+- One annotation per segment per baseline (upsert on re-edit)
+
+*Governance alignment:* Satisfies "Derived data is never authoritative" — `verified_text` is a human declaration layered over immutable OCR evidence.
+
+**Capability C: Predictive UI — Glass Box (M6)**
+
+*Role:* Proactive Verification with Full Transparency
+
+*Mechanism:* When the review page loads, the API checks active M5 rules against the current document's segments. Any segment matching an active rule is flagged with a yellow underline and a "Did you mean [correctedValue]?" tooltip. Accepting the suggestion creates a field assignment with the corrected value and increments the rule's `applyCount`.
+
+*Rules Manager (Admin):*
+- New admin page `/admin/alias-rules` listing all active `correction_overrides` with columns: raw pattern, corrected value, document type scope, field type scope, apply count, confidence score, active toggle
+- Admin can deactivate, delete, or manually create rules
+- Rules with `confidenceScore >= 0.98` display a "High Confidence" badge — visible signal that a rule has been applied reliably enough to consider promoting, but promotion to auto-apply remains an explicit admin action (never automatic)
+
+**Governance Alignment**
+- Explicit Intent: M5 rules applied at inference time are surfaced as suggestions (M6), not silent mutations; admin must explicitly promote rules
+- Auditability: `correction_overrides.applyCount` tracks rule usage; `ocr_spatial_annotations` preserves raw/verified duality; all rule changes audit-logged
+- Backend authority: rule scoping, confidence thresholds, and active state managed server-side
+- Derived data never authoritative: `verified_text` (K3) and alias-corrected text (M5) are both overlay layers; raw OCR is the immutable ground truth
+
+**Capability D: Table Column Mapping RAG (T1–T4)**
+
+*Background:* Field extraction (v8.10) improves over time via the RAG learning loop — each confirmed baseline embeds confirmed field values into `baseline_embeddings`, providing few-shot context for future similar documents. Table detection (`POST /ml/detect-tables`) has no equivalent feedback loop. Table structure is identified via heuristic geometry (spatial proximity, bounding box alignment), and column-to-field mapping is 100% manual. For document types where key data lives in tabular line-item rows (e.g. purchase orders: ITEM#, DESCRIPTION, QTY, UNIT PRICE, TOTAL), repeated manual mapping creates friction and provides no improvement signal to the system.
+
+*What this is:*
+- A RAG-style learning loop for table column mappings, parallel to the field extraction RAG loop
+- When a user confirms a table's column→field assignments on a baseline, the mapping is embedded and stored in a new `table_mapping_embeddings` corpus
+- Future similar tables (same document type, similar column header text or spatial layout) retrieve past confirmed mappings as few-shot context
+- The system auto-suggests column assignments in the table review UI, which the user can accept, override, or ignore — never silent mutation
+- Covers both header-based similarity (column header text like "Unit Price" matched to `unit_price` field) and layout-based similarity (positional embedding of column structure when headers are absent)
+
+*What this is not:*
+- Not automatic table conversion — user still explicitly triggers detection and conversion
+- Not a replacement for the `detect-tables` heuristic — detection of *where* tables are remains geometry-based; this improves *what columns mean*
+- Not training the table detection model — the ML heuristic in `table_detect.py` is unchanged
+- Not field extraction — table cell values are stored in `baseline_table_cells`, not `baseline_field_assignments`; this is a parallel learning corpus for the table system only
+
+*Design intent:*
+Documents like purchase orders (see architecture reference: GimBooks PO template, 2026-02-24) have a fixed line-item table structure (ITEM#, DESCRIPTION, QTY, UNIT PRICE, TOTAL) that repeats identically across vendors. Once a user maps those columns once, every subsequent PO from any vendor should auto-suggest the same mapping. The first mapping is expensive (manual); all subsequent ones should be near-zero effort.
+
+*Mechanism:*
+1. **T1 — Column Mapping Corpus:** New table `table_mapping_embeddings`: `id` (uuid pk), `baseline_id` (uuid fk `extraction_baselines`), `document_type_id` (uuid fk `document_types`), `table_label` (text nullable — from `baseline_tables.tableLabel`), `column_structure` (jsonb — array of `{columnIndex, headerText, mappedFieldKey, sampleValues[3]}`), `column_structure_embedding` (vector(768)), `serialized_headers` (text — space-joined column headers for embedding input), `is_gold` (boolean default false — admin-set; never evicted), `quality_gate` (text: `'user_confirmed'` | `'admin'`), `confirmed_at` (timestamp), `created_at` (timestamp). Index: ivfflat on `column_structure_embedding` (cosine, lists=50).
+2. **T2 — Embed-on-Table-Confirm:** When a user confirms all column mappings on a table (all columns in `baselineTableColumnMappings` have a `fieldKey` assigned and the table status = `'confirmed'`), embed the serialized column headers via Ollama `nomic-embed-text` (reuses the already-running embedding model from v8.10) and store in `table_mapping_embeddings`. Quality gate: `'user_confirmed'` always (no math check applicable to tables). Volume cap: max 5 per `document_type_id`, oldest non-gold evicted (mirrors M1 policy). Non-blocking — table confirmation must not fail if embedding fails.
+3. **T3 — Column Mapping Retrieval:** Before presenting the column mapping UI for a newly converted table, the API retrieves the top-3 most similar past mappings from `table_mapping_embeddings` filtered by `document_type_id`. Similarity is cosine distance on column header embeddings. Returns `[{columnIndex, suggestedFieldKey, confidence, fromBaselineId}]`. Graceful degradation: if `table_mapping_embeddings` is empty or pgvector unavailable, returns empty — column mapping UI shows no suggestions (same as today).
+4. **T4 — Column Suggestion UI:** In the table column mapping panel (currently shows only a field-key dropdown per column), display a "Suggested: [field label]" chip beneath each column header when T3 returns a match. Confidence ≥ 0.80 → chip highlighted green with "Accept" one-click. Confidence < 0.80 → chip shown grey (informational only). Accepting a suggestion calls the existing `assignColumnToField()` endpoint — no new API calls needed. Audit log entry: `table.column.suggestion.accepted` with `fromBaselineId` and similarity score.
+
+*Seed corpus:* At first deploy, `table_mapping_embeddings` is empty. Admin can manually create gold entries via a new admin endpoint `POST /admin/table-mapping-corpus` accepting `{documentTypeId, columnStructure[], isGold: true}` — this covers the cold-start problem for tables in the same way L6 (seed corpus) covers cold-start for field extraction.
+
+*Data flow summary:*
+- Detection (`POST /ml/detect-tables`) → unchanged heuristic → `ml_table_suggestions`
+- Conversion → `baseline_tables` + `baseline_table_cells` → unchanged
+- Column mapping (user, now assisted by T3/T4) → `baselineTableColumnMappings` → unchanged
+- Table confirm → T2 embeds mapping → `table_mapping_embeddings` (new)
+- Future table → T3 retrieves → T4 surfaces suggestion in UI (new)
+
+*Not addressed in this milestone (deferred post-v8.12):*
+- Table cell value RAG (suggesting *values* for cells based on past similar tables) — requires cell-level embeddings and a separate corpus; scope too large
+- Automatic table structure detection improvement (replacing geometry heuristic with a learned spatial model)
+- Vendor-scoped column mappings (e.g. "Acme Corp always uses column 3 for unit price regardless of header text") — requires `vendor_entity` model
+
+*Dependencies:*
+- **REQUIRES v8.10:** `baseline_embeddings` infrastructure, Ollama `nomic-embed-text` running, pgvector live
+- **REQUIRES v8.11:** Semantic search stable (confirms pgvector query patterns are production-ready)
+- **REQUIRES v8.12 A/B/C:** Column mapping UI exists and is stable (T4 extends it)
+- **NEW DEPENDENCY:** `baselineTableColumnMappings` must have `confirmedAt` timestamp column (currently absent — migration needed)
+
+*Governance Alignment:*
+- Explicit Intent: column mapping suggestions are displayed as chips; user must click Accept — never auto-applied
+- Auditability: `table.column.suggestion.accepted` audit entry records the source baseline and similarity score; `table_mapping_embeddings` is append-only (eviction is hard delete, logged)
+- Backend authority: similarity threshold and volume cap enforced server-side
+- Derived data never authoritative: suggested field keys are recommendations only; confirmed mapping in `baselineTableColumnMappings` is the authoritative record
+
+**Status**
+📋 Planned — depends on v8.10 + v8.11 + v8.12 (A/B/C) completion
+
+---
+
+## v8.13 — Embedding Anonymization (Privacy Guardrail) 🔍 (Research)
+
+**What this is**
+- L8 (Phase 1 only): A pre-processing transformation applied to `serializedText` before it is passed to the Ollama embedding endpoint (`nomic-embed-text`), ensuring that sensitive PII (names, addresses, account numbers, monetary totals) is replaced with typed placeholders (e.g., `[CUSTOMER_NAME]`, `[TOTAL_AMOUNT]`) before the string enters the vector store
+- The structural shape of the document (zone layout, field positions, relative ordering) is preserved — only the identity-carrying values are anonymized
+- Ensures `baseline_embeddings.serialized_text` does not store unencrypted PII
+
+**What this is not**
+- Not a PDF deletion or purge pipeline (that requires a formal Data Retention Policy decision — deferred post-v8.13)
+- Not a replacement for access controls on `baseline_embeddings`
+- Not full document anonymization — raw `attachment_ocr_outputs` and `baseline_field_assignments` are unaffected; this applies only to the embedding input string
+
+**Design Intent**
+Decouples the structural intelligence of the RAG loop (knowing *where* a "Total" lives on an invoice) from the private identity of the document (knowing *whose* total it is). A RAG retrieval result can inform the SLM prompt without leaking the previous client's monetary values into the new extraction context.
+
+**Dependency**
+Requires a governance decision on: which field types constitute PII in this product's regulatory context; whether anonymization must be reversible or one-way; and whether existing `baseline_embeddings` rows need retroactive re-embedding. **No implementation until these questions are answered.**
+
+**Status**
+🔍 Research — governance decision required before speccing
+
+---
+
+## v8.14 — Multi-Language OCR Support 📋 (To be confirmed)
 What this is
 
 Support OCR for non-English documents (Spanish, French, German, Chinese, etc.)
@@ -3539,7 +3689,7 @@ Affects UI language (labels, messages)
 Does not affect OCR language (OCR uses detected language)
 
 
-## v8.13 — Batch Extraction & Processing 📋 (Planned)
+## v8.15 — Batch Extraction & Processing 📋 (Planned)
 What this is
 
 Upload multiple documents at once

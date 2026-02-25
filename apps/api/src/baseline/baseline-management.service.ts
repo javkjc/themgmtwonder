@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { DbService } from '../db/db.service';
@@ -16,6 +17,7 @@ import { fieldLibrary } from '../field-library/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import type { Baseline } from '../common/types';
+import { RagEmbeddingService } from '../ml/rag-embedding.service';
 
 /**
  * BaselineManagementService
@@ -30,10 +32,18 @@ import type { Baseline } from '../common/types';
  */
 @Injectable()
 export class BaselineManagementService {
+  private readonly logger = new Logger(BaselineManagementService.name);
+  private readonly ragEmbeddingService: RagEmbeddingService;
+
   constructor(
     private readonly dbs: DbService,
     private readonly auditService: AuditService,
-  ) {}
+  ) {
+    this.ragEmbeddingService = new RagEmbeddingService(
+      this.dbs,
+      this.auditService,
+    );
+  }
 
   /**
    * Create a new draft baseline
@@ -236,7 +246,7 @@ export class BaselineManagementService {
    */
   async confirmBaseline(baselineId: string, userId: string): Promise<Baseline> {
     // Run inside a transaction
-    return await this.dbs.db.transaction(async (tx) => {
+    const confirmed = await this.dbs.db.transaction(async (tx) => {
       // 1. Fetch current baseline
       const [existing] = await tx
         .select()
@@ -359,6 +369,17 @@ export class BaselineManagementService {
 
       return confirmed;
     });
+
+    // M1: non-blocking embed-on-confirm learning loop
+    void this.ragEmbeddingService.embedOnConfirm(baselineId).catch((error) => {
+      const message =
+        error instanceof Error ? error.message : 'unknown embedding error';
+      this.logger.error(
+        `rag.embed.error baselineId=${baselineId} message=${message}`,
+      );
+    });
+
+    return confirmed;
   }
 
   /**

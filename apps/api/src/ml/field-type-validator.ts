@@ -12,12 +12,12 @@ export type ValidationOverride =
 
 export interface LlmReasoning {
     rawOcrConfidence: number | null;
-    modelConfidence: number;
+    modelConfidence: null;
+    ragAgreement: number;
     zone: string;
     dsppApplied: boolean;
     dsppTransforms: string[];
     validationOverride: ValidationOverride;
-    ragAdjustment: null;
     ragRetrievedCount: null;
     documentTypeScoped: null;
     fieldSchemaVersion: 1;
@@ -192,14 +192,13 @@ export function computeFinalScore(opts: {
     dsppApplied: boolean;
     validationOverride: ValidationOverride;
 }): number {
-    const { modelConfidence, rawOcrConfidence, ragAgreement, dsppApplied, validationOverride } = opts;
+    const { rawOcrConfidence, ragAgreement, dsppApplied, validationOverride } = opts;
 
-    const ocrSignal = rawOcrConfidence ?? modelConfidence;
-
+    // ADR 2026-02-24 formula: 0.65 * ragAgreement + 0.35 * rawOcrConfidence
+    // modelConfidence is null for Qwen (logprob extraction dropped).
     let score =
-        0.7 * modelConfidence +
-        0.2 * ragAgreement +
-        0.1 * ocrSignal;
+        0.65 * ragAgreement +
+        0.35 * (rawOcrConfidence ?? 0.0);
 
     // Clamp to [0, 1]
     score = Math.max(0.0, Math.min(1.0, score));
@@ -230,6 +229,7 @@ export interface RawMlSuggestion {
     segmentId: string;
     fieldKey: string;
     confidence: number;
+    ragAgreement?: number;
     zone: string;
     boundingBox: Record<string, number> | null;
     extractionMethod: string;
@@ -281,23 +281,24 @@ export function processSuggestion(
         );
     }
 
-    // Step 3: Weighted FinalScore
+    // Step 3: Weighted FinalScore (ADR 2026-02-24 formula)
+    const ragAgreement = suggestion.ragAgreement ?? 0.0;
     const finalScore = computeFinalScore({
         modelConfidence,
         rawOcrConfidence,
-        ragAgreement: 0.0, // RAG disabled until v8.11
+        ragAgreement,
         dsppApplied,
         validationOverride,
     });
 
     const llmReasoning: LlmReasoning = {
         rawOcrConfidence,
-        modelConfidence,
+        modelConfidence: null,
+        ragAgreement,
         zone: suggestion.zone,
         dsppApplied,
         dsppTransforms: transforms,
         validationOverride,
-        ragAdjustment: null,
         ragRetrievedCount: null,
         documentTypeScoped: null,
         fieldSchemaVersion: 1,

@@ -2091,7 +2091,7 @@ export default function TaskDetailsPage() {
                                     </>
                                   );
                                 })()}
-                                {hasOcrOutput && baselineStatus !== 'confirmed' && (
+                                {hasOcrOutput && (
                                   <button
                                     type="button"
                                     onClick={() => router.push(`/attachments/${attachment.id}/review?taskId=${taskId}`)}
@@ -2099,15 +2099,15 @@ export default function TaskDetailsPage() {
                                     style={{
                                       padding: '6px 10px',
                                       borderRadius: 4,
-                                      border: '1px solid #E11D48',
+                                      border: baselineStatus === 'confirmed' ? '1px solid var(--border)' : '1px solid #E11D48',
                                       background: isOcrInProgress ? 'var(--surface-secondary)' : 'var(--surface)',
-                                      color: isOcrInProgress ? 'var(--text-muted)' : '#BE123C',
+                                      color: isOcrInProgress ? 'var(--text-muted)' : baselineStatus === 'confirmed' ? 'var(--text-secondary)' : '#BE123C',
                                       cursor: isOcrInProgress ? 'not-allowed' : 'pointer',
                                       fontSize: 12,
                                       fontWeight: 600,
                                     }}
                                   >
-                                    Review Extraction
+                                    {baselineStatus === 'confirmed' ? 'View Extraction' : 'Review Extraction'}
                                   </button>
                                 )}
                               </div>

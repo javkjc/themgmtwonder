@@ -1,107 +1,54 @@
+﻿import json
 import logging
 import os
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
-from typing import Optional, Tuple
+from typing import Any, Dict, Optional
 
-MODEL_VERSION = os.getenv("ML_MODEL_VERSION", "microsoft/layoutlmv3-base")
+import httpx
 
-os.environ.setdefault("HF_HUB_OFFLINE", "1")
-os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
-os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+MODEL_VERSION = os.getenv("ML_MODEL_VERSION", "qwen2.5:1.5b")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
+OLLAMA_GENERATE_URL = f"{OLLAMA_BASE_URL}/api/generate"
 
 _model_error: Optional[str] = None
 _model_loaded_at: Optional[float] = None
 _lock = threading.Lock()
 
 
-def _load_model_sync(model_path: str):
-    from transformers import LayoutLMv3ForTokenClassification, LayoutLMv3Processor
-
-    processor = LayoutLMv3Processor.from_pretrained(
-        model_path,
-        local_files_only=True,
-        apply_ocr=False,
-    )
-    model = LayoutLMv3ForTokenClassification.from_pretrained(model_path, local_files_only=True)
-    return processor, model
+class ModelNotReadyError(RuntimeError):
+    pass
 
 
-def _load_model_sync_from_path(model_path: str):
-    from transformers import LayoutLMv3ForTokenClassification, LayoutLMv3Processor
-
-    processor = LayoutLMv3Processor.from_pretrained(model_path, apply_ocr=False)
-    model = LayoutLMv3ForTokenClassification.from_pretrained(model_path)
-    return processor, model
-
-
-def load_model(timeout_seconds: float = 60.0) -> None:
+def load_model(timeout_seconds: float = 10.0) -> None:
     global _model_error, _model_loaded_at
 
-    from model_registry import registry, warm_up_model
+    from model_registry import registry
 
     with _lock:
-        if registry.model is not None and registry.processor is not None:
+        if registry.ready:
             return
 
-        start_time = time.time()
-        try:
-            with ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(_load_model_sync, MODEL_VERSION)
-                processor, model = future.result(timeout=timeout_seconds)
-
-            warmup_shape = warm_up_model(processor, model)
+        if registry.warm_up_model(timeout_seconds=timeout_seconds):
             _model_loaded_at = time.time()
             _model_error = None
-            registry.seed(MODEL_VERSION, processor, model, MODEL_VERSION)
-            logging.info(
-                "ml_model_loaded",
-                extra={
-                    "modelVersion": MODEL_VERSION,
-                    "loadMs": int((_model_loaded_at - start_time) * 1000),
-                    "warmupOutputShape": warmup_shape,
-                },
-            )
-        except TimeoutError:
-            _model_error = f"TimeoutError: model load exceeded {timeout_seconds}s"
-            logging.error(
-                "ml_model_load_timeout",
-                extra={"modelVersion": MODEL_VERSION, "error": _model_error},
-            )
-        except Exception as exc:  # noqa: BLE001 - surfaced via error payload
-            _model_error = f"{type(exc).__name__}: {exc}"
-            logging.error(
-                "ml_model_load_failed",
-                extra={"modelVersion": MODEL_VERSION, "error": _model_error},
-            )
+        else:
+            _model_error = registry.last_error or "Ollama model not ready"
 
 
-def load_model_from_path(file_path: str, timeout_seconds: float = 90.0) -> Tuple[object, object, str]:
-    """Load a LayoutLMv3 processor/model from an explicit path and run warm-up.
+def load_model_from_path(file_path: str, timeout_seconds: float = 10.0) -> Dict[str, Any]:
+    """Compatibility endpoint for model activation flow.
 
-    Returns (processor, model, warm_up_shape_repr) on success.
-    Raises on any failure so the caller can keep the prior model active.
+    In the Ollama/qwen flow, file_path is treated as the target model tag.
     """
 
-    from model_registry import warm_up_model
+    from model_registry import registry
 
-    start_time = time.time()
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(_load_model_sync_from_path, file_path)
-        processor, model = future.result(timeout=timeout_seconds)
+    ok = registry.warm_up_model(timeout_seconds=timeout_seconds, model_name=file_path)
+    if not ok:
+        raise ModelNotReadyError(registry.last_error or f"Model not ready: {file_path}")
 
-    warmup_shape = warm_up_model(processor, model)
-    load_ms = int((time.time() - start_time) * 1000)
-    logging.info(
-        "ml_model_from_path_loaded",
-        extra={
-            "filePath": file_path,
-            "loadMs": load_ms,
-            "warmupOutputShape": warmup_shape,
-        },
-    )
-    return processor, model, warmup_shape
+    return {"activeVersion": file_path}
 
 
 def get_model_error() -> Optional[str]:
@@ -110,3 +57,41 @@ def get_model_error() -> Optional[str]:
 
 def get_model_loaded_at() -> Optional[float]:
     return _model_loaded_at
+
+
+def generate_fields(prompt: str, json_schema: Dict[str, Any], timeout_seconds: float = 30.0) -> Dict[str, Any]:
+    payload = {
+        "model": MODEL_VERSION,
+        "prompt": prompt,
+        "format": json_schema,
+        "stream": False,
+    }
+
+    try:
+        with httpx.Client(timeout=timeout_seconds) as client:
+            response = client.post(OLLAMA_GENERATE_URL, json=payload)
+            response.raise_for_status()
+            body = response.json()
+    except Exception as exc:  # noqa: BLE001
+        raise ModelNotReadyError(f"{type(exc).__name__}: {exc}") from exc
+
+    raw = body.get("response")
+    if raw is None:
+        return {}
+
+    if isinstance(raw, dict):
+        return raw
+
+    if not isinstance(raw, str):
+        return {}
+
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            return parsed
+        logging.warning("ml.ollama.parse.non_object")
+        return {}
+    except json.JSONDecodeError:
+        logging.warning("ml.ollama.parse.invalid_json")
+        return {}
+

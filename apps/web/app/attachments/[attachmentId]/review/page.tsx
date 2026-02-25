@@ -306,11 +306,11 @@ export default function AttachmentOcrReviewPage() {
             Tables ({baseline?.tables?.length || 0})
           </button>
         </div>
-        {tables.sidebarTab === 'fields' && (
-          <SuggestionTrigger disabled={!baseline?.id || isFieldBuilderReadOnly || baselineLoading} onGenerate={fields.handleGenerateSuggestions} />
+        {tables.sidebarTab === 'fields' && !isFieldBuilderReadOnly && (
+          <SuggestionTrigger disabled={!baseline?.id || baselineLoading} onGenerate={fields.handleGenerateSuggestions} />
         )}
-        {tables.sidebarTab === 'tables' && (
-          <button onClick={tables.handleDetectTables} disabled={tables.detectingTables || !baseline?.id || isFieldBuilderReadOnly} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, cursor: tables.detectingTables || !baseline?.id || isFieldBuilderReadOnly ? 'not-allowed' : 'pointer', opacity: tables.detectingTables || !baseline?.id || isFieldBuilderReadOnly ? 0.6 : 1 }}>
+        {tables.sidebarTab === 'tables' && !isFieldBuilderReadOnly && (
+          <button onClick={tables.handleDetectTables} disabled={tables.detectingTables || !baseline?.id} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, cursor: tables.detectingTables || !baseline?.id ? 'not-allowed' : 'pointer', opacity: tables.detectingTables || !baseline?.id ? 0.6 : 1 }}>
             {tables.detectingTables ? 'Detecting...' : 'Get Suggestions'}
           </button>
         )}
@@ -435,9 +435,7 @@ export default function AttachmentOcrReviewPage() {
                 </button>
               )}
               {baseline?.status === 'confirmed' && (
-                <button disabled style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid #bbf7d0', background: '#dcfce7', color: '#166534', fontSize: 14, fontWeight: 700, cursor: 'not-allowed', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span>OK</span> Confirmed
-                </button>
+                <span style={{ fontSize: 13, color: 'var(--text-muted)', fontStyle: 'italic' }}>Read-only view</span>
               )}
               {baseline?.status === 'archived' && (
                 <button disabled style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface-secondary)', color: 'var(--text-secondary)', fontSize: 14, fontWeight: 700, cursor: 'not-allowed' }}>Archived</button>
