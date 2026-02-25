@@ -72,6 +72,7 @@ export default function VerificationPanel({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const fieldRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [draftValues, setDraftValues] = useState<Record<string, string>>({});
+  const [focusedFieldKey, setFocusedFieldKey] = useState<string | null>(null);
 
   const allFields = useMemo(
     () => [...fieldsWithBox, ...fieldsWithoutBox],
@@ -91,9 +92,92 @@ export default function VerificationPanel({
     const target = fieldRefs.current[jumpToFieldKey];
     if (target) {
       target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      target.focus({ preventScroll: true });
+      setFocusedFieldKey(jumpToFieldKey);
+      const jumpedField = allFields.find((field) => field.fieldKey === jumpToFieldKey) ?? null;
+      onHoverField(jumpedField);
     }
     onJumpHandled();
-  }, [jumpToFieldKey, onJumpHandled]);
+  }, [allFields, jumpToFieldKey, onHoverField, onJumpHandled]);
+
+  const focusFieldAt = (index: number) => {
+    if (index < 0 || index >= allFields.length) return false;
+    const field = allFields[index];
+    const target = fieldRefs.current[field.fieldKey];
+    if (!target) return false;
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    target.focus({ preventScroll: true });
+    setFocusedFieldKey(field.fieldKey);
+    onHoverField(field);
+    return true;
+  };
+
+  const focusNextField = (step: 1 | -1) => {
+    if (allFields.length === 0) return false;
+    if (!focusedFieldKey) {
+      return focusFieldAt(step > 0 ? 0 : allFields.length - 1);
+    }
+    const currentIndex = allFields.findIndex((field) => field.fieldKey === focusedFieldKey);
+    if (currentIndex === -1) {
+      return focusFieldAt(step > 0 ? 0 : allFields.length - 1);
+    }
+    return focusFieldAt(currentIndex + step);
+  };
+
+  const focusNextFlagField = () => {
+    const flagIndexes = allFields
+      .map((field, index) => ({ field, index }))
+      .filter((item) => item.field.tier === 'flag');
+    if (flagIndexes.length === 0) return false;
+
+    if (!focusedFieldKey) {
+      return focusFieldAt(flagIndexes[0].index);
+    }
+
+    const currentIndex = allFields.findIndex((field) => field.fieldKey === focusedFieldKey);
+    const nextFlag = flagIndexes.find((item) => item.index > currentIndex) ?? flagIndexes[0];
+    return focusFieldAt(nextFlag.index);
+  };
+
+  const handleKeyboard = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Tab') {
+      const moved = focusNextField(event.shiftKey ? -1 : 1);
+      if (moved) {
+        event.preventDefault();
+      }
+      return;
+    }
+
+    if (event.shiftKey && event.key === 'Enter') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (canMutateFields && autoConfirmPendingCount > 0 && !bulkConfirming) {
+        onBulkConfirm();
+      }
+      return;
+    }
+
+    if (!focusedFieldKey) return;
+
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      if (canMutateFields) {
+        onAccept(focusedFieldKey);
+      }
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      focusNextField(1);
+      return;
+    }
+
+    if (event.key.toLowerCase() === 'f') {
+      event.preventDefault();
+      focusNextFlagField();
+    }
+  };
 
   const renderCard = (field: VerificationField) => {
     const tier = field.tier;
@@ -112,6 +196,11 @@ export default function VerificationPanel({
         key={field.fieldKey}
         ref={(node) => {
           fieldRefs.current[field.fieldKey] = node;
+        }}
+        tabIndex={0}
+        onFocus={() => {
+          setFocusedFieldKey(field.fieldKey);
+          onHoverField(field);
         }}
         onMouseEnter={() => onHoverField(field)}
         onMouseLeave={() => onHoverField(null)}
@@ -233,6 +322,7 @@ export default function VerificationPanel({
 
   return (
     <div
+      onKeyDownCapture={handleKeyboard}
       style={{
         flex: 1,
         display: 'flex',
@@ -309,6 +399,17 @@ export default function VerificationPanel({
             {fieldsWithoutBox.map(renderCard)}
           </div>
         )}
+      </div>
+      <div
+        style={{
+          borderTop: '1px solid #e5e7eb',
+          padding: '8px 12px',
+          fontSize: 11,
+          color: '#4b5563',
+          background: '#f1f5f9',
+        }}
+      >
+        Tab next · Enter accept · Esc skip · F next flag · Shift+Enter confirm all
       </div>
     </div>
   );

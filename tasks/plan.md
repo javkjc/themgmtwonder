@@ -1020,6 +1020,7 @@ The review page layout needs to surface fields alongside the PDF viewer in a spa
 ---
 
 ### K2 — Keyboard Flow (Complexity: Simple)
+**Status:** ✅ Completed on 2026-02-25
 
 **Problem statement**
 Reviewers need keyboard navigation to process fields without switching between mouse and keyboard.
@@ -1215,6 +1216,7 @@ The API needs a way to serialize OCR segments into Phase 2 format (zone-tagged t
 ---
 
 ### M4 — Wire M1–M3 into field-suggestion.service.ts (Complexity: Medium)
+**Status:** ✅ Completed on 2026-02-25
 
 **Problem statement**
 The field suggestion entry point must call M2 (RAG retrieval) before the ML service call, pass `ragExamples` in the request, and trigger M1 (embed-on-confirm) after confirmation. This task wires all RAG components into the existing suggestion flow.
@@ -1252,6 +1254,7 @@ The field suggestion entry point must call M2 (RAG retrieval) before the ML serv
 ---
 
 ### M5-pre — Remove "Confirm Extraction" Button (Complexity: Simple)
+**Status:** ✅ Completed on 2026-02-25
 **Depends on:** M4 (OCR lock wired to baseline confirm)
 
 **Problem statement**

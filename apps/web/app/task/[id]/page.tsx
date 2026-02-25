@@ -8,7 +8,7 @@ import {
   getCsrfToken,
   isUnauthorized,
 } from '../../lib/api';
-import { confirmOcrOutput, fetchCurrentConfirmedOcr, fetchOcrRedoEligibility } from '../../lib/api/ocr';
+import { fetchCurrentConfirmedOcr, fetchOcrRedoEligibility } from '../../lib/api/ocr';
 import { fetchBaselineForAttachment, type Baseline } from '../../lib/api/baselines';
 import { fetchOcrJobs, type OcrJob } from '../../lib/api/ocr-queue';
 import { formatDate, formatDateTime } from '../../lib/dateTime';
@@ -251,9 +251,6 @@ export default function TaskDetailsPage() {
     Record<string, boolean>
   >({});
   const [ocrJobs, setOcrJobs] = useState<OcrJob[]>([]);
-  const [ocrConfirming, setOcrConfirming] = useState<Record<string, boolean>>({});
-  const [showConfirmOcrModal, setShowConfirmOcrModal] = useState(false);
-  const [pendingOcrConfirmation, setPendingOcrConfirmation] = useState<{ attachmentId: string, outputId: string, text?: string } | null>(null);
   // v3.5 / v8 Task A1: Extraction State Handling
   const [ocrEligibility, setOcrEligibility] = useState<
     Record<string, { loading: boolean; allowed: boolean; reason?: string; hasConfirmed: boolean; utilizationType?: string | null }>
@@ -1166,61 +1163,6 @@ export default function TaskDetailsPage() {
       addNotification,
     ],
   );
-
-  const handleConfirmOcr = useCallback(
-    (attachmentId: string, outputId: string, text?: string) => {
-      setPendingOcrConfirmation({ attachmentId, outputId, text });
-      setShowConfirmOcrModal(true);
-    },
-    []
-  );
-
-  useEffect(() => {
-    if (!showConfirmOcrModal) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setShowConfirmOcrModal(false);
-        setPendingOcrConfirmation(null);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showConfirmOcrModal]);
-
-  const executeConfirmOcr = async () => {
-    if (!task || !pendingOcrConfirmation) return;
-    const { attachmentId, outputId, text } = pendingOcrConfirmation;
-
-    setOcrConfirming((prev) => ({ ...prev, [outputId]: true }));
-    setShowConfirmOcrModal(false);
-
-    try {
-      await confirmOcrOutput(outputId, { editedExtractedText: text });
-
-      addNotification(
-        'success',
-        'Extraction confirmed',
-        'The extraction has been confirmed.',
-        task.title,
-        task.id
-      );
-
-      await fetchHistory(historyLimit, 0, false);
-      await fetchAttachmentOcr(attachmentId);
-      await checkOcrEligibility(attachmentId);
-    } catch (err: any) {
-      addNotification(
-        'error',
-        'Confirmation failed',
-        err?.message || 'Could not confirm the extraction.',
-        task.title,
-        task.id
-      );
-    } finally {
-      setOcrConfirming((prev) => ({ ...prev, [outputId]: false }));
-      setPendingOcrConfirmation(null);
-    }
-  };
 
   // Delete attachment
   const handleDeleteAttachment = async (attachmentId: string) => {
@@ -2263,33 +2205,6 @@ export default function TaskDetailsPage() {
                                             )}
                                             {canApplyOcr && (
                                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-                                                {recordLifecycleStatus === 'draft' && recordProcessingStatus === 'completed' && (
-                                                  <>
-                                                    {ocrEligibility[attachment.id]?.hasConfirmed ? (
-                                                      <span style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                                                        A confirmed extraction already exists for this attachment.
-                                                      </span>
-                                                    ) : (
-                                                      <button
-                                                        type="button"
-                                                        onClick={() => handleConfirmOcr(attachment.id, record.id, record.extractedText)}
-                                                        disabled={ocrConfirming[record.id]}
-                                                        style={{
-                                                          padding: '6px 10px',
-                                                          borderRadius: 4,
-                                                          border: '1px solid #16a34a',
-                                                          background: 'var(--surface)',
-                                                          color: '#166534',
-                                                          cursor: ocrConfirming[record.id] ? 'not-allowed' : 'pointer',
-                                                          fontSize: 12,
-                                                          fontWeight: 600,
-                                                        }}
-                                                      >
-                                                        {ocrConfirming[record.id] ? 'Confirming...' : 'Confirm Extraction'}
-                                                      </button>
-                                                    )}
-                                                  </>
-                                                )}
                                                 <button
                                                   type="button"
                                                   onClick={() => handleApplyOcr(attachment.id, record.id, 'remark')}
@@ -3053,97 +2968,9 @@ export default function TaskDetailsPage() {
         </div>
       )}
 
-      {/* OCR Confirmation Modal (Task D1) */}
-      {showConfirmOcrModal && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 2000,
-            padding: 16,
-          }}
-          onClick={() => {
-            setShowConfirmOcrModal(false);
-            setPendingOcrConfirmation(null);
-          }}
-        >
-          <div
-            style={{
-              background: 'var(--surface)',
-              borderRadius: 6,
-              padding: 24,
-              width: '100%',
-              maxWidth: 480,
-              border: '1px solid var(--border)',
-              position: 'relative',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>Confirm Extraction</h2>
-
-            <div style={{ marginBottom: 20 }}>
-              <p style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 12 }}>
-                Confirming will:
-              </p>
-              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
-                <li style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14, color: 'var(--text-secondary)' }}>
-                  <span style={{ color: '#16a34a' }}>✓</span>
-                  <span>Lock this data as the baseline</span>
-                </li>
-                <li style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14, color: 'var(--text-secondary)' }}>
-                  <span style={{ color: '#16a34a' }}>✓</span>
-                  <span>Make it available for use in tasks, exports, and workflows</span>
-                </li>
-                <li style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14, color: 'var(--text-secondary)' }}>
-                  <span style={{ color: '#dc2626' }}>✗</span>
-                  <span>Cannot be edited after utilization</span>
-                </li>
-              </ul>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-              <button
-                onClick={() => {
-                  setShowConfirmOcrModal(false);
-                  setPendingOcrConfirmation(null);
-                }}
-                style={{
-                  padding: '10px 16px',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                  background: 'var(--surface)',
-                  color: 'var(--text-secondary)',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={executeConfirmOcr}
-                style={{
-                  padding: '10px 18px',
-                  borderRadius: 8,
-                  border: 'none',
-                  background: '#16a34a',
-                  color: 'white',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                }}
-              >
-                Yes, Confirm
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Notification Toast */}
       <NotificationToast notifications={notifications} onDismiss={dismissNotification} />
     </Layout>
   );
 }
+

@@ -27,7 +27,7 @@
 - docker-compose.yml (to wire ml-service container on backend network)
 - docker-compose.yml (services include Ollama model serving on backend network; named volume `ollama_models`)
 - Shared/utils: apps/web/app/lib/{api.ts,categories.ts,constants.ts,dateTime.ts,durationSettings.ts}; hooks as client data layer
-- New frontend OCR verification components: apps/web/app/components/ocr/VerificationPanel.tsx (right-panel spatial field cards with tier indicators), apps/web/app/components/ocr/JumpBar.tsx (12px proportional-dot navigation strip)
+- New frontend OCR verification components: apps/web/app/components/ocr/VerificationPanel.tsx (right-panel spatial field cards with tier indicators, keyboard handlers for Tab/Enter/Escape/F/Shift+Enter flow, and footer keyboard hints bar), apps/web/app/components/ocr/JumpBar.tsx (12px proportional-dot navigation strip)
 - db/schema: apps/api/src/db/schema.ts (Drizzle models)
 
 ## 1) Run/Dev Commands
@@ -97,7 +97,7 @@
   - Uses: Layout, ScheduleModal, NotificationToast; hooks useDurationSettings, useCategories, useScheduledEvents, useSettings; lib dateTime
   - Mutations at: handleSave(), handleSchedule(), handleUnschedule(), handleToggleDone(), handleDelete(), handleUpload(), handleDeleteAttachment(), handleAddRemark(), handleDeleteRemark(), fetchRemarks(), fetchHistory(), fetchTask()
   - Toast calls at: page.tsx addNotification (save/schedule/unschedule/update/delete/upload/delete attachment/add remark/delete remark)
-  - Attachments/OCR: attachments panel uploads to POST /attachments/todo/:todoId, downloads via `${API_BASE_URL}/attachments/:id/download`, triggers OCR with POST /attachments/:id/ocr, fetches outputs via GET /attachments/:id/ocr, displays attachment_ocr_outputs text with copy/confirm/apply actions; confirm uses POST /ocr/:ocrId/confirm to transition draft outputs to confirmed; Review OCR link available ONLY when status is confirmed; apply uses POST /attachments/:id/ocr/apply to add remark or append description; status badges now show lifecycle state when extracted text exists and warn for failed processing with available text; no PDF viewer or bounding boxes on task detail page
+  - Attachments/OCR: attachments panel uploads to POST /attachments/todo/:todoId, downloads via `${API_BASE_URL}/attachments/:id/download`, triggers OCR with POST /attachments/:id/ocr, fetches outputs via GET /attachments/:id/ocr, displays attachment_ocr_outputs text with copy/apply actions; Review OCR link available ONLY when status is confirmed; apply uses POST /attachments/:id/ocr/apply to add remark or append description; status badges now show lifecycle state when extracted text exists and warn for failed processing with available text; no PDF viewer or bounding boxes on task detail page
 - ROUTE: /attachments/[attachmentId]/review
   - Path: apps/web/app/attachments/[attachmentId]/review/page.tsx
   - Purpose: Visual OCR evidence review (attachment viewer + parsed field list + correction/history modals).
@@ -394,8 +394,8 @@
   - Path: apps/api/src/ml/field-suggestion.service.ts
   - Purpose: Orchestrates ML field suggestion generation and persistence for baselines
   - Methods:
-    - generateSuggestions(baselineId, userId): Loads segments and active fields, calls MlService, persists suggestions with metadata, enforces rate limits, and returns per-field confidence `tier` (`auto_confirm`/`verify`/`flag`) derived at read time from `confidenceScore` thresholds (`ML_TIER_AUTOCONFIRM`, `ML_TIER_VERIFY`)
-    - I6 math wire-up: after I4 normalization, calls MathReconciliationService with `currentOcr.documentTypeId` + normalized values, then applies final confidence override (`1.0` pass, `0.0` fail + `math_reconciliation_failed`) before DB upsert
+    - generateSuggestions(baselineId, userId): Loads segments and active fields, calls `POST /ml/serialize` to build `serializedText`, calls `RagRetrievalService.retrieve(serializedText, documentTypeId)` before `POST /ml/suggest-fields`, includes `ragExamples` in the ML request body, logs `rag.retrieval.used` (`retrievedCount`, `documentTypeId`), persists suggestions with metadata, enforces rate limits, and returns per-field confidence `tier` (`auto_confirm`/`verify`/`flag`) derived at read time from `confidenceScore` thresholds (`ML_TIER_AUTOCONFIRM`, `ML_TIER_VERIFY`)
+    - I6 math wire-up: after I4 normalization, calls MathReconciliationService with `currentOcr.documentTypeId` + normalized values, re-evaluates `llm_reasoning.ragAgreement` from normalized values against retrieved examples, then applies final confidence override (`1.0` pass, `0.0` fail + `math_reconciliation_failed`) before DB upsert
     - applyMultiPageFieldConflictPolicy(suggestions, segmentById): I5 post-aggregation scan grouped by fieldKey; Strategy A (strict) flags all occurrences with `validationOverride='conflicting_pages'` and `finalScore=0.0` when normalized values disagree across pages, or deduplicates to the highest-confidence occurrence when values are consistent
     - normalizeForPageConflictComparison(value): lowercases and strips whitespace for case-insensitive cross-page value comparison
   - Rate limit: 10 requests per hour per user (counts audit_logs with action='ml.suggest.generate')
@@ -517,7 +517,7 @@
   - Methods:
     - createDraftBaseline(attachmentId, userId): Creates baseline with status='draft', auto-populates segments from OCR, pre-fills assignments from parsed fields
     - markReviewed(baselineId, userId): Transitions draft â†’ reviewed (still editable)
-    - confirmBaseline(baselineId, userId): Transactional confirm (reviewed â†’ confirmed) + auto-archives previous confirmed baseline atomically; blocked if any draft tables exist; triggers non-blocking RagEmbeddingService.embedOnConfirm() after commit
+    - confirmBaseline(baselineId, userId): Transactional confirm (reviewed â†’ confirmed) + auto-archives previous confirmed baseline atomically; blocked if any draft tables exist; triggers non-blocking RagEmbeddingService.embedOnConfirm() after commit and then calls `OcrService.markOcrUtilized(..., 'authoritative_record', ...)` in try/catch (confirmed OCR first, fallback to current OCR) so lock failures never block confirmation
     - markBaselineUtilized(baselineId, type, metadata): First-write-wins utilization tracking (record_created/workflow_committed/data_exported)
   - Audit: all transitions emit baseline.create/review/confirm/archive/utilized events
 - Service: TableManagementService

@@ -18,6 +18,9 @@ import { eq, and, desc } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import type { Baseline } from '../common/types';
 import { RagEmbeddingService } from '../ml/rag-embedding.service';
+import { OcrService } from '../ocr/ocr.service';
+import { OcrParsingService } from '../ocr/ocr-parsing.service';
+import { OcrCorrectionsService } from '../ocr/ocr-corrections.service';
 
 /**
  * BaselineManagementService
@@ -34,6 +37,7 @@ import { RagEmbeddingService } from '../ml/rag-embedding.service';
 export class BaselineManagementService {
   private readonly logger = new Logger(BaselineManagementService.name);
   private readonly ragEmbeddingService: RagEmbeddingService;
+  private readonly ocrService: OcrService;
 
   constructor(
     private readonly dbs: DbService,
@@ -42,6 +46,17 @@ export class BaselineManagementService {
     this.ragEmbeddingService = new RagEmbeddingService(
       this.dbs,
       this.auditService,
+    );
+    const ocrParsingService = new OcrParsingService(this.dbs);
+    const ocrCorrectionsService = new OcrCorrectionsService(
+      this.dbs,
+      this.auditService,
+    );
+    this.ocrService = new OcrService(
+      this.dbs,
+      this.auditService,
+      ocrParsingService,
+      ocrCorrectionsService,
     );
   }
 
@@ -378,6 +393,33 @@ export class BaselineManagementService {
         `rag.embed.error baselineId=${baselineId} message=${message}`,
       );
     });
+
+    try {
+      const confirmedOcr = await this.ocrService.getCurrentConfirmedOcr(
+        confirmed.attachmentId,
+      );
+      const fallbackDraftOcr = confirmedOcr
+        ? null
+        : await this.ocrService.getCurrentOcr(confirmed.attachmentId);
+      const ocrIdToLock = confirmedOcr?.id ?? fallbackDraftOcr?.id ?? null;
+
+      if (ocrIdToLock) {
+        await this.ocrService.markOcrUtilized(
+          ocrIdToLock,
+          'authoritative_record',
+          {
+            baselineId,
+            userId,
+          },
+        );
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'unknown ocr lock error';
+      this.logger.error(
+        `ocr.lock.error baselineId=${baselineId} message=${message}`,
+      );
+    }
 
     return confirmed;
   }

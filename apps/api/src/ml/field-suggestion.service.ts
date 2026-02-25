@@ -31,6 +31,10 @@ import {
 } from './field-type-validator';
 import { normalizeFieldValue } from './field-value-normalizer';
 import { MathReconciliationService } from './math-reconciliation.service';
+import {
+  RagRetrievedExample,
+  RagRetrievalService,
+} from './rag-retrieval.service';
 
 export interface SuggestionSummary {
   suggestedAssignments: Array<{
@@ -81,6 +85,8 @@ export class FieldSuggestionService {
   private readonly MAX_REQUESTS_PER_HOUR = 1000;
   private readonly DEFAULT_AUTOCONFIRM_THRESHOLD = 0.9;
   private readonly DEFAULT_VERIFY_THRESHOLD = 0.7;
+  private readonly requestTimeoutMs = 5000;
+  private readonly mlServiceUrl: string;
   private cachedTierThresholds:
     | { autoConfirmThreshold: number; verifyThreshold: number }
     | null = null;
@@ -93,7 +99,12 @@ export class FieldSuggestionService {
     private readonly validator: FieldAssignmentValidatorService,
     private readonly configService: ConfigService,
     private readonly mathReconciliationService: MathReconciliationService,
-  ) { }
+    private readonly ragRetrievalService: RagRetrievalService,
+  ) {
+    this.mlServiceUrl =
+      this.configService.get<string>('ML_SERVICE_URL') ||
+      'http://ml-service:5000';
+  }
 
   async generateSuggestions(
     baselineId: string,
@@ -185,8 +196,21 @@ export class FieldSuggestionService {
     const pageType: 'digital' | 'scanned' =
       currentOcr.extractionPath === 'text_layer' ? 'digital' : 'scanned';
 
+    const serializedText = await this.serializeCurrentDocument(
+      segments,
+      pageWidth,
+    );
+    const ragExamples = await this.ragRetrievalService.retrieve(
+      serializedText,
+      currentOcr.documentTypeId,
+    );
+    this.logger.log(
+      `rag.retrieval.used retrievedCount=${ragExamples.length} documentTypeId=${currentOcr.documentTypeId ?? 'null'}`,
+    );
+
     const mlPayload = {
       baselineId,
+      documentTypeId: currentOcr.documentTypeId,
       pageWidth,
       pageHeight,
       pageType,
@@ -208,6 +232,7 @@ export class FieldSuggestionService {
         label: f.label,
         fieldType: f.characterType,
       })),
+      ragExamples,
     };
 
     const mlResult = await this.mlService.suggestFields(mlPayload);
@@ -364,6 +389,13 @@ export class FieldSuggestionService {
         ...processed.llmReasoning,
         normalizationError,
         finalScore,
+        ragAgreement: this.resolveRagAgreement(
+          processed.fieldKey,
+          normalizedValue,
+          assignedValue,
+          ragExamples,
+        ),
+        ragRetrievedCount: ragExamples.length,
       };
 
       if (mathPatch) {
@@ -721,6 +753,95 @@ export class FieldSuggestionService {
         .trim()
         .toLowerCase() === 'true'
     );
+  }
+
+  private async serializeCurrentDocument(
+    segments: typeof extractedTextSegments.$inferSelect[],
+    pageWidth: number,
+  ): Promise<string> {
+    const payload = {
+      segments: segments.map((segment) => ({
+        text: segment.text,
+        boundingBox: (segment.boundingBox as
+          | { x: number; y: number; width: number; height: number }
+          | null) ?? null,
+        pageNumber: segment.pageNumber ?? 1,
+        zone: 'unknown',
+      })),
+      pageWidth,
+    };
+
+    try {
+      const response = await this.postMlEndpoint('/ml/serialize', payload);
+      if (typeof response?.serializedText !== 'string') {
+        throw new Error('serialize payload missing serializedText');
+      }
+      return response.serializedText;
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'unknown serialize error';
+      this.logger.warn(`rag.serialize.fallback reason=${message}`);
+      return payload.segments.map((segment) => segment.text).join('\n');
+    }
+  }
+
+  private resolveRagAgreement(
+    fieldKey: string,
+    normalizedValue: string | null,
+    assignedValue: string,
+    ragExamples: RagRetrievedExample[],
+  ): number {
+    if (ragExamples.length === 0) {
+      return 0.0;
+    }
+
+    const candidate = this.normalizeRagComparisonValue(
+      normalizedValue ?? assignedValue,
+    );
+    if (!candidate) {
+      return 0.0;
+    }
+
+    for (const example of ragExamples) {
+      const sourceValue = example.confirmedFields?.[fieldKey];
+      if (typeof sourceValue !== 'string' || sourceValue.trim().length === 0) {
+        continue;
+      }
+      if (this.normalizeRagComparisonValue(sourceValue) === candidate) {
+        return 1.0;
+      }
+    }
+
+    return 0.0;
+  }
+
+  private normalizeRagComparisonValue(value: string): string {
+    return value.trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  private async postMlEndpoint(
+    endpoint: '/ml/serialize',
+    payload: unknown,
+  ): Promise<any> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+
+    try {
+      const response = await fetch(`${this.mlServiceUrl}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`${endpoint} http status ${response.status}`);
+      }
+
+      return response.json();
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   private deriveTier(confidenceScore: number): 'auto_confirm' | 'verify' | 'flag' {
