@@ -169,6 +169,7 @@ We need a global (system-wide) trigger that runs training automatically when eno
 ---
 
 ### D5 — Activation Gates (Online Only) (Complexity: Medium)
+**Status:** ✅ Completed on 2026-02-25
 **Revised by:** ADR 2026-02-24 — offline gate and Golden Set gate dropped (no fine-tuning pipeline). Online gate retained as the sole activation signal.
 
 **Problem statement**
@@ -212,6 +213,7 @@ Once a baseline reaches `status = 'confirmed'`, it is permanently locked. This i
 ## 3) Performance Dashboard (P1 — depends on C2, B1)
 
 ### E1 — Performance API (Complexity: Medium)
+**Status:** ✅ Completed on 2026-02-25
 
 **Problem statement**
 Admins need per-model acceptance rates, weekly trends, gate status, and a recommendation signal in a single endpoint.
@@ -258,6 +260,7 @@ Expected: API counts align with DB aggregates.
 ---
 
 ### E2 — Admin Performance UI (Complexity: Medium)
+**Status:** ✅ Completed on 2026-02-25
 
 **Problem statement**
 Admins need a dedicated page showing model performance, trends, gate status, and an activation control.
@@ -852,9 +855,62 @@ For structured documents (invoices, purchase orders), mathematical relationships
 
 ---
 
+### I6.1 — Deep Arithmetic Audit: Triple-Check Integrity Pass (Complexity: Simple)
+**Status:** ✅ Completed on 2026-02-25
+**Extension of:** I6 (`math-reconciliation.service.ts` already exists — no new file needed)
+
+**Problem statement**
+I6's two checks (sum of line items ≈ subtotal; subtotal + tax ≈ total) catch header-level discrepancies but miss internal table corruption. A document can pass both I6 checks while containing a misread unit price or quantity — the line-item totals sum correctly only because two errors cancel out, or because only one row is wrong and it's small enough to fall within tolerance. The triple-check integrity pass closes this gap (Hyperscience-level STP audit).
+
+**The three checks:**
+- **Check A (Header):** `subtotal + tax ≈ total` — existing I6 Check B. Retained unchanged.
+- **Check B (Summation):** `sum(line_item_totals) ≈ subtotal` — existing I6 Check A. Retained unchanged.
+- **Check C (Line-Item Arithmetic):** For each line item row: `unit_price × qty ≈ line_item_total` (tolerance ±0.02). New check.
+
+**Why Check C catches what A+B miss:** If unit_price is misread as `"1O.00"` → DSPP cleans to `"10.00"` instead of `"10.00"` (no error) — but if DSPP fails to catch `"1O0.00"` → `"100.00"` when actual is `"10.00"`, the line total for that row will be `"100.00 × 5 = 500.00"` when the line_item_total segment reads `"50.00"`. Checks A+B may still pass if the subtotal was extracted from the printed subtotal field (which reflects the correct vendor number), but Check C will catch the arithmetic mismatch on that specific row.
+
+**Files / Locations:**
+- Amend: `apps/api/src/ml/math-reconciliation.service.ts` — add Check C to existing reconciliation method.
+- Docs: `tasks/codemapcc.md`.
+
+**Role tags required (added to `document_type_fields.zoneHint`):**
+- `role:unit_price` — unit price per line item (paired with `role:qty` and `role:line_total` by row index)
+- `role:qty` — quantity per line item
+- `role:line_total` — computed total per line item (`unit_price × qty`)
+- Row pairing: fields with the same row index (derived from `pageNumber` + `boundingBox.y` proximity, ±10px band) are treated as one line item row.
+
+**Implementation plan:**
+1. In `math-reconciliation.service.ts`, extend the existing reconciliation method to add Check C after Checks A and B:
+   - Collect all field assignments with `role:unit_price`, `role:qty`, `role:line_total`.
+   - Group into rows by proximity: segments within the same Y-band (±0.02 normalized Y) on the same page are one row.
+   - For each row where all three roles are present and `normalizedValue` is non-null: compute `parsed(unit_price) × parsed(qty)`; compare to `parsed(line_total)` with tolerance ±0.02.
+   - If any row fails: add that row's fields to the failing set.
+2. Failure handling — consistent with existing I6 pattern:
+   - Check C failure → set `confidence_score = 0.0` and `validationOverride = 'math_reconciliation_failed'` on the specific failing row's fields only (not all line items — only the corrupt row).
+   - Add `mathReconciliation: 'fail', failingCheck: 'line_item_arithmetic', failingRowY: <y_value>, mathDelta: <difference>` to `llm_reasoning` for the failing fields.
+   - The failing row's Y coordinates are recorded in `llm_reasoning` so the N5 retry worker can use them as `failing_y_min/max` for the targeted sub-document re-prompt.
+3. All three checks must pass for `mathReconciliation: 'pass'`. Any single check failure → overall fail.
+4. If `role:unit_price`, `role:qty`, or `role:line_total` are not configured for the document type: skip Check C silently (`mathReconciliation` reflects only A+B result). Never fail because of missing role configuration.
+5. Tax rate plausibility guard (non-blocking): compute `tax / subtotal` ratio. If ratio > 0.30 (30%) or ratio < 0.0: add `taxRateSuspicious: true` to `llm_reasoning` but do NOT zero confidence — this is a warning signal for the reviewer, not a hard failure. Vendors with legitimate >30% tax scenarios exist; don't block them.
+
+**Checkpoint I6.1 — Verification:**
+- Manual: Line item with `unit_price = "10.00"`, `qty = "5"`, `line_total = "50.00"` → Check C passes; `mathReconciliation: 'pass'` (assuming A+B also pass).
+- Manual: Same row but `line_total = "500.00"` (misread) → Check C fails on that row; only that row's fields zeroed; other rows unaffected; `failingCheck: 'line_item_arithmetic'` in `llm_reasoning`.
+- Manual: Document type with no `role:unit_price` configured → Check C skipped silently; A+B results unchanged.
+- Manual: `tax = "99.00"`, `subtotal = "100.00"` (99% tax rate) → `taxRateSuspicious: true` in `llm_reasoning`; confidence NOT zeroed; field still extractable.
+- Manual: All three checks pass → `confidence_score = 1.0` on all participating fields (Check C pass combined with A+B pass).
+- Regression: I6 Check A and Check B behaviour unchanged — existing test cases still pass.
+- Regression: Documents without line-item role configuration unaffected.
+
+**Estimated effort:** 2 hours (extension of existing service — no new file)
+**Complexity flag:** Simple
+
+---
+
 ## 8) Per-Field Confidence Tiers (P1 — blocks J1)
 
 ### J1 — Confidence Tier Logic + Bulk Confirm (Complexity: Medium)
+**Status:** ✅ Completed on 2026-02-25
 
 **Problem statement**
 Extracted fields need to be triaged by confidence so reviewers focus effort on uncertain fields. Auto-confirm tier fields should be bulk-acceptable.
@@ -890,6 +946,7 @@ Extracted fields need to be triaged by confidence so reviewers focus effort on u
 ## 9) Verification UI (P1 — depends on J1)
 
 ### K1 — Side-by-Side Verification Layout (Complexity: Medium)
+**Status:** ✅ Completed on 2026-02-25
 
 **Problem statement**
 The review page layout needs to surface fields alongside the PDF viewer in a spatial mirror arrangement, so the field list position matches document position, with bidirectional hover sync and tier-confidence indicators that don't interrupt reading flow.
@@ -1218,6 +1275,79 @@ The "Confirm Extraction" button on the task detail page is vestigial. Since M4 w
 - Regression: No TypeScript build errors after state/handler removal.
 
 **Estimated effort:** 1 hour
+**Complexity flag:** Simple
+
+---
+
+### N_FIX — Nomic Embedding Prefix Correction (Complexity: Simple)
+**Must run before L6.** Nomic Embed Text was trained with task-specific prefixes. Without them the semantic space is degraded — retrieval accuracy drops silently with no error signal.
+
+**Problem statement**
+`embedWithOllama()` and `embedQuery()` both send raw text to Ollama. Stored vectors and query vectors must use matching prefixes for cosine similarity to be meaningful. The 5 existing rows in `baseline_embeddings` were embedded without prefixes and must be truncated before this fix lands.
+
+**Files / Locations:**
+- Amend: `apps/api/src/ml/rag-embedding.service.ts` — prepend `search_document: ` in `embedWithOllama()`.
+- Amend: `apps/api/src/ml/rag-retrieval.service.ts` — prepend `search_query: ` in `embedQuery()`.
+- DB: `TRUNCATE baseline_embeddings;` — run before deploying code change.
+- Docs: `tasks/codemapcc.md`.
+
+**Implementation plan:**
+1. Run `TRUNCATE baseline_embeddings;` via `docker exec todo-db psql -U todo -d todo_db -c "TRUNCATE baseline_embeddings;"`.
+2. In `rag-embedding.service.ts` `embedWithOllama()`, change `prompt: serializedText` to `prompt: 'search_document: ' + serializedText`.
+3. In `rag-retrieval.service.ts` `embedQuery()`, change `prompt` to `'search_query: ' + prompt`.
+4. Restart API container.
+5. Update `tasks/codemapcc.md`.
+
+**Checkpoint N_FIX — Verification:**
+- DB: `SELECT COUNT(*) FROM baseline_embeddings` → 0 after truncate, before L6.
+- Manual: Confirm a baseline → row inserted in `baseline_embeddings`; serialized text in DB starts with `search_document: ` (check `serialized_text` column).
+- Manual: Generate suggestions → RAG retrieval query uses `search_query: ` prefix (add temporary log to confirm).
+- Regression: Embedding dimension still 768; `rag.embed.stored` audit log still fires.
+
+**Estimated effort:** 30 minutes
+**Complexity flag:** Simple
+
+---
+
+### N2.5 — Schema-Aware Chain-of-Thought Prompt (Complexity: Simple)
+**Depends on:** N_FIX (same files — apply after).
+
+**Problem statement**
+Qwen's current system prompt is 3 lines with no structural guidance. Ollama enforces constrained JSON decoding via the `format` parameter — free-form reasoning before the schema is impossible unless `_reasoning` is an explicit schema field. Adding it gives Qwen a capped scratchpad to settle attention on spatial anchors and math relationships before committing to extracted values.
+
+**Files / Locations:**
+- Amend: `apps/ml-service/prompt_builder.py` — add `_reasoning` to `build_nullable_json_schema()` and strengthen `build_prompt_payload()` system prompt.
+- Docs: `tasks/codemapcc.md`.
+
+**Implementation plan:**
+1. In `build_nullable_json_schema()`, inject `_reasoning` as the first property before field properties:
+   ```python
+   properties['_reasoning'] = {
+       'type': 'string',
+       'description': 'Brief layout and math analysis before extraction. One sentence max.',
+       'maxLength': 200,
+   }
+   ```
+   Do NOT add `_reasoning` to the `required` list — it is optional scaffolding.
+2. In `build_prompt_payload()`, replace the 3-line system prompt with:
+   ```python
+   system_prompt = (
+       "You are a document field extraction engine. "
+       "In '_reasoning', briefly note: the spatial anchor used for totals, and any math discrepancy observed. "
+       "Then extract all fields accurately. "
+       "Use RAG examples as guidance. If a field is absent, return null."
+   )
+   ```
+3. Server-side: `_reasoning` is returned by Qwen but is informational only — do not persist it or use it in downstream logic.
+4. Update `tasks/codemapcc.md`.
+
+**Checkpoint N2.5 — Verification:**
+- Manual: Generate suggestions; inspect raw ML service response → `_reasoning` key present with a non-empty string ≤ 200 chars.
+- Manual: Field extraction values unchanged from pre-N2.5 baseline (CoT must not degrade extraction).
+- Manual: `_reasoning` does not appear in `baseline_field_assignments.llm_reasoning` DB column (not persisted).
+- Regression: `POST /ml/serialize` endpoint unaffected (uses `serialize_segments()` not `build_prompt_payload()`).
+
+**Estimated effort:** 20 minutes
 **Complexity flag:** Simple
 
 ---
@@ -1606,43 +1736,78 @@ Zone serialization sends full text blocks to Qwen with no spatial metadata. For 
 
 ---
 
-### N4 — Keyword Anchor Normalization (Option B — Prompt Annotation Only)
+### N4 — Keyword Anchor Normalization with Synonym Groups (Option B — Prompt Annotation Only)
 
 **Problem statement**
-Zone boundaries are fixed Y-coordinate thresholds. If a vendor places "Subtotal" at Y=0.70 instead of the expected Y=0.82, the zone classifier assigns it correctly but Qwen has no spatial landmark to anchor its understanding of the document's financial structure. Keyword anchors provide layout-tolerant spatial context without touching `zone_classifier.py`.
+Zone boundaries are fixed Y-coordinate thresholds. If a vendor places "Subtotal" at Y=0.70 instead of the expected Y=0.82, the zone classifier assigns it correctly but Qwen has no spatial landmark to anchor its understanding of the document's financial structure. Additionally, vendors use inconsistent terminology — "Total Due," "Balance Due," "Amount to Pay" all mean the same landmark. Keyword anchors with synonym groups provide layout-tolerant, vendor-agnostic spatial context without touching `zone_classifier.py`.
+
+**Extension N4.1 (Rossum move):** Canonical synonym groups replace the flat keyword list. Any synonym hit is recorded under its canonical anchor label, making the `[ANCHORS]` block vendor-agnostic regardless of which term the document uses.
 
 **Files / Locations:**
-- Amend: `apps/ml-service/prompt_builder.py` — anchor detection + annotation post-processing.
+- Amend: `apps/ml-service/prompt_builder.py` — anchor detection + synonym resolution + annotation post-processing.
 - Docs: `tasks/codemapcc.md`.
 
 **Constraint:** `zone_classifier.py` must not be modified. This feature operates exclusively on the serialized output string.
 
 **Implementation plan:**
-1. Define anchor keyword list (hardcoded, not configurable):
+1. Replace flat keyword list with canonical synonym groups (hardcoded, not configurable):
    ```python
-   ANCHOR_KEYWORDS = ["Subtotal", "Sub-total", "Total", "Tax", "GST", "VAT",
-                      "Invoice", "Bill To", "Ship To", "Due Date", "Invoice Date"]
+   ANCHOR_SYNONYMS = {
+       "Total": [
+           "Total", "Total Due", "Balance Due", "Amount Due",
+           "Amount to Pay", "Grand Total", "Net Payable", "Amount Payable"
+       ],
+       "Subtotal": [
+           "Subtotal", "Sub-total", "Net Amount", "Net Total",
+           "Before Tax", "Taxable Amount"
+       ],
+       "Tax": [
+           "Tax", "GST", "VAT", "HST", "SST", "Sales Tax",
+           "Tax Amount", "Tax Total"
+       ],
+       "Invoice Date": [
+           "Invoice Date", "Date", "Issue Date", "Billing Date", "Date of Issue"
+       ],
+       "Due Date": [
+           "Due Date", "Payment Due", "Pay By", "Due By", "Payment Date"
+       ],
+       "Invoice": [
+           "Invoice", "Invoice No", "Invoice Number", "Invoice #", "Inv No", "Inv #"
+       ],
+       "Bill To": ["Bill To", "Billed To", "Client", "Customer", "Sold To"],
+       "Ship To": ["Ship To", "Deliver To", "Delivery Address", "Shipping Address"],
+   }
+   # Reverse lookup: synonym text → canonical label
+   # Built once at module load from ANCHOR_SYNONYMS
+   _SYNONYM_LOOKUP: dict[str, str] = {
+       syn.lower(): canonical
+       for canonical, synonyms in ANCHOR_SYNONYMS.items()
+       for syn in synonyms
+   }
    ```
-2. In `serialize_segments()`, after building all zone blocks, scan the original `segments` list for segments whose `text` contains any anchor keyword (case-insensitive, strip punctuation for matching).
-3. For each anchor found: record `{keyword, y_value}` where `y_value = seg.bounding_box['y']` (normalized 0.0–1.0). Only record anchors where `bounding_box` is not None.
-4. After the zone block text is assembled, append an anchor summary block at the end of the serialized output:
+2. In `serialize_segments()`, after building all zone blocks, scan the original `segments` list for segments whose stripped, lowercased text matches any key in `_SYNONYM_LOOKUP` (substring match, strip punctuation before comparing).
+3. For each match: resolve canonical label via `_SYNONYM_LOOKUP`. Record `{canonical_label, y_value, confidence}` where `y_value = seg.bounding_box['y']` (normalized 0.0–1.0). Only record where `bounding_box` is not None.
+4. Deduplicate by canonical label — if the same canonical anchor appears multiple times (e.g. "Line Total" and "Grand Total" both mapping to "Total"), keep the occurrence with the highest segment confidence. If confidence is tied, keep the one with the highest Y value (lowest on page — more likely to be the document total).
+5. After the zone block text is assembled, append the anchor summary block:
    ```
    [ANCHORS]
    "Total" at Y=0.82
    "Subtotal" at Y=0.76
    "Invoice Date" at Y=0.08
    ```
-5. Deduplicate anchors — if the same keyword appears multiple times, keep the one with the highest-confidence segment.
+   The canonical label is always used — never the raw synonym text. A document using "Balance Due" produces `"Total" at Y=0.82`, not `"Balance Due" at Y=0.82`. This makes the block consistent for Qwen regardless of vendor terminology.
 6. If no anchors found: omit the `[ANCHORS]` block entirely (no empty block).
 
 **Checkpoint N4 — Verification:**
-- Manual: Upload invoice containing "Total Due:" → serialized text ends with `[ANCHORS]` block showing `"Total" at Y=0.XX`.
-- Manual: Invoice without any anchor keywords → no `[ANCHORS]` block in output; no error.
-- Manual: Multiple "Total" occurrences (e.g. "Line Total" in line_items + "Grand Total" in footer) → only highest-confidence occurrence recorded per keyword.
+- Manual: Upload invoice with "Balance Due: $1,234.56" → `[ANCHORS]` block shows `"Total" at Y=0.XX` (canonical label, not "Balance Due").
+- Manual: Upload invoice with "Grand Total" in line_items zone and "Total Due" in footer → deduplication keeps footer occurrence (higher Y, more likely document total); `[ANCHORS]` shows single `"Total"` entry.
+- Manual: Invoice using "GST" → `[ANCHORS]` shows `"Tax" at Y=0.XX`.
+- Manual: Invoice without any recognised synonyms → no `[ANCHORS]` block; no error.
+- Manual: Invoice with "Sub-total" → `[ANCHORS]` shows `"Subtotal" at Y=0.XX`.
 - Regression: `zone_classifier.py` unchanged; existing zone assignments unaffected.
 - Regression: `POST /ml/serialize` still returns correct output.
 
-**Estimated effort:** 3 hours
+**Estimated effort:** 3 hours (30-minute addition over original N4 estimate)
 **Complexity flag:** Simple
 
 ---
@@ -1650,6 +1815,7 @@ Zone boundaries are fixed Y-coordinate thresholds. If a vendor places "Subtotal"
 ## PART 7 — Norma v8.12: Immune System
 
 ### N_MIG — Migration: Three New Tables (Prerequisite for N2, N5, N6_RETRY)
+**Status:** ✅ Completed on 2026-02-25
 
 **Problem statement**
 The alias engine (N2), correction event tracking (N5), and the async retry loop (N6_RETRY) all require new DB tables. This migration must run before any of those features are implemented.
@@ -1665,7 +1831,7 @@ The alias engine (N2), correction event tracking (N5), and the async retry loop 
 -- Alias Rules: vendor-scoped OCR correction rules
 CREATE TABLE alias_rules (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  vendor_id TEXT NOT NULL,  -- CHECK (vendor_id IS NOT NULL) enforced in schema
+  vendor_id TEXT NOT NULL,
   field_key TEXT NOT NULL,
   raw_pattern TEXT NOT NULL,
   corrected_value TEXT NOT NULL,
@@ -1673,8 +1839,15 @@ CREATE TABLE alias_rules (
   proposed_at TIMESTAMP NOT NULL DEFAULT NOW(),
   approved_at TIMESTAMP,
   approved_by TEXT,
-  correction_event_count INT NOT NULL DEFAULT 0
+  correction_event_count INT NOT NULL DEFAULT 0,
+  CONSTRAINT check_vendor_exists CHECK (vendor_id IS NOT NULL),
+  CONSTRAINT unique_vendor_pattern UNIQUE (vendor_id, field_key, raw_pattern)
 );
+
+-- Fast active-rule lookup per vendor (alias engine 5-min cache cold load)
+CREATE INDEX idx_alias_rules_active
+  ON alias_rules (vendor_id, status)
+  WHERE status = 'active';
 
 -- Correction Events: raw log of every human edit
 CREATE TABLE correction_events (
@@ -1687,6 +1860,10 @@ CREATE TABLE correction_events (
   user_id TEXT NOT NULL,
   corrected_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+-- Prevents full table scan on graduation count query (N6)
+CREATE INDEX idx_correction_events_lookup
+  ON correction_events (vendor_id, field_key, raw_ocr_value);
 
 -- Extraction Retry Jobs: state machine for async math retry
 CREATE TABLE extraction_retry_jobs (
@@ -1704,7 +1881,14 @@ CREATE TABLE extraction_retry_jobs (
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+-- Partial index — worker queries only PENDING; zero latency at scale
+CREATE INDEX idx_retry_status_pending
+  ON extraction_retry_jobs (status)
+  WHERE status = 'PENDING';
 ```
+
+**Timestamp convention:** All three tables use `TIMESTAMP` (not `TIMESTAMPTZ`) matching the existing schema convention across all tables in this codebase. Timezone handling is performed by the application layer uniformly.
 
 **Implementation plan:**
 1. Add all three table definitions to `apps/api/src/db/schema.ts` using Drizzle ORM syntax.
@@ -1723,6 +1907,7 @@ CREATE TABLE extraction_retry_jobs (
 ---
 
 ### N5 — I6 Async Math Retry Loop
+**Status:** ✅ Completed on 2026-02-25
 
 **Problem statement**
 The existing I6 math reconciliation runs synchronously and flags failures with `confidence_score = 0.0`. It has no retry mechanism. If math fails due to OCR noise on one field (e.g. `"33O.OO"` misread as `"330.00"` vs the correct `"300.00"`), the entire extraction is flagged with no recovery attempt. A targeted single retry re-prompts Qwen with only the failing region's segments.
@@ -1919,9 +2104,10 @@ N_MIG (migration) ────────────────────�
 N0 (confidence audit) ──→ N1 (LOW_CONF tagging) ──→ N2 (alias engine) ──→ complete
                                                                  ↑
 N3 (terse annotation + truncation) ────────────────────────────-┘
-N4 (keyword anchor) ──→ independent (no deps beyond N1 complete)
+N4 + N4.1 (keyword anchor + synonym groups) ──→ independent (no deps beyond N1 complete)
 
-N5 (math retry loop) ──→ depends on N_MIG + existing I6
+I6.1 (deep arithmetic audit) ──→ depends on I6 verified (already complete)
+N5 (math retry loop) ──→ depends on N_MIG + I6 + I6.1
 N6 (correction tracking) ──→ depends on N_MIG              ┐ ship as
 N7 (rules UI) ──────────────────────────────────────────────┘ locked pair
 ```
@@ -1929,12 +2115,13 @@ N7 (rules UI) ──────────────────────
 **Sequence:**
 1. **N_MIG** — migration first, all features depend on it.
 2. **N0** — confidence audit. Hard blocker for N1. Run immediately after N_MIG.
-3. **N1** — LOW_CONF tagging. Requires N0 passing.
-4. **N2** — Alias engine. Requires N_MIG. Can start in parallel with N1 after N_MIG.
-5. **N3** — Terse annotation + truncation. Requires N1 complete (same file, avoid conflicts). `num_ctx` change can be done independently.
-6. **N4** — Keyword anchor. Requires N3 complete (same file, avoid conflicts).
-7. **N5** — Math retry loop. Requires N_MIG + existing I6. Independent of N1–N4 beyond N_MIG.
-8. **N6 + N7** — Ship as locked pair. N6 first (data only), N7 immediately after. Requires N_MIG.
+3. **I6.1** — deep arithmetic audit. Extends existing verified I6 service. No new file. Do before N5 (N5 retry uses I6.1 failure signals for `failing_y_min/max`).
+4. **N1** — LOW_CONF tagging. Requires N0 passing.
+5. **N2** — Alias engine. Requires N_MIG. Can start in parallel with N1 after N_MIG.
+6. **N3** — Terse annotation + truncation. Requires N1 complete (same file, avoid conflicts). `num_ctx` change can be done independently.
+7. **N4 + N4.1** — Keyword anchor with synonym groups. Requires N3 complete (same file, avoid conflicts). Synonym group is a drop-in replacement for the flat keyword list — no extra effort beyond N4 base.
+8. **N5** — Math retry loop. Requires N_MIG + I6.1 (retry uses `failingRowY` from I6.1 `llm_reasoning`).
+9. **N6 + N7** — Ship as locked pair. N6 first (data only), N7 immediately after. Requires N_MIG.
 
 **Parallel opportunities:**
 - N_MIG and N0 can run simultaneously (migration doesn't block the audit).
@@ -1952,7 +2139,11 @@ N7 (rules UI) ──────────────────────
 - [ ] `num_ctx: 8192` set in Ollama payload (N3).
 - [ ] Terse bbox annotations (`[b87%,r]`) present on footer and line_items segments only (N3).
 - [ ] 2+8 truncation fires on line_items > 10 rows when char count > 6000 (N3).
-- [ ] `[ANCHORS]` block appears in serialized output when anchor keywords found (N4).
+- [ ] `[ANCHORS]` block appears in serialized output using canonical synonym labels — "Balance Due" resolves to `"Total"` (N4 + N4.1).
+- [ ] All eight synonym groups resolving correctly — GST→Tax, Sub-total→Subtotal, etc. (N4.1).
+- [ ] Check C (line-item arithmetic) fires on rows with `role:unit_price` + `role:qty` + `role:line_total` (I6.1).
+- [ ] Check C failure zeroes only the failing row's fields, not all line items (I6.1).
+- [ ] Tax rate suspicion flag appears in `llm_reasoning` when ratio > 30% without zeroing confidence (I6.1).
 - [ ] `alias_rules`, `correction_events`, `extraction_retry_jobs` tables present in DB (N_MIG).
 - [ ] Alias engine applies vendor-scoped `active` rules before serialization (N2).
 - [ ] Alias-corrected segments do not receive `[LOW_CONF]` tag (N2+N1 integration).
@@ -2129,9 +2320,7 @@ Deferred — see v8.12 planning.
 **Current mitigation:** DSPP substitutions are universally safe for currency/number fields across Latin-script languages; RTL documents will produce degraded but non-crashing results.
 
 ### B5 — Model Weights Protection (Fine-tuned IP)
-**Risk:** Fine-tuned LayoutLMv3 weights stored on disk or volume mounts are accessible to anyone with container/host access. Stolen weights represent extracted business logic (field patterns, document layouts) unique to the deployment.
-**Deferred fix:** When fine-tuning pipeline produces checkpoint artifacts, store to external object storage (S3/GCS) with short-lived signed URLs for retrieval. Encrypt at rest with KMS. Apply only when external storage is introduced for hot-swap artifacts.
-**Current mitigation:** Weights are baked into Docker image at build time (offline pre-cache pattern); image registry access control is the primary protection. No external storage in current architecture.
+**Status:** 🗑️ DELETED — protected LayoutLMv3 fine-tuned weights, a pipeline permanently dropped by ADR 2026-02-24. Current stack uses Qwen via Ollama with public weights. No proprietary artifacts exist to protect. Do not implement.
 
 ### B6 — Dependency Supply Chain Scanning
 **Risk:** `requirements.txt` pulls in hundreds of transitive dependencies (torch, transformers, paddleocr). A compromised sub-dependency could enable RCE via a malicious PDF.
@@ -2200,3 +2389,38 @@ Downstream modules need full confirmed baseline data at confirm time without pol
 ### I9 Scope Decision — Enrichment Hooks
 
 Define/retain the enrichment hook interface contract only. Defer concrete enrichment providers until after the structured `baseline.confirmed` payload is in production and consumer demand is validated.
+
+### Execution path
+Remaining Tasks — Execution Path
+PART 1 — v8.9 Remainder
+ID	Task	Status
+D5	Activation Gates (Online Only)	✅
+E1	Performance API	✅
+Anomaly: session-state.md says "E1 complete" but plan.md has no Status: ✅ under E1. Either E1 was done but plan.md never got the completion write, or session-state is ahead of reality. Needs reconciliation before proceeding past E2.
+
+D4 — 🗑️ Deleted (SLM+RAG pivot, do not implement).
+
+PART 2 — v8.10 Optimal Extraction Accuracy
+ID	Task	Status
+I6.1	Deep Arithmetic Audit (Check C: unit_price × qty)	✅
+J1	Confidence Tier Logic + Bulk Confirm	✅
+K1	Side-by-Side Verification Layout	🔳 Pending
+K2	Keyboard Flow	🔳 Pending
+M4	Wire M1–M3 into field-suggestion.service.ts	🔳 Pending
+M5-pre	Remove "Confirm Extraction" Button	🔳 Pending
+L6	Seed Corpus	🔳 Pending
+
+PART 3–10 — v8.12 Norma Signal/Alias/Spatial/Immune/Learning
+ID	Task	Status
+N0	Confidence Propagation Audit (Hard Blocker)	🔳 Pending
+N1	Contextual Linguistic Correction (LOW_CONF tagging)	🔳 Pending
+N2	M5 Alias Engine (Vendor-Scoped, Pre-LLM)	🔳 Pending
+N3	Selective Terse Annotation + 2+8 Truncation	🔳 Pending
+N4	Keyword Anchor Normalization with Synonym Groups	🔳 Pending
+N5	I6 Async Math Retry Loop	🔳 Pending
+N6	Correction Event Tracking (Phase 1 — Data Only)	🔳 Pending
+N7	Rule Management UI: /admin/rules (Hard Gate)	🔳 Pending
+
+PART 11 — v8.11 Semantic Search
+ID	Task	Status
+S1	Semantic Search Endpoint + UI	🔳 Pending

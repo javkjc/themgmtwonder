@@ -3438,27 +3438,84 @@ Maximise extraction accuracy on both scanned and digital documents using a local
 
 ---
 
-## v8.12 — Self-Correcting Brain (Alias Library + Shadow Editing + Predictive UI) 📋 (Planned)
+## v8.12 — Norma: Self-Healing Document Intelligence 📋 (Planned)
 
-**Pivot note (2026-02-24):** Original v8.12 was Multi-Language OCR Support (moved to v8.14). This milestone introduces the three components of the self-correction layer, built on top of the v8.10 RAG corpus and v8.11 semantic search foundation.
+**Pivot note (2026-02-25):** Original v8.12 scope (M5/K3/M6 — Alias Library, Shadow Editing, Predictive UI) has been superseded by the full Norma specification. The alias engine concept is retained and significantly strengthened. K3 (Shadow Spatial Editing) deferred to v8.13+. The Norma spec was finalised through a structured Principal Architect review cycle (2026-02-25) and is fully documented in `tasks/plan.md` PART 4–10.
+
+**Vision:** Transition from a Sequential Extractor to a Self-Healing Document Agent. Address the three core failure points of document AI — OCR noise, layout variance, and silent math failures — using the existing local hardware stack. No new infrastructure. No new dependencies.
+
+**Prime Directives (non-negotiable):**
+- **Drizzle-First Migration:** All table changes go through `schema.ts` → `drizzle-kit generate` → `drizzle-kit migrate`. The SQL spec is the contract; the Drizzle ORM is the vehicle. Never apply raw SQL directly.
+- **Atomic Graduation:** The `UNIQUE (vendor_id, field_key, raw_pattern)` constraint on `alias_rules` enables idempotent `ON CONFLICT` upserts. Graduation is thread-safe by schema design, not application logic.
+- **Hands Off `zone_classifier.py`:** Layout tolerance is achieved via Option B (Prompt Annotation Only). This is what makes "Zero Template Tax" possible without risking regression on existing baselines. This constraint is permanent.
 
 **What this is**
-- M5 — Alias Override Layer: persistent correction rules scoped by document type and field type, applied at inference time to normalize noisy OCR before the SLM prompt is generated
-- K3 — Shadow Spatial Editing: non-destructive annotation layer on the Extracted Text List; raw OCR text is immutable, `verified_text` is stored as a parallel record
-- M6 — Predictive UI (Glass Box): surfaces M5 alias rules as explicit "Did you mean?" suggestions in the review UI; admin Rules Manager shows all active rules and their confidence levels
+- **N0** — Confidence Propagation Audit: four-point pipeline check confirming PaddleOCR confidence values survive from OCR Worker → NestJS → ML Service. Hard blocker for N1.
+- **N1** — Contextual Linguistic Correction: `[LOW_CONF]` tagging on segments with confidence < 0.6; Qwen instructed to use linguistic context to correct rather than trust the literal OCR string.
+- **N2** — Vendor-Scoped Alias Engine: deterministic pre-LLM string substitution using `alias_rules` table. Vendor-scoped only (global aliases prohibited by schema). Alias-corrected segments bypass `[LOW_CONF]` tagging.
+- **N3** — Selective Terse Annotation + 2+8 Truncation: terse bbox annotations (`[b87%,r]`) on footer and line_items zones only; `num_ctx: 8192`; 2+8 truncation preserves table headers (first 2 rows) + totals area (last 8 rows) when line_items > 10 rows and char count > 6000.
+- **N4 + N4.1** — Keyword Anchor Normalization with Synonym Groups: eight canonical synonym groups (Total/Subtotal/Tax/Invoice Date/Due Date/Invoice/Bill To/Ship To) resolved to canonical labels in `[ANCHORS]` block. "Balance Due" → `"Total"`. Vendor-agnostic regardless of terminology.
+- **I6.1** — Deep Arithmetic Audit (Triple-Check): extends existing I6 with Check C (unit_price × qty ≈ line_total per row). Row-scoped failure — only corrupt rows are zeroed, not the entire document. Tax rate suspicion flag (>30%) is a warning, not a hard failure.
+- **N5** — I6 Async Math Retry Loop: `MAX_MATH_RETRIES = 1` enforced via `retry_count` column. First pass returns `status: "preliminary"` immediately. Background worker (D3 bounded-interval pattern) re-prompts Qwen with filtered sub-document. Doc-level failures target footer zone (Y=0.75–1.0); row-level failures target the union of failing row bbox bounds. Gated by `ML_MATH_RETRY_ENABLED=false` default.
+- **N6** — Correction Event Tracking (Phase 1 — data only): writes to `correction_events` on every human edit. Graduation at 3+ corrections for same `(vendor_id, field_key, raw_ocr_value)` → upserts `alias_rules` with `status='proposed'`. Never activates without human approval.
+- **N7** — Rule Management UI `/admin/rules`: lists proposed alias rules grouped by vendor. `[Approve]` → `status='active'`; `[Reject]` → `status='rejected'`. Alias engine cache invalidated on state change. Hard gate — N6 ships only alongside N7.
 
 **What this is not**
-- Not silent auto-mutation of OCR data (raw `attachment_ocr_outputs` is never overwritten — immutability contract preserved)
-- Not a replacement for the RAG loop (M5 operates on the input side of the SLM call; M1 embeds human-confirmed output values — they are fully decoupled)
-- Not vendor-scoped (Layer 3 vendor/account scoping deferred until a formal `vendor_entity` model exists)
-- Not a training pipeline (rules are derived from human corrections, not ML training runs)
+- Not silent auto-activation of alias rules (proposed rules are inert until human approves in `/admin/rules`)
+- Not a change to `zone_classifier.py` (layout tolerance via prompt annotation only)
+- Not a new Docker service or queue infrastructure (retry worker uses existing D3 bounded-interval pattern)
+- Not SSE (polling only for retry status — `GET /attachments/:id/retry-status`)
+- Not global aliases (vendor_id NOT NULL enforced at schema level — `CHECK (vendor_id IS NOT NULL)`)
+- Not Shadow Spatial Editing (K3 deferred to v8.13+)
 
 **Design Intent**
-M5 reduces the "reasoning load" on Qwen by providing cleaner input text before the extraction prompt is generated. Higher-quality SLM input → higher confidence scores → more auto-confirms via I6. M6 ensures every active rule is visible to admins, preserving the auditability-first principle. K3 allows spatial OCR corrections without destroying the original evidence layer.
+Four layers working in concert: Signal Layer (confidence tagging + alias correction) cleans OCR noise before it reaches the LLM. Spatial Layer (synonym anchors + terse annotation + 2+8 truncation) gives Qwen layout-tolerant document understanding. Immune System (triple-check math + async retry) detects and targets errors for correction. Learning Layer (correction events + rule graduation + approval gate) turns human effort into permanent system intelligence — with the human as final authority.
+
+**The Retry System Prompt (N5 worker):**
+```
+[SUB-DOCUMENT FRAGMENT]
+Only segments from Y-range {{failing_y_min}} to {{failing_y_max}} are included below.
+
+[PREVIOUS EXTRACTION — INCORRECT]
+The following values failed mathematical validation:
+{{failing_field_keys_with_preliminary_values}}
+Do NOT reproduce these values unless the raw text unambiguously confirms them.
+
+[INPUT DATA]
+{{serialized_segments}}
+
+[INSTRUCTION]
+A mathematical inconsistency was detected for fields: {{failing_field_keys}}.
+Re-examine the text and spatial relationships in this fragment.
+Disregard previous extracted values for these fields.
+Provide corrected values in the standard JSON format.
+If the data is truly unreadable, return null and set reasoning: "OCR_ILLEGIBLE".
+```
+
+**New Tables (via Drizzle migration):**
+- `alias_rules`: id, vendor_id (NOT NULL), field_key, raw_pattern, corrected_value, status (proposed|active|rejected), proposed_at, approved_at, approved_by, correction_event_count. Constraints: `UNIQUE (vendor_id, field_key, raw_pattern)`, `CHECK (vendor_id IS NOT NULL)`. Indexes: `idx_alias_rules_active` (vendor_id, status) WHERE status='active'.
+- `correction_events`: id, vendor_id, field_key, raw_ocr_value, corrected_value, baseline_id (fk extraction_baselines), user_id, corrected_at. Index: `idx_correction_events_lookup` (vendor_id, field_key, raw_ocr_value).
+- `extraction_retry_jobs`: id, attachment_id, baseline_id, status (PENDING|RUNNING|COMPLETED|FAILED|RECONCILIATION_FAILED), failing_field_keys (text[]), failing_y_min, failing_y_max, preliminary_values (jsonb), final_values (jsonb), retry_count, error_message, created_at, updated_at. Index: `idx_retry_status_pending` (status) WHERE status='PENDING'. All timestamps use `TIMESTAMP` (not `TIMESTAMPTZ`) to match existing schema convention.
+
+**Calibrated Value Proposition:**
+
+| Pillar | Current (v8.11) | Post-v8.12 (Norma) |
+|---|---|---|
+| Automation | ~40% STP | 85–90% STP on known vendors after learning loop populated; new vendors start ~55% and improve per document |
+| Accuracy | Silent failures (wrong totals pass undetected) | Self-Healing Accuracy — triple-check math detects errors and targets them for retry or surgical review |
+| Setup | High "Template Tax" for every new vendor | Zero Template Tax — synonym-aware anchors handle new vendors; layout-agnostic by design |
+| Review | ~60s per document (fatigue) | < 10s human review phase — eye touches flagged exceptions only; total processing 45–90s |
+
+**One-liner:** "Zero Template Tax — the system learns every vendor automatically."
 
 **Dependencies**
-- **REQUIRES:** v8.10 complete (RAG corpus populated, I6 math reconciliation live)
-- **REQUIRES:** v8.11 complete (K1/K2 spatial UI stable — K3 extends the review page layout)
+- **REQUIRES:** v8.10 complete (Qwen/Ollama running, I6 math reconciliation live, RAG corpus populated)
+- **REQUIRES:** E1 + E2 complete (v8.9 Performance Dashboard — final v8.9 tasks)
+- **BLOCKS:** v8.13 (Embedding Anonymization / Privacy Guardrail)
+
+**Execution entry point:** `tasks/plan.md` PART 4–10 (N0 through N7 + I6.1)
+
+**Status:** 📋 Planned — E1/E2 must complete first
 
 **Capability A: Alias Override Layer (M5)**
 

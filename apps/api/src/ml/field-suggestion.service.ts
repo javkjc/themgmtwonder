@@ -14,6 +14,7 @@ import {
   extractedTextSegments,
   attachmentOcrOutputs,
   baselineFieldAssignments,
+  extractionRetryJobs,
   mlModelVersions,
   extractionModels,
   auditLogs,
@@ -36,6 +37,7 @@ export interface SuggestionSummary {
     fieldKey: string;
     assignedValue: string;
     confidence: number;
+    tier: 'auto_confirm' | 'verify' | 'flag';
     sourceSegmentId: string;
     pageNumber?: number | null;
     zone?: string;
@@ -46,6 +48,9 @@ export interface SuggestionSummary {
   }>;
   modelVersionId: string;
   suggestionCount: number;
+  status?: 'preliminary';
+  retryJobId?: string;
+  failingFieldKeys?: string[];
 }
 
 type AbGroup = 'A' | 'B';
@@ -74,6 +79,11 @@ export class FieldSuggestionService {
   private readonly logger = new Logger(FieldSuggestionService.name);
   private readonly RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
   private readonly MAX_REQUESTS_PER_HOUR = 1000;
+  private readonly DEFAULT_AUTOCONFIRM_THRESHOLD = 0.9;
+  private readonly DEFAULT_VERIFY_THRESHOLD = 0.7;
+  private cachedTierThresholds:
+    | { autoConfirmThreshold: number; verifyThreshold: number }
+    | null = null;
 
   constructor(
     private readonly dbs: DbService,
@@ -364,6 +374,21 @@ export class FieldSuggestionService {
         if (mathPatch.validationOverride) {
           llmReasoningWithNorm.validationOverride = mathPatch.validationOverride;
         }
+        if (mathPatch.failingCheck) {
+          llmReasoningWithNorm.failingCheck = mathPatch.failingCheck;
+        }
+        if (mathPatch.failingRowY !== undefined) {
+          llmReasoningWithNorm.failingRowY = mathPatch.failingRowY;
+        }
+        if (mathPatch.failingYMin !== undefined) {
+          llmReasoningWithNorm.failingYMin = mathPatch.failingYMin;
+        }
+        if (mathPatch.failingYMax !== undefined) {
+          llmReasoningWithNorm.failingYMax = mathPatch.failingYMax;
+        }
+        if (mathPatch.taxRateSuspicious) {
+          llmReasoningWithNorm.taxRateSuspicious = true;
+        }
       }
 
       await this.dbs.db
@@ -413,6 +438,7 @@ export class FieldSuggestionService {
         fieldKey: processed.fieldKey,
         assignedValue,
         confidence: processed.confidence,
+        tier: this.deriveTier(finalScore),
         sourceSegmentId: processed.segmentId,
         pageNumber,
         zone: processed.zone,
@@ -443,6 +469,91 @@ export class FieldSuggestionService {
         pageType,
       },
     });
+
+    const retryEnabled =
+      String(this.configService.get<string>('ML_MATH_RETRY_ENABLED') ?? 'false')
+        .trim()
+        .toLowerCase() === 'true';
+    const failingSuggestions = suggestedAssignments.filter(
+      (assignment) =>
+        assignment.validationOverride === 'math_reconciliation_failed',
+    );
+
+    let retryJobId: string | null = null;
+    if (retryEnabled && failingSuggestions.length > 0) {
+      const preliminaryValues: Record<string, string> = {};
+      for (const assignment of suggestedAssignments) {
+        preliminaryValues[assignment.fieldKey] = assignment.assignedValue;
+      }
+
+      const failingYCandidates: Array<{ y: number; height: number }> = [];
+      for (const failing of failingSuggestions) {
+        const boundingBox = failing.boundingBox as
+          | { y?: unknown; height?: unknown }
+          | null
+          | undefined;
+        const y =
+          typeof boundingBox?.y === 'number' && Number.isFinite(boundingBox.y)
+            ? boundingBox.y
+            : null;
+        const height =
+          typeof boundingBox?.height === 'number' &&
+          Number.isFinite(boundingBox.height)
+            ? Math.max(0, boundingBox.height)
+            : 0;
+        if (y !== null) {
+          failingYCandidates.push({ y, height });
+        }
+      }
+
+      const rawYMin =
+        failingYCandidates.length > 0
+          ? Math.min(...failingYCandidates.map((candidate) => candidate.y))
+          : 0;
+      const rawYMax =
+        failingYCandidates.length > 0
+          ? Math.max(
+              ...failingYCandidates.map(
+                (candidate) => candidate.y + candidate.height,
+              ),
+            )
+          : 1;
+
+      const failingYMin = Math.max(0, rawYMin - 0.05);
+      const failingYMax = Math.min(1, rawYMax + 0.05);
+
+      const [createdRetryJob] = await this.dbs.db
+        .insert(extractionRetryJobs)
+        .values({
+          attachmentId: baseline.attachmentId,
+          baselineId,
+          status: 'PENDING',
+          failingFieldKeys: failingSuggestions.map(
+            (suggestion) => suggestion.fieldKey,
+          ),
+          failingYMin: failingYMin.toFixed(4),
+          failingYMax: failingYMax.toFixed(4),
+          preliminaryValues,
+          retryCount: 0,
+          updatedAt: new Date(),
+        })
+        .returning({ id: extractionRetryJobs.id });
+
+      retryJobId = createdRetryJob?.id ?? null;
+    }
+
+    if (retryJobId) {
+      return {
+        suggestedAssignments,
+        modelVersionId,
+        suggestionCount: suggestedAssignments.length,
+        status: 'preliminary',
+        retryJobId,
+        failingFieldKeys: failingSuggestions.map(
+          (suggestion) => suggestion.fieldKey,
+        ),
+      };
+    }
 
     return {
       suggestedAssignments,
@@ -610,6 +721,69 @@ export class FieldSuggestionService {
         .trim()
         .toLowerCase() === 'true'
     );
+  }
+
+  private deriveTier(confidenceScore: number): 'auto_confirm' | 'verify' | 'flag' {
+    const { autoConfirmThreshold, verifyThreshold } = this.getTierThresholds();
+    if (confidenceScore >= autoConfirmThreshold) {
+      return 'auto_confirm';
+    }
+    if (confidenceScore >= verifyThreshold) {
+      return 'verify';
+    }
+    return 'flag';
+  }
+
+  private getTierThresholds(): {
+    autoConfirmThreshold: number;
+    verifyThreshold: number;
+  } {
+    if (this.cachedTierThresholds) {
+      return this.cachedTierThresholds;
+    }
+
+    const autoConfirmThreshold = this.parseTierThreshold(
+      'ML_TIER_AUTOCONFIRM',
+      this.DEFAULT_AUTOCONFIRM_THRESHOLD,
+    );
+    const verifyThreshold = this.parseTierThreshold(
+      'ML_TIER_VERIFY',
+      this.DEFAULT_VERIFY_THRESHOLD,
+    );
+
+    if (verifyThreshold > autoConfirmThreshold) {
+      this.logger.warn(
+        `ML_TIER_VERIFY (${verifyThreshold}) is greater than ML_TIER_AUTOCONFIRM (${autoConfirmThreshold}); falling back to defaults (${this.DEFAULT_VERIFY_THRESHOLD}/${this.DEFAULT_AUTOCONFIRM_THRESHOLD})`,
+      );
+      this.cachedTierThresholds = {
+        autoConfirmThreshold: this.DEFAULT_AUTOCONFIRM_THRESHOLD,
+        verifyThreshold: this.DEFAULT_VERIFY_THRESHOLD,
+      };
+      return this.cachedTierThresholds;
+    }
+
+    this.cachedTierThresholds = { autoConfirmThreshold, verifyThreshold };
+    return this.cachedTierThresholds;
+  }
+
+  private parseTierThreshold(key: string, defaultValue: number): number {
+    const raw = this.configService.get<string>(key);
+    if (raw === undefined || raw === null || String(raw).trim() === '') {
+      this.logger.warn(
+        `${key} is not set; defaulting to ${defaultValue.toFixed(2)}`,
+      );
+      return defaultValue;
+    }
+
+    const parsed = Number(raw);
+    if (Number.isNaN(parsed) || parsed < 0 || parsed > 1) {
+      this.logger.warn(
+        `${key} is invalid (${raw}); defaulting to ${defaultValue.toFixed(2)}`,
+      );
+      return defaultValue;
+    }
+
+    return parsed;
   }
 
   private baselineHashParity(baselineId: string): 0 | 1 {

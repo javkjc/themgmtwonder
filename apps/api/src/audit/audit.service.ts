@@ -92,7 +92,8 @@ export type AuditAction =
   | 'ml.suggest.generate'
   | 'ml.table.detect'
   | 'ml.table.ignore'
-  | 'ml.table.convert';
+  | 'ml.table.convert'
+  | 'baseline.suggestions.bulk-confirm';
 
 export type AuditModule =
   | 'auth'

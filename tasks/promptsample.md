@@ -502,7 +502,7 @@ If any path from plan.md Files/Locations is absent from codemapcc.md → output 
    - DON'T: [pattern]
 
 ## Verification
-**Credentials:** test@test.com / 12341234
+**Credentials:** a@a.com / 12341234
 
 **Manual tests** (copy verbatim from plan.md Checkpoint [Task ID]):
 - [test]

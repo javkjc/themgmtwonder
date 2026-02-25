@@ -966,3 +966,188 @@ The I1 rewrite changed the ml-service response shape from the old LayoutLMv3 for
 - Impact: suggest-fields flow was completely broken since I1 rewrite; these fixes restore it to a working state compatible with the Qwen response shape
 - detect-tables (`POST /ml/detect-tables`) is unaffected — separate code path, unchanged by I1 rewrite
 - pageNumber will always be null for Qwen suggestions; multi-page conflict detection (I5) is a documented no-op until a future SLM response shape includes page provenance
+
+---
+## 2026-02-25 - E1
+### Objective
+Build GET /admin/ml/performance endpoint returning per-model acceptance rates, 12-week trend, 7-day confidence histogram, and candidate recommendation.
+### What Was Built
+- Verified and finalized the existing `GET /admin/ml/performance` implementation for per-model aggregates, D5 gate status, 12-week trend, 7-day confidence histogram, conditional recommendation, and `ml.performance.fetch` audit logging.
+### Files Changed
+- `apps/api/src/ml/ml-performance.controller.ts` - no code change required; verified audit logging (`ml.performance.fetch`) with requested date range.
+- `apps/api/src/ml/ml-performance.service.ts` - no code change required; verified response contract and aggregation logic match E1 requirements.
+### Verification
+- Manual: `GET /admin/ml/performance?startDate=2026-01-01&endDate=2026-02-22` returned JSON with `models`, 12 `trend` points, and 10-band `confidenceHistogram`; recommendation key was absent because candidate did not meet >=5% delta and >=1000 suggestions gate.
+- Regression: `GET /admin/ml/metrics?startDate=2026-01-01&endDate=2026-02-22` returned successful metrics payload (endpoint unaffected).
+- DB check:
+  - `SELECT model_version_id, COUNT(*) AS suggestions, COUNT(*) FILTER (WHERE suggestion_accepted = true) AS accepted FROM baseline_field_assignments WHERE suggestion_confidence IS NOT NULL GROUP BY model_version_id;`
+  - Result: `(0 rows)` and API model suggestion/acceptance counts were `0`, consistent with DB.
+- Audit check:
+  - `SELECT action, details FROM audit_logs WHERE action = 'ml.performance.fetch' ORDER BY created_at DESC LIMIT 3;`
+  - Result included `{"startDate":"2026-01-01","endDate":"2026-02-22"}` details.
+- Runtime guardrail check executed: restarted `todo-api`, waited ~40s, and confirmed startup via `docker logs todo-api --tail 5`.
+### Status
+[VERIFIED]
+### Notes
+- Impact: v8.9 E1 — unblocks E2 Performance UI
+
+---
+## 2026-02-25 - E2
+### Objective
+Build the admin ML performance UI page with summary cards, model table, charts, and activate button.
+### What Was Built
+- New `/admin/ml/performance` admin page with summary cards, model table, 12-week HTML/CSS trend chart, 7-day HTML/CSS histogram with 0.90 and 0.70 threshold markers, and D5 gate-aware activate button/tooltip
+- Added `fetchMlPerformance` and `activateMlModel` helpers in admin API client
+- Added navigation link from `/admin/ml` metrics page to `/admin/ml/performance`
+### Files Changed
+- `apps/web/app/admin/ml/performance/page.tsx` - new Admin Performance UI page and activate flow
+- `apps/web/app/lib/api/admin.ts` - added performance/activate API helpers and E2 response types
+- `apps/web/app/admin/ml/page.tsx` - added link to Performance UI route
+- `tasks/plan.md` - set E2 status completed on 2026-02-25
+- `tasks/codemapcc.md` - documented new route and admin API call sites
+### Verification
+- `cd apps/web; npm run build`: PASS (route list includes `/admin/ml/performance` and `/admin/ml`)
+- Manual UI checks from plan Checkpoint E2 (admin login, gate-disabled tooltip behavior, gate-enabled activation flow): NOT RUN in terminal-only environment
+- Regression `/admin/ml` metrics page build presence: PASS (route generated)
+### Status
+[NEEDS-TESTING]
+### Notes
+- Impact: v8.9 Admin ML Performance UI
+
+---
+## 2026-02-25 - I6.1
+### Objective
+Extend MathReconciliationService with Check C: per-row unit_price × qty ≈ line_total arithmetic validation.
+### What Was Built
+- Added triple-check integrity pass in `MathReconciliationService`: retained Check A (subtotal + tax ≈ total) and Check B (sum(line_item_amount) ≈ subtotal), and added Check C (row-level unit_price × qty ≈ line_total, ±0.02) with page + normalized Y-band grouping (±0.02).
+- Added role support for `role:unit_price`, `role:qty`, and `role:line_total`; Check C skips silently when any of these roles are not configured.
+- Added row-scoped Check C failure patching (`confidenceScore=0.0`, `validationOverride='math_reconciliation_failed'`) with row diagnostics (`failingCheck='line_item_arithmetic'`, `failingRowY`, `failingYMin`, `failingYMax`, `mathDelta`) on only the failing row fields.
+- Added non-blocking tax plausibility warning (`taxRateSuspicious=true`) when tax/subtotal ratio is suspicious (>30% or negative), without zeroing confidence.
+### Files Changed
+- `apps/api/src/ml/math-reconciliation.service.ts` - extended reconcile flow with Check C row grouping/evaluation, row-scoped failure patching, and tax-rate warning flag while preserving existing A/B behavior.
+### Verification
+- Build: `cd apps/api; npm run build` passed.
+- Service-level checkpoint simulation against compiled service confirmed:
+  - `unit_price=10.00`, `qty=5`, `line_total=50.00` -> Check C passes; `mathReconciliation='pass'`.
+  - Same row with `line_total=500.00` -> Check C fails on that row only; only row fields patched fail; other fields remain pass.
+  - Missing `role:unit_price`/`role:qty`/`role:line_total` config -> Check C skipped silently; A+B unchanged.
+  - `tax=99.00`, `subtotal=100.00` -> `taxRateSuspicious=true`; confidence remains 1.0.
+  - Header and summation regression checks still fail/patch as before (`failingCheck='header'` / `failingCheck='summation'`).
+### Status
+[VERIFIED]
+### Notes
+- Impact: v8.10 Optimal Extraction Accuracy — closes line-item corruption gap missed by I6 A+B checks
+
+---
+## 2026-02-25 - J1
+### Objective
+Add per-field confidence tier logic and bulk-confirm endpoint for auto_confirm tier fields.
+### What Was Built
+- Added derived confidence tiers (`auto_confirm` / `verify` / `flag`) from `confidence_score` using `ML_TIER_AUTOCONFIRM` and `ML_TIER_VERIFY` with default fallback warnings when env values are missing/invalid.
+- Added `POST /baselines/:baselineId/suggestions/bulk-confirm` to set `suggestionAccepted=true` for baseline assignments where `confidence_score >= ML_TIER_AUTOCONFIRM` and `suggestionAccepted IS NULL`, with `baseline.suggestions.bulk-confirm` audit logging.
+- Added review-page confidence tier indicators, conditional "Confirm High-Confidence Fields" action, and `Shift+Enter` shortcut wiring to bulk-confirm.
+### Files Changed
+- `apps/api/src/ml/field-suggestion.service.ts` - derive tier from confidence score in suggestion response; env threshold parsing with default warning fallback.
+- `apps/api/src/baseline/baseline.controller.ts` - added POST `/baselines/:baselineId/suggestions/bulk-confirm` route.
+- `apps/api/src/baseline/baseline-assignments.service.ts` - added tier on assignment read payload and `bulkConfirmSuggestions()` implementation with audit log.
+- `apps/web/app/attachments/[attachmentId]/review/page.tsx` - rendered per-field tier badges, bulk confirm button visibility, and `Shift+Enter` shortcut handling.
+- `tasks/codemapcc.md` - documented J1 endpoint/method/tier-read behavior updates.
+- `tasks/plan.md` - marked J1 completed.
+### Verification
+- Build: `cd apps/api; npm run build` PASS.
+- Build: `cd apps/web; npm run build` PASS.
+- Runtime API verification with authenticated session:
+  - `GET /baselines/:baselineId/assignments` returned `tier: "auto_confirm"` for assignments with `confidenceScore=0.95`.
+  - `POST /baselines/:baselineId/suggestions/bulk-confirm` returned `{ "count": 2 }`.
+- DB check (checkpoint query):
+  - `SELECT field_key, confidence_score, suggestion_accepted FROM baseline_field_assignments WHERE baseline_id = '1e185c07-85d4-4790-af8e-c4f022fee73e' AND confidence_score >= 0.90 ORDER BY confidence_score DESC;`
+  - Result: all rows had `suggestion_accepted = true`.
+- Manual UI-only checks not executed in terminal-only environment: click-path validation and direct keyboard (`Shift+Enter`) interaction still require browser confirmation.
+### Status
+[NEEDS-TESTING]
+### Notes
+- Impact: v8.10 Optimal Extraction Accuracy — unblocks K1 (verification UI)
+
+---
+## 2026-02-25 - K1
+### Objective
+Add side-by-side verification layout to review page with manifest endpoint, spatial field ordering, bidirectional hover sync, and jump bar.
+### What Was Built
+- Added `GET /baselines/:baselineId/review-manifest` and implemented manifest assembly in `BaselineAssignmentsService` with flattened fields payload, top-3 similarContext prefetch, and tierCounts.
+- Added verification-mode UI for the review page that fetches manifest once, switches to side-by-side layout when spatial data exists, and keeps original three-panel layout when spatial data is absent.
+- Added `VerificationPanel` (spatially ordered field cards, tier indicators, header tier counts, bulk confirm button) and `JumpBar` (12px proportional tier-colored dot navigation).
+- Wired bidirectional local-state sync: field hover -> PDF highlight; PDF region hover/click -> card scroll + pulse.
+### Files Changed
+- `apps/api/src/baseline/dto/review-manifest.dto.ts` - Added response DTO types for review manifest payload.
+- `apps/api/src/baseline/baseline.controller.ts` - Added GET `/baselines/:baselineId/review-manifest` endpoint.
+- `apps/api/src/baseline/baseline-assignments.service.ts` - Added `assembleReviewManifest(baselineId, userId)` with flattened fields, similarContext, tierCounts, and pageCount.
+- `apps/web/app/attachments/[attachmentId]/review/page.tsx` - Added manifest load/state, verification-mode layout, PDF bbox interaction overlay, local hover/click sync, and fallback to original layout.
+- `apps/web/app/components/ocr/VerificationPanel.tsx` - Added right-panel spatial field cards with tier indicators and header bar actions.
+- `apps/web/app/components/ocr/JumpBar.tsx` - Added proportional-dot navigation strip.
+- `tasks/codemapcc.md` - Added manifest endpoint/method and new K1 component/DTO entries.
+### Verification
+- Manual: GET `/baselines/:baselineId/review-manifest` returns all fields, `similarContext`, and `tierCounts` in a single response. -> UNVERIFIED (manual endpoint exercise pending)
+- Manual: Open review page -> browser Network tab shows exactly one manifest request on load; zero additional requests during hover/highlight interactions. -> UNVERIFIED (browser network check pending)
+- Manual: Two-panel layout renders; fields appear in document reading order (top-to-bottom, page-by-page). -> UNVERIFIED (manual UI check pending)
+- Manual: Hover a field card -> PDF viewer highlights the corresponding bbox; scrolls to correct page — no network request fires. -> UNVERIFIED (manual UI check pending)
+- Manual: Hover/click a bbox region on PDF -> matching field card scrolls into view in panel and pulses — no network request fires. -> UNVERIFIED (manual UI check pending)
+- Manual: Verify jump bar dots appear at correct proportional positions; clicking a dot scrolls panel to that field. -> UNVERIFIED (manual UI check pending)
+- Manual: Header bar shows correct per-tier counts matching `tierCounts` from manifest. -> UNVERIFIED (manual UI check pending)
+- Manual: "Confirm All High-Confidence" bulk button accepts auto_confirm fields. -> UNVERIFIED (manual UI + DB check pending)
+- Manual: Open review page for an old baseline without bbox data -> original layout renders, no errors. -> UNVERIFIED (manual regression check pending)
+- Regression: All existing correction, confirm, and suggestion flows still work. -> PARTIAL (compiled; manual end-to-end regression pending)
+- Build: `cd apps/api; npm run build` -> PASSED
+- Build: `cd apps/web; npm run build` -> PASSED
+- Runtime: `docker restart todo-api`, `docker restart todo-web`, and `docker logs todo-api --tail 200` confirmed route mapping for `/baselines/:baselineId/review-manifest` and successful Nest start.
+### Status
+[NEEDS-TESTING]
+### Notes
+- Impact: v8.10 Verification UI (P1)
+---
+## 2026-02-25 - N_MIG
+### Objective
+Create alias_rules, correction_events, and extraction_retry_jobs tables as prerequisites for N2, N5, N6.
+### What Was Built
+- Added Drizzle schema definitions for alias_rules, correction_events, and extraction_retry_jobs with required constraints/defaults/indexes; applied matching SQL DDL in DB and validated all N_MIG checkpoints.
+### Files Changed
+- `apps/api/src/db/schema.ts` - Added three new table definitions, explicit `check_vendor_exists` check, and required indexes (including partial indexes).
+### Verification
+- Build: `docker compose exec api npm run build` exited 0.
+- Migration command run: `docker compose exec api npx drizzle-kit migrate` completed successfully.
+- DB schema checks:
+  - `\d alias_rules` showed expected columns, `check_vendor_exists`, `unique_vendor_pattern`, and `idx_alias_rules_active` partial index.
+  - `\d correction_events` showed expected columns, FK to `extraction_baselines(id)`, and `idx_correction_events_lookup`.
+  - `\d extraction_retry_jobs` showed expected columns and `idx_retry_status_pending` partial index.
+- Constraint check: `INSERT INTO alias_rules (vendor_id, field_key, raw_pattern, corrected_value) VALUES (NULL, 'x', 'y', 'z');` failed with NOT NULL violation on `vendor_id`.
+### Status
+[VERIFIED]
+### Notes
+- Impact: Prerequisite for N5 (async math retry), N6 (correction tracking), N2 (alias engine)
+
+---
+## 2026-02-25 - N5
+### Objective
+Add async single-retry loop for math reconciliation failures, gated by ML_MATH_RETRY_ENABLED env flag.
+### What Was Built
+- Added post-I6 retry trigger in suggestion generation: when ML_MATH_RETRY_ENABLED=true and any field has math_reconciliation_failed, create extraction_retry_jobs row (PENDING) with failing fields, y-band, and preliminary values; return preliminary response with retryJobId.
+- Added MlRetryWorkerService background worker: 5s polling loop (feature-flag gated), single pending-job processing, retry_count guard (MAX_MATH_RETRIES=1), targeted OCR y-band retry via /ml/serialize + /ml/suggest-fields, and terminal status writes (COMPLETED or RECONCILIATION_FAILED).
+- Added polling endpoint GET /attachments/:attachmentId/retry-status returning latest retry-job status, finalValues, and reconciliation error code.
+- Added review-page retry UX: "Verifying math..." indicator, 3s polling, final-values display update on COMPLETED, and manual-review failure banner with failing-field highlight on RECONCILIATION_FAILED.
+### Files Changed
+- `apps/api/src/ml/field-suggestion.service.ts` - added post-I6 async retry trigger, extraction_retry_jobs insert, and preliminary response fields (status/retryJobId/failingFieldKeys).
+- `apps/api/src/ml/ml-retry-worker.service.ts` - added bounded setInterval worker that polls extraction_retry_jobs every 5s; only starts when ML_MATH_RETRY_ENABLED=true.
+- `apps/api/src/ml/ml.module.ts` - registered MlRetryWorkerService in providers.
+- `apps/api/src/attachments/attachments.controller.ts` - added GET /attachments/:attachmentId/retry-status endpoint returning latest retry job state.
+- `apps/web/app/attachments/[attachmentId]/review/page.tsx` - wired retry indicator, 3s retry-status polling, completed-value UI update, and failed-field highlighting.
+### Verification
+- Build: `cd apps/api; npm run build` PASS.
+- Build: `cd apps/web; npm run build` PASS.
+- Runtime: `docker restart todo-api`, `docker restart todo-web`, waited ~40s, `docker logs todo-api --tail 5` shows successful Nest startup.
+- Runtime route map: API logs show `Mapped {/attachments/:attachmentId/retry-status, GET} route`.
+- Auth/API smoke: login with `a@a.com / 12341234` succeeded; `GET /attachments/:id/retry-status` returned `{status:"none"}` on attachment without retry jobs.
+- DB smoke: `SELECT ... FROM extraction_retry_jobs ORDER BY created_at DESC LIMIT 5` returned no rows in current env (ML_MATH_RETRY_ENABLED unset/false), matching no-retry creation behavior while flag is off.
+- Pending manual checks from Checkpoint N5 require ML_MATH_RETRY_ENABLED=true test run with a math-failing invoice upload and end-to-end worker progression.
+### Status
+[NEEDS-TESTING]
+### Notes
+- Impact: N_MIG prerequisite used; unblocks N6 (correction tracking)

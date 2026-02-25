@@ -3,18 +3,21 @@ import {
   ConflictException,
   NotFoundException,
   BadGatewayException,
+  BadRequestException,
 } from '@nestjs/common';
 import { desc, eq, and, ne } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { mlModelVersions } from '../db/schema';
 import { CreateMlModelDto } from './dto/create-ml-model.dto';
 import { MlService } from './ml.service';
+import { MlPerformanceService } from './ml-performance.service';
 
 @Injectable()
 export class MlModelsService {
   constructor(
     private readonly dbs: DbService,
     private readonly mlService: MlService,
+    private readonly performanceService: MlPerformanceService,
   ) {}
 
   async createModel(dto: CreateMlModelDto, createdBy: string) {
@@ -78,7 +81,17 @@ export class MlModelsService {
 
     const previousVersion = previousActive?.version ?? null;
 
-    // 3. Call ML service to hot-swap
+    // 3. D5 gate check — block activation if online gate not met
+    const gate = await this.performanceService.getGateStatus(target.id);
+    if (!gate.onlineGateMet) {
+      throw new BadRequestException(
+        `Activation blocked: online gate not met. ` +
+          `Acceptance delta ${(gate.onlineDelta * 100).toFixed(2)}% (requires ≥5%). ` +
+          `Suggestions served: ${gate.onlineSuggestionCount} (requires ≥1000).`,
+      );
+    }
+
+    // 4. Call ML service to hot-swap
     const mlResult = await this.mlService.activateModel({
       version: target.version,
       filePath: target.filePath,
@@ -90,7 +103,7 @@ export class MlModelsService {
       );
     }
 
-    // 4. Transactionally: deactivate previous, activate target
+    // 5. Transactionally: deactivate previous, activate target
     await this.dbs.db.transaction(async (tx) => {
       if (previousActive) {
         await tx

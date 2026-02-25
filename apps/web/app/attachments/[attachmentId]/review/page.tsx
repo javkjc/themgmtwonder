@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import NotificationToast, { type Notification } from '@/app/components/NotificationToast';
@@ -20,6 +21,8 @@ import TableCreationModal from '@/app/components/tables/TableCreationModal';
 import TableEditorPanel from '@/app/components/tables/TableEditorPanel';
 import TableSuggestionPreviewModal from '@/app/components/suggestions/TableSuggestionPreviewModal';
 import TableListPanel from '@/app/components/tables/TableListPanel';
+import VerificationPanel, { type VerificationField } from '@/app/components/ocr/VerificationPanel';
+import JumpBar from '@/app/components/ocr/JumpBar';
 
 import { useReviewPageData } from './hooks/useReviewPageData';
 import { useFieldAssignments } from './hooks/useFieldAssignments';
@@ -29,6 +32,7 @@ import { useBaselineActions } from './hooks/useBaselineActions';
 import { DocumentPreviewPanel } from './components';
 import { ChangeLogPanel } from './components';
 
+const PdfDocumentViewer = dynamic(() => import('@/app/components/ocr/PdfDocumentViewer'), { ssr: false });
 const DEFAULT_NOTIFICATION_TTL = 5000;
 
 const badgeStyles: Record<string, { bg: string; color: string; border: string }> = {
@@ -51,6 +55,43 @@ const STATUS_REASON_LABELS: Record<string, string> = {
   confirmed: 'Status: Confirmed output (read-only)',
   archived: 'Status: Archived output (view only)',
   reviewed: 'Status: Reviewed output (locked)',
+};
+
+type AssignmentTier = 'auto_confirm' | 'verify' | 'flag';
+
+const tierBadgeStyles: Record<AssignmentTier, { bg: string; color: string; border: string; label: string }> = {
+  auto_confirm: { bg: '#dcfce7', color: '#166534', border: '#86efac', label: 'Auto Confirm' },
+  verify: { bg: '#fef9c3', color: '#854d0e', border: '#fde047', label: 'Verify' },
+  flag: { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5', label: 'Flag' },
+};
+
+type ReviewManifest = {
+  baselineId: string;
+  attachmentId: string;
+  pageCount: number;
+  fields: VerificationField[];
+  similarContext: Record<string, Array<{ value: string; confirmedAt: string; similarity: number }>>;
+  tierCounts: { flag: number; verify: number; auto_confirm: number };
+};
+
+type RetryStatusPayload = {
+  status: 'none' | 'PENDING' | 'RUNNING' | 'COMPLETED' | 'RECONCILIATION_FAILED';
+  finalValues?: Record<string, string> | null;
+  failingFieldKeys?: string[];
+  errorCode?: 'RECONCILIATION_FAILED' | null;
+};
+
+type SuggestionGenerationPayload = {
+  suggestedAssignments: Array<{
+    fieldKey: string;
+    assignedValue: string;
+    validationOverride?: string | null;
+  }>;
+  modelVersionId: string | null;
+  suggestionCount: number;
+  status?: 'preliminary';
+  retryJobId?: string;
+  failingFieldKeys?: string[];
 };
 
 export default function AttachmentOcrReviewPage() {
@@ -86,6 +127,15 @@ export default function AttachmentOcrReviewPage() {
   const [highlightedSegment, setHighlightedSegment] = useState<Segment | null>(null);
   const [activeTab, setActiveTab] = useState<'document' | 'text' | 'fields'>('document');
   const [documentError, setDocumentError] = useState<string | null>(null);
+  const [bulkConfirming, setBulkConfirming] = useState(false);
+  const [reviewManifest, setReviewManifest] = useState<ReviewManifest | null>(null);
+  const [activeVerificationFieldKey, setActiveVerificationFieldKey] = useState<string | null>(null);
+  const [pulseFieldKey, setPulseFieldKey] = useState<string | null>(null);
+  const [jumpToFieldKey, setJumpToFieldKey] = useState<string | null>(null);
+  const [currentPdfPage, setCurrentPdfPage] = useState(1);
+  const [mathRetryJobId, setMathRetryJobId] = useState<string | null>(null);
+  const [mathRetryStatus, setMathRetryStatus] = useState<RetryStatusPayload['status'] | null>(null);
+  const [mathRetryFailingFieldKeys, setMathRetryFailingFieldKeys] = useState<string[]>([]);
 
   // ---------- Field assignments ----------
   const fields = useFieldAssignments({
@@ -155,6 +205,62 @@ export default function AttachmentOcrReviewPage() {
     [baseline?.assignments, fields],
   );
 
+  const handleGenerateSuggestionsWithRetry = useCallback(async () => {
+    if (!baseline?.id) {
+      throw new Error('Baseline unavailable');
+    }
+
+    const result = await apiFetchJson(
+      `/baselines/${baseline.id}/suggestions/generate`,
+      {
+        method: 'POST',
+        body: JSON.stringify({}),
+      },
+    ) as SuggestionGenerationPayload;
+
+    const count = result?.suggestionCount ?? result?.suggestedAssignments?.length ?? 0;
+    if (count === 0) {
+      await loadBaseline();
+      addNotification({
+        id: `suggestions-none-${Date.now()}`,
+        type: 'error',
+        title: 'No suggestions generated',
+        message: 'Suggestions unavailable. Continue with manual assignment.',
+      });
+      throw new Error('No suggestions generated');
+    }
+
+    const failingFieldKeys = Array.from(
+      new Set(
+        result?.failingFieldKeys?.length
+          ? result.failingFieldKeys
+          : (result?.suggestedAssignments ?? [])
+              .filter((item) => item.validationOverride === 'math_reconciliation_failed')
+              .map((item) => item.fieldKey),
+      ),
+    );
+
+    if (result?.retryJobId) {
+      setMathRetryJobId(result.retryJobId);
+      setMathRetryStatus('PENDING');
+      setMathRetryFailingFieldKeys(failingFieldKeys);
+    } else {
+      setMathRetryJobId(null);
+      setMathRetryStatus(null);
+      setMathRetryFailingFieldKeys([]);
+    }
+
+    addNotification({
+      id: `suggestions-ok-${Date.now()}`,
+      type: 'success',
+      title: 'Suggestions generated',
+      message: `${count} field suggestions generated.`,
+    });
+
+    await loadBaseline();
+    return count;
+  }, [addNotification, baseline?.id, loadBaseline]);
+
   // ---------- Field change log (audit history) ----------
   useEffect(() => {
     if (!baseline?.id) return;
@@ -220,6 +326,157 @@ export default function AttachmentOcrReviewPage() {
   const isFieldBuilderReadOnly = isBaselineLocked || isUtilizationLocked;
   const canMutateFields = !isFieldBuilderReadOnly;
 
+  const assignmentTierRows = useMemo(() => {
+    const rawAssignments = (baseline?.assignments ?? []) as Array<any>;
+    return rawAssignments
+      .map((assignment) => {
+        const confidenceScore =
+          typeof assignment.confidenceScore === 'number'
+            ? assignment.confidenceScore
+            : null;
+        const tier: AssignmentTier | null =
+          assignment.tier ??
+          (confidenceScore === null
+            ? null
+            : confidenceScore >= 0.9
+              ? 'auto_confirm'
+              : confidenceScore >= 0.7
+                ? 'verify'
+                : 'flag');
+
+        if (!tier || confidenceScore === null) {
+          return null;
+        }
+
+        return {
+          fieldKey: assignment.fieldKey as string,
+          label: fieldLabelMap[assignment.fieldKey] || assignment.fieldKey,
+          confidenceScore,
+          tier,
+          suggestionAccepted: assignment.suggestionAccepted as boolean | null | undefined,
+        };
+      })
+      .filter(Boolean) as Array<{
+      fieldKey: string;
+      label: string;
+      confidenceScore: number;
+      tier: AssignmentTier;
+      suggestionAccepted?: boolean | null;
+    }>;
+  }, [baseline?.assignments, fieldLabelMap]);
+
+  const autoConfirmFields = useMemo(
+    () => assignmentTierRows.filter((item) => item.tier === 'auto_confirm'),
+    [assignmentTierRows],
+  );
+
+  const autoConfirmPendingCount = useMemo(
+    () => autoConfirmFields.filter((item) => item.suggestionAccepted === null || item.suggestionAccepted === undefined).length,
+    [autoConfirmFields],
+  );
+
+  const handleBulkConfirmSuggestions = useCallback(async () => {
+    if (!baseline?.id || !canMutateFields || bulkConfirming) return;
+    setBulkConfirming(true);
+    try {
+      const result = await apiFetchJson(
+        `/baselines/${baseline.id}/suggestions/bulk-confirm`,
+        {
+          method: 'POST',
+          body: JSON.stringify({}),
+        },
+      );
+      setReviewManifest((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          fields: prev.fields.map((field) =>
+            field.tier === 'auto_confirm' && field.suggestionAccepted === null
+              ? { ...field, suggestionAccepted: true }
+              : field,
+          ),
+        };
+      });
+      await loadBaseline();
+      addNotification({
+        id: `bulk-confirm-${Date.now()}`,
+        type: 'success',
+        title: 'High-confidence fields confirmed',
+        message: `${result?.count ?? 0} suggestion(s) confirmed.`,
+      });
+    } catch (e: any) {
+      addNotification({
+        id: `bulk-confirm-error-${Date.now()}`,
+        type: 'error',
+        title: 'Bulk confirm failed',
+        message: e?.message || 'Failed to confirm high-confidence fields.',
+      });
+    } finally {
+      setBulkConfirming(false);
+    }
+  }, [addNotification, baseline?.id, bulkConfirming, canMutateFields, loadBaseline]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.shiftKey || event.key !== 'Enter') return;
+      if (!baseline?.id || !canMutateFields || autoConfirmFields.length === 0) return;
+      event.preventDefault();
+      void handleBulkConfirmSuggestions();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [autoConfirmFields.length, baseline?.id, canMutateFields, handleBulkConfirmSuggestions]);
+
+  useEffect(() => {
+    if (!baseline?.id) {
+      setReviewManifest(null);
+      return;
+    }
+    let cancelled = false;
+    const loadManifest = async () => {
+      try {
+        const manifest = await apiFetchJson(
+          `/baselines/${baseline.id}/review-manifest`,
+          { method: 'GET' },
+        ) as ReviewManifest;
+        if (!cancelled) {
+          setReviewManifest(manifest);
+        }
+      } catch {
+        if (!cancelled) {
+          setReviewManifest(null);
+        }
+      }
+    };
+    void loadManifest();
+    return () => {
+      cancelled = true;
+    };
+  }, [baseline?.id]);
+
+  useEffect(() => {
+    if (!baseline?.assignments) return;
+    setReviewManifest((prev) => {
+      if (!prev) return prev;
+      const assignmentByField = new Map(
+        baseline.assignments!.map((assignment) => [assignment.fieldKey, assignment]),
+      );
+      return {
+        ...prev,
+        fields: prev.fields.map((field) => {
+          const assignment = assignmentByField.get(field.fieldKey);
+          if (!assignment) return field;
+          return {
+            ...field,
+            suggestedValue: assignment.assignedValue ?? null,
+            suggestionAccepted: assignment.suggestionAccepted ?? null,
+          };
+        }),
+      };
+    });
+  }, [baseline?.assignments]);
+
   const ocr = useOcrFields({
     ocrData, canMutateFields, addNotification, fetchOcrAndFields,
   });
@@ -268,6 +525,207 @@ export default function AttachmentOcrReviewPage() {
     return false;
   }, [ocrData]);
 
+  const spatialOrderedFields = useMemo(() => {
+    const manifestFields = reviewManifest?.fields ?? [];
+    return [...manifestFields].sort((a, b) => {
+      if (a.boundingBox && b.boundingBox) {
+        if (a.pageNumber !== b.pageNumber) return a.pageNumber - b.pageNumber;
+        return a.boundingBox.y - b.boundingBox.y;
+      }
+      if (a.boundingBox && !b.boundingBox) return -1;
+      if (!a.boundingBox && b.boundingBox) return 1;
+      return a.fieldKey.localeCompare(b.fieldKey);
+    });
+  }, [reviewManifest?.fields]);
+
+  const fieldsWithBoundingBox = useMemo(
+    () => spatialOrderedFields.filter((field) => field.boundingBox !== null),
+    [spatialOrderedFields],
+  );
+
+  const fieldsWithoutBoundingBox = useMemo(
+    () => spatialOrderedFields.filter((field) => field.boundingBox === null),
+    [spatialOrderedFields],
+  );
+
+  const hasSpatialData = fieldsWithBoundingBox.length > 0;
+
+  const activeVerificationField = useMemo(
+    () =>
+      reviewManifest?.fields.find(
+        (field) =>
+          field.fieldKey === activeVerificationFieldKey && field.boundingBox !== null,
+      ) ?? null,
+    [activeVerificationFieldKey, reviewManifest?.fields],
+  );
+
+  const mathRetryFailureSet = useMemo(
+    () => new Set(mathRetryFailingFieldKeys),
+    [mathRetryFailingFieldKeys],
+  );
+
+  const handleVerificationHover = useCallback((field: VerificationField | null) => {
+    setActiveVerificationFieldKey(field?.fieldKey ?? null);
+  }, []);
+
+  const triggerFieldPulse = useCallback((fieldKey: string) => {
+    setActiveVerificationFieldKey(fieldKey);
+    setJumpToFieldKey(fieldKey);
+    setPulseFieldKey(fieldKey);
+    setTimeout(() => {
+      setPulseFieldKey((prev) => (prev === fieldKey ? null : prev));
+    }, 1200);
+  }, []);
+
+  useEffect(() => {
+    if (!attachmentId || !mathRetryJobId) {
+      return;
+    }
+
+    let active = true;
+    let stopped = false;
+
+    const pollRetryStatus = async () => {
+      if (!active || stopped) return;
+
+      try {
+        const payload = await apiFetchJson(
+          `/attachments/${attachmentId}/retry-status`,
+          { method: 'GET' },
+        ) as RetryStatusPayload;
+
+        if (!active || stopped) return;
+
+        if (payload.status === 'none') {
+          setMathRetryJobId(null);
+          setMathRetryStatus(null);
+          setMathRetryFailingFieldKeys([]);
+          stopped = true;
+          return;
+        }
+
+        setMathRetryStatus(payload.status);
+        if (Array.isArray(payload.failingFieldKeys) && payload.failingFieldKeys.length > 0) {
+          setMathRetryFailingFieldKeys(payload.failingFieldKeys);
+        }
+
+        if (payload.status === 'COMPLETED') {
+          const finalValues = payload.finalValues ?? {};
+          if (finalValues && Object.keys(finalValues).length > 0) {
+            setBaseline((prev) => {
+              if (!prev) return prev;
+              const assignments = (prev.assignments ?? []).map((assignment: any) =>
+                Object.prototype.hasOwnProperty.call(finalValues, assignment.fieldKey)
+                  ? { ...assignment, assignedValue: finalValues[assignment.fieldKey] }
+                  : assignment,
+              );
+              return { ...prev, assignments };
+            });
+
+            setReviewManifest((prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                fields: prev.fields.map((field) =>
+                  Object.prototype.hasOwnProperty.call(finalValues, field.fieldKey)
+                    ? { ...field, suggestedValue: finalValues[field.fieldKey] }
+                    : field,
+                ),
+              };
+            });
+          }
+
+          setMathRetryJobId(null);
+          setMathRetryStatus(null);
+          stopped = true;
+          return;
+        }
+
+        if (payload.status === 'RECONCILIATION_FAILED') {
+          stopped = true;
+          return;
+        }
+      } catch {
+        // Ignore polling errors, next interval tick will retry.
+      }
+    };
+
+    void pollRetryStatus();
+    const timer = setInterval(() => {
+      void pollRetryStatus();
+    }, 3000);
+
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [attachmentId, mathRetryJobId, setBaseline]);
+
+  const handleVerificationSave = useCallback(async (fieldKey: string, value: string) => {
+    await handleTrackedAssignmentUpdate(fieldKey, value);
+    setReviewManifest((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        fields: prev.fields.map((field) =>
+          field.fieldKey === fieldKey ? { ...field, suggestedValue: value } : field,
+        ),
+      };
+    });
+  }, [handleTrackedAssignmentUpdate]);
+
+  const handleVerificationClear = useCallback(async (fieldKey: string) => {
+    const existing = baseline?.assignments?.find((item) => item.fieldKey === fieldKey);
+    const hasSuggestionContext =
+      (existing?.modelVersionId !== null &&
+        existing?.modelVersionId !== undefined) ||
+      (existing?.suggestionAccepted !== null &&
+        existing?.suggestionAccepted !== undefined) ||
+      (existing?.suggestionConfidence !== null &&
+        existing?.suggestionConfidence !== undefined);
+
+    if (hasSuggestionContext) {
+      await handleTrackedAssignmentDelete(fieldKey, {
+        suggestionRejected: true,
+        modelVersionId: existing?.modelVersionId ?? undefined,
+        suggestionConfidence: existing?.suggestionConfidence ?? undefined,
+      });
+    } else {
+      await handleTrackedAssignmentDelete(fieldKey);
+    }
+
+    setReviewManifest((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        fields: prev.fields.map((field) =>
+          field.fieldKey === fieldKey
+            ? {
+              ...field,
+              suggestedValue: null,
+              suggestionAccepted: hasSuggestionContext ? false : null,
+            }
+            : field,
+        ),
+      };
+    });
+  }, [baseline?.assignments, handleTrackedAssignmentDelete]);
+
+  const handleVerificationAccept = useCallback(async (fieldKey: string) => {
+    await fields.handleAccept(fieldKey);
+    setReviewManifest((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        fields: prev.fields.map((field) =>
+          field.fieldKey === fieldKey
+            ? { ...field, suggestionAccepted: true }
+            : field,
+        ),
+      };
+    });
+  }, [fields]);
+
   // ---------- Guards ----------
   if (authLoading) return null;
   if (!me) {
@@ -307,7 +765,30 @@ export default function AttachmentOcrReviewPage() {
           </button>
         </div>
         {tables.sidebarTab === 'fields' && !isFieldBuilderReadOnly && (
-          <SuggestionTrigger disabled={!baseline?.id || baselineLoading} onGenerate={fields.handleGenerateSuggestions} />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <SuggestionTrigger disabled={!baseline?.id || baselineLoading} onGenerate={handleGenerateSuggestionsWithRetry} />
+            {autoConfirmFields.length > 0 && (
+              <button
+                onClick={handleBulkConfirmSuggestions}
+                disabled={!baseline?.id || bulkConfirming || autoConfirmPendingCount === 0}
+                title="Shift+Enter"
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: 6,
+                  border: '1px solid #16a34a',
+                  background: '#dcfce7',
+                  color: '#166534',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: !baseline?.id || bulkConfirming || autoConfirmPendingCount === 0 ? 'not-allowed' : 'pointer',
+                  opacity: !baseline?.id || bulkConfirming || autoConfirmPendingCount === 0 ? 0.6 : 1,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {bulkConfirming ? 'Confirming...' : 'Confirm High-Confidence Fields'}
+              </button>
+            )}
+          </div>
         )}
         {tables.sidebarTab === 'tables' && !isFieldBuilderReadOnly && (
           <button onClick={tables.handleDetectTables} disabled={tables.detectingTables || !baseline?.id} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, cursor: tables.detectingTables || !baseline?.id ? 'not-allowed' : 'pointer', opacity: tables.detectingTables || !baseline?.id ? 0.6 : 1 }}>
@@ -320,6 +801,36 @@ export default function AttachmentOcrReviewPage() {
         {tables.sidebarTab === 'fields' ? (
           <>
             <div style={{ flex: 1, overflowY: 'auto', maxHeight: isMobile ? 'auto' : 'calc(100vh - 350px)', paddingRight: 4 }}>
+              {assignmentTierRows.length > 0 && (
+                <div style={{ marginBottom: 10, border: '1px solid var(--border)', borderRadius: 8, padding: 8, background: 'var(--surface)' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6 }}>
+                    Confidence Tiers
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 130, overflowY: 'auto' }}>
+                    {assignmentTierRows.map((item) => (
+                      <div key={item.fieldKey} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                        <span style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {item.label}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            padding: '2px 7px',
+                            borderRadius: 999,
+                            border: `1px solid ${tierBadgeStyles[item.tier].border}`,
+                            background: tierBadgeStyles[item.tier].bg,
+                            color: tierBadgeStyles[item.tier].color,
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {tierBadgeStyles[item.tier].label} {Math.round(item.confidenceScore * 100)}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <FieldAssignmentPanel
                 fields={libraryFields}
                 assignments={baseline?.assignments || []}
@@ -405,6 +916,112 @@ export default function AttachmentOcrReviewPage() {
     );
   };
 
+  const renderVerificationLayout = () => (
+    <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', minHeight: 'calc(100vh - 280px)' }}>
+      <div style={{ flex: '0 0 50%', minWidth: 0 }}>
+        <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12, background: 'var(--surface)' }}>
+          <div style={{ marginBottom: 10, color: 'var(--text-secondary)', fontSize: 13, fontWeight: 700 }}>
+            1. Document Preview
+          </div>
+          <div style={{ position: 'relative' }}>
+            <PdfDocumentViewer
+              title={ocrData?.attachment?.filename || 'Attachment'}
+              documentUrl={documentUrl}
+              mimeType={ocrData?.attachment?.mimeType ?? null}
+              fileName={ocrData?.attachment?.filename ?? null}
+              highlightedField={
+                activeVerificationField
+                  ? {
+                    pageNumber: activeVerificationField.pageNumber,
+                    boundingBox: activeVerificationField.boundingBox as any,
+                  }
+                  : null
+              }
+              forcePage={activeVerificationField?.pageNumber ?? null}
+              onPageChange={setCurrentPdfPage}
+              onDocumentError={setDocumentError}
+            />
+            {fieldsWithBoundingBox
+              .filter((field) => field.pageNumber === currentPdfPage && field.boundingBox)
+              .map((field) => (
+                <button
+                  key={`region-${field.fieldKey}`}
+                  type="button"
+                  title={field.fieldKey}
+                  onMouseEnter={() => triggerFieldPulse(field.fieldKey)}
+                  onClick={() => triggerFieldPulse(field.fieldKey)}
+                  style={{
+                    position: 'absolute',
+                    left: `${(field.boundingBox!.x ?? 0) * 100}%`,
+                    top: `${(field.boundingBox!.y ?? 0) * 100}%`,
+                    width: `${(field.boundingBox!.width ?? 0) * 100}%`,
+                    height: `${(field.boundingBox!.height ?? 0) * 100}%`,
+                    border:
+                      activeVerificationFieldKey === field.fieldKey
+                        ? '2px solid rgba(59,130,246,0.7)'
+                        : mathRetryFailureSet.has(field.fieldKey)
+                          ? '2px solid rgba(220,38,38,0.7)'
+                        : '1px solid rgba(59,130,246,0.25)',
+                    background:
+                      activeVerificationFieldKey === field.fieldKey
+                        ? 'rgba(59,130,246,0.12)'
+                        : mathRetryFailureSet.has(field.fieldKey)
+                          ? 'rgba(220,38,38,0.12)'
+                        : 'transparent',
+                    borderRadius: 4,
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                />
+              ))}
+          </div>
+          {documentError && (
+            <div style={{ marginTop: 8, padding: 10, borderRadius: 10, background: '#fee2e2', color: '#b91c1c', fontSize: 13 }}>
+              {documentError}. <a href={documentUrl} target="_blank" rel="noreferrer" style={{ color: '#991b1b' }}>Download file</a>
+            </div>
+          )}
+        </div>
+      </div>
+      <div style={{ flex: '0 0 50%', minWidth: 0, display: 'flex', gap: 8 }}>
+        <VerificationPanel
+          fieldsWithBox={fieldsWithBoundingBox}
+          fieldsWithoutBox={fieldsWithoutBoundingBox}
+          similarContext={reviewManifest?.similarContext ?? {}}
+          tierCounts={reviewManifest?.tierCounts ?? { flag: 0, verify: 0, auto_confirm: 0 }}
+          fieldLabelMap={fieldLabelMap}
+          canMutateFields={canMutateFields}
+          bulkConfirming={bulkConfirming}
+          autoConfirmPendingCount={autoConfirmPendingCount}
+          activeFieldKey={activeVerificationFieldKey}
+          pulseFieldKey={pulseFieldKey}
+          jumpToFieldKey={jumpToFieldKey}
+          actionsSlot={(
+            <SuggestionTrigger
+              disabled={!baseline?.id || baselineLoading}
+              onGenerate={handleGenerateSuggestionsWithRetry}
+            />
+          )}
+          onBulkConfirm={handleBulkConfirmSuggestions}
+          onAccept={handleVerificationAccept}
+          onSave={handleVerificationSave}
+          onClear={handleVerificationClear}
+          onHoverField={handleVerificationHover}
+          onJumpHandled={() => setJumpToFieldKey(null)}
+        />
+        <div style={{ alignSelf: 'stretch', paddingTop: 12, paddingBottom: 12 }}>
+          <JumpBar
+            fields={fieldsWithBoundingBox.map((field) => ({
+              fieldKey: field.fieldKey,
+              tier: field.tier,
+            }))}
+            activeFieldKey={activeVerificationFieldKey}
+            onJump={(fieldKey) => triggerFieldPulse(fieldKey)}
+          />
+        </div>
+      </div>
+    </div>
+  );
+
   // ---------- Render ----------
   return (
     <Layout currentPage="home" userEmail={me.email} userRole={me.role} isAdmin={me.isAdmin} onLogout={logout}>
@@ -470,6 +1087,21 @@ export default function AttachmentOcrReviewPage() {
           <span style={{ fontWeight: 600 }}>Low confidence extraction - please verify carefully.</span>
         </div>
       )}
+      {mathRetryJobId && (mathRetryStatus === 'PENDING' || mathRetryStatus === 'RUNNING') && (
+        <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 8, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 16 }}>i</span>
+          <span style={{ fontWeight: 600 }}>Verifying math...</span>
+        </div>
+      )}
+      {mathRetryStatus === 'RECONCILIATION_FAILED' && (
+        <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 16 }}>!</span>
+          <span style={{ fontWeight: 600 }}>
+            Math reconciliation failed - manual review required
+            {mathRetryFailingFieldKeys.length > 0 ? ` (${mathRetryFailingFieldKeys.join(', ')})` : ''}.
+          </span>
+        </div>
+      )}
       <div style={{ marginBottom: 24, padding: '12px 16px', borderRadius: 12, background: 'var(--surface-secondary)', border: '1px solid var(--border)', color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5 }}>
         <div style={{ display: 'flex', gap: 10 }}>
           <span style={{ fontSize: 16 }}>i</span>
@@ -504,6 +1136,8 @@ export default function AttachmentOcrReviewPage() {
             </div>
           ) : activeTab === 'fields' ? renderPanel3() : null}
         </div>
+      ) : hasSpatialData ? (
+        renderVerificationLayout()
       ) : tables.activeTable ? (
         <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', height: 'calc(100vh - 250px)' }}>
           <div style={{ flex: '0 0 320px', display: 'flex', flexDirection: 'column', height: '100%' }}>{renderPanel3()}</div>

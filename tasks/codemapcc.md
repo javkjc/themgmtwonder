@@ -27,6 +27,7 @@
 - docker-compose.yml (to wire ml-service container on backend network)
 - docker-compose.yml (services include Ollama model serving on backend network; named volume `ollama_models`)
 - Shared/utils: apps/web/app/lib/{api.ts,categories.ts,constants.ts,dateTime.ts,durationSettings.ts}; hooks as client data layer
+- New frontend OCR verification components: apps/web/app/components/ocr/VerificationPanel.tsx (right-panel spatial field cards with tier indicators), apps/web/app/components/ocr/JumpBar.tsx (12px proportional-dot navigation strip)
 - db/schema: apps/api/src/db/schema.ts (Drizzle models)
 
 ## 1) Run/Dev Commands
@@ -68,10 +69,16 @@
 - ROUTE: /admin/ml
   - Path: apps/web/app/admin/ml/page.tsx
   - Purpose: ML performance evaluation dashboard
-  - Uses: Layout, fetchMlMetrics, KPI cards, Confusion table
+  - Uses: Layout, fetchMlMetrics, KPI cards, Confusion table, link to /admin/ml/performance
   - Auto-refresh: Loads on mount and refreshes every 15 seconds for admins
   - Default date range: Last 14 days (from today - 14 days to today)
   - Mutations at: loadMetrics() via manual Refresh button or auto-refresh interval
+- ROUTE: /admin/ml/performance
+  - Path: apps/web/app/admin/ml/performance/page.tsx
+  - Purpose: Admin performance dashboard for model summaries, version table, 12-week trend chart, 7-day confidence histogram, and candidate activation control
+  - Uses: Layout, fetchMlPerformance, activateMlModel, HTML/CSS charts, D5 gate tooltip state
+  - Auto-refresh: Loads on mount and refreshes every 15 seconds for admins
+  - Mutations at: loadPerformance() via manual refresh/interval; onActivate() via POST /admin/ml/models/activate
 - ROUTE: /customizations
   - Path: apps/web/app/customizations/page.tsx
   - Purpose: Working hours, duration settings, categories CRUD
@@ -94,7 +101,7 @@
 - ROUTE: /attachments/[attachmentId]/review
   - Path: apps/web/app/attachments/[attachmentId]/review/page.tsx
   - Purpose: Visual OCR evidence review (attachment viewer + parsed field list + correction/history modals).
-  - Uses: PdfDocumentViewer, ExtractedTextPool (apps/web/app/components/ocr/ExtractedTextPool.tsx for truncated confidence badges and hover highlight), FieldAssignmentPanel (apps/web/app/components/FieldAssignmentPanel.tsx renders baseline assignment inputs with validation status and read-only reason banners), TableCreationModal (apps/web/app/components/tables/TableCreationModal.tsx for table structure detection and creation), TableEditorPanel (apps/web/app/components/tables/TableEditorPanel.tsx for inline cell editing, mapping, validation), TableConfirmationModal (apps/web/app/components/tables/TableConfirmationModal.tsx confirm/read-only lock), TableListPanel (apps/web/app/components/tables/TableListPanel.tsx for list + switching), ValidationConfirmationModal (apps/web/app/components/ValidationConfirmationModal.tsx prompts user to confirm invalid values with optional suggested corrections), OcrFieldList, OcrFieldEditModal, OcrCorrectionHistoryModal, CorrectionReasonModal, NotificationToast, lib/api/ocr.ts helpers (fetchAttachmentOcrResults, createOcrCorrection, fetchOcrCorrectionHistory), lib/api/baselines.ts (upsertAssignment, deleteAssignment, fetchBaselineForAttachment, markBaselineReviewed, confirmBaseline), lib/api/tables.ts (createTable, fetchTablesForBaseline, fetchTable, updateCell, deleteRow, assignColumn, confirmTable), API_BASE_URL for downloads and document playback.
+  - Uses: PdfDocumentViewer, VerificationPanel (apps/web/app/components/ocr/VerificationPanel.tsx), JumpBar (apps/web/app/components/ocr/JumpBar.tsx), ExtractedTextPool (apps/web/app/components/ocr/ExtractedTextPool.tsx for truncated confidence badges and hover highlight), FieldAssignmentPanel (apps/web/app/components/FieldAssignmentPanel.tsx renders baseline assignment inputs with validation status and read-only reason banners), TableCreationModal (apps/web/app/components/tables/TableCreationModal.tsx for table structure detection and creation), TableEditorPanel (apps/web/app/components/tables/TableEditorPanel.tsx for inline cell editing, mapping, validation), TableConfirmationModal (apps/web/app/components/tables/TableConfirmationModal.tsx confirm/read-only lock), TableListPanel (apps/web/app/components/tables/TableListPanel.tsx for list + switching), ValidationConfirmationModal (apps/web/app/components/ValidationConfirmationModal.tsx prompts user to confirm invalid values with optional suggested corrections), OcrFieldList, OcrFieldEditModal, OcrCorrectionHistoryModal, CorrectionReasonModal, NotificationToast, lib/api/ocr.ts helpers (fetchAttachmentOcrResults, createOcrCorrection, fetchOcrCorrectionHistory), lib/api/baselines.ts (upsertAssignment, deleteAssignment, fetchBaselineForAttachment, markBaselineReviewed, confirmBaseline), lib/api/tables.ts (createTable, fetchTablesForBaseline, fetchTable, updateCell, deleteRow, assignColumn, confirmTable), API_BASE_URL for downloads and document playback.
   - Mutations at: POST /ocr-results/:ocrResultId/corrections via lib/api/ocr.ts; POST /baselines/:baselineId/assign for field assignments with validation (requires confirmInvalid flag for invalid values); Task detail page links to this route when attachment OCR status is confirmed.
   - Suggestion outcome tracking (v8.9 C2): review-page assignment handlers send consistent metadata so accept keeps `suggestionAccepted=true`, suggestion modify/clear set `suggestionAccepted=false` with preserved `modelVersionId`, and manual no-suggestion edits clear both to NULL.
 - ROUTE: /admin/fields
@@ -118,7 +125,7 @@
   - Paired segment card: apps/web/app/components/extracted-text/PairedSegmentCard.tsx renders label/value paired OCR segment cards with confidence badge and drag/hover behaviors for the review page; supports batch selection (toggling both label and value) and drag-to-field using only the value segment.
   - Field assignment panel: apps/web/app/components/FieldAssignmentPanel.tsx renders active field library fields with type-specific inputs (text/number/decimal/date/currency), validation status indicators, user-friendly labels, example tooltips, drag-drop zones, and read-only mode for confirmed/utilized baselines; defaults to Top-N (20) suggested fields plus assigned fields view with a toggle to show all.
   - Validation modals: apps/web/app/components/ValidationConfirmationModal.tsx (invalid value confirmation with "Save As-Is" / "Use Suggestion" / "Cancel" actions), apps/web/app/components/CorrectionReasonModal.tsx (requires 10+ char reason for overwrite/delete on reviewed baselines).
-  - Admin API client: apps/web/app/lib/api/admin.ts (fetchMlMetrics).
+  - Admin API client: apps/web/app/lib/api/admin.ts (fetchMlMetrics, fetchMlPerformance, activateMlModel -> POST /admin/ml/models/activate).
   - Baseline API client: apps/web/app/lib/api/baselines.ts (fetchBaselineForAttachment, upsertAssignment with confirmInvalid flag, deleteAssignment, markBaselineReviewed, confirmBaseline, generateSuggestions).
   - Suggestions UI: apps/web/app/components/suggestions/SuggestionTrigger.tsx (trigger ML field suggestions with tooltip), apps/web/app/components/suggestions/SuggestedFieldInput.tsx (visualizing field suggestions with confidence badges), apps/web/app/components/suggestions/SuggestionActionModal.tsx (modal for accepting/modifying/clearing ML suggestions), apps/web/app/components/suggestions/TableSuggestionBannerList.tsx (table suggestion banner list), apps/web/app/components/suggestions/TableSuggestionBanner.tsx (table suggestion banner item), apps/web/app/components/suggestions/TableSuggestionPreviewModal.tsx (preview modal for suggested tables).
   - Table API client: apps/web/app/lib/api/tables.ts (createTable, fetchTablesForBaseline, fetchTable, updateCell, deleteRow, assignColumn, confirmTable).
@@ -259,13 +266,18 @@
   - Purpose: ML service client module for field suggestions, table detection, admin metrics/performance, training data export, and assisted training job orchestration
   - Imports: DbModule, AuditModule, CommonModule, BaselineModule
   - Controllers: FieldSuggestionController, TableSuggestionController, MlMetricsController, MlTrainingDataController, MlModelsController, MlTrainingJobsController, MlPerformanceController
-  - Providers: MlService, FieldSuggestionService, TableSuggestionService, FieldAssignmentValidatorService, MlMetricsService, MlTrainingDataService, MlModelsService, MlTrainingJobsService, MlTrainingAutomationService, MathReconciliationService, MlPerformanceService
+  - Providers: MlService, FieldSuggestionService, TableSuggestionService, FieldAssignmentValidatorService, MlMetricsService, MlTrainingDataService, MlModelsService, MlTrainingJobsService, MlTrainingAutomationService, MathReconciliationService, MlPerformanceService, MlRetryWorkerService
 - Service: MlTrainingAutomationService
   - Path: apps/api/src/ml/ml-training-automation.service.ts
   - Purpose: Polls qualified correction volume and enqueues global training jobs when threshold (>=1000) is reached
   - Scheduling: Starts `setInterval` only when `ML_TRAINING_ASSISTED=true`; interval from `ML_TRAINING_POLL_MS` (default 60000)
   - Trigger behavior: Uses A2-qualified corrections since last success; no cooldown/schedule logic; no auto-activation
   - Audit: Emits `ml.training.auto.triggered` with qualified correction count and window bounds
+- Service: MlRetryWorkerService
+  - Path: apps/api/src/ml/ml-retry-worker.service.ts
+  - Purpose: bounded setInterval worker for I6 async math retry jobs; polls `extraction_retry_jobs` every 5s and processes one `PENDING` job at a time
+  - Guard: interval starts only when `ML_MATH_RETRY_ENABLED=true`
+  - Flow: marks job RUNNING, filters OCR segments by failing Y-band, calls ML `/ml/serialize` then `/ml/suggest-fields` for failing fields, re-runs I6 math check, writes `COMPLETED` with `final_values` or `RECONCILIATION_FAILED` with `error_message`
 - Service: MlTrainingJobsService
   - Path: apps/api/src/ml/ml-training-jobs.service.ts
   - Purpose: CRUD for `ml_training_jobs` and singleton `ml_training_state`
@@ -382,7 +394,7 @@
   - Path: apps/api/src/ml/field-suggestion.service.ts
   - Purpose: Orchestrates ML field suggestion generation and persistence for baselines
   - Methods:
-    - generateSuggestions(baselineId, userId): Loads segments and active fields, calls MlService, persists suggestions with metadata, enforces rate limits
+    - generateSuggestions(baselineId, userId): Loads segments and active fields, calls MlService, persists suggestions with metadata, enforces rate limits, and returns per-field confidence `tier` (`auto_confirm`/`verify`/`flag`) derived at read time from `confidenceScore` thresholds (`ML_TIER_AUTOCONFIRM`, `ML_TIER_VERIFY`)
     - I6 math wire-up: after I4 normalization, calls MathReconciliationService with `currentOcr.documentTypeId` + normalized values, then applies final confidence override (`1.0` pass, `0.0` fail + `math_reconciliation_failed`) before DB upsert
     - applyMultiPageFieldConflictPolicy(suggestions, segmentById): I5 post-aggregation scan grouped by fieldKey; Strategy A (strict) flags all occurrences with `validationOverride='conflicting_pages'` and `finalScore=0.0` when normalized values disagree across pages, or deduplicates to the highest-confidence occurrence when values are consistent
     - normalizeForPageConflictComparison(value): lowercases and strips whitespace for case-insensitive cross-page value comparison
@@ -390,18 +402,20 @@
   - Suggestion logic: Only creates assignments for unassigned fields or fields without manual values (suggestionConfidence null)
   - I5 policy note: Strategy B (confidence winner on disagreement) and Strategy C (frequency vote) are not implemented in v8.10 and are future configurable policies
   - Model routing (v8.9 C1): Reads `ML_MODEL_AB_TEST` (default false), resolves active model A (`isActive=true`), resolves candidate model B (same `modelName`, most recent `isActive=false` by `trainedAt`), deterministically selects by baseline-id parity, and passes selected `modelVersionId` + `filePath` to ML service
+  - Confidence tier thresholds: missing `ML_TIER_AUTOCONFIRM` or `ML_TIER_VERIFY` env vars log warnings and default to `0.90` and `0.70`
   - Audit details (v8.9 C1): `ml.suggest.generate` now includes `abGroup` (`A`/`B`), `modelVersionId`, and `modelVersion`
   - Graceful degradation: Returns empty suggestions if ML service fails
 - Service: MathReconciliationService
   - Path: apps/api/src/ml/math-reconciliation.service.ts
   - Purpose: Document-type-aware line-item arithmetic reconciliation using integer-cents fixed-point math (no floats)
-  - Inputs: `documentTypeId` + per-field normalized value strings from I4
-  - Role resolution: reads `document_type_fields.zone_hint` (`role:line_item_amount`, `role:subtotal`, `role:tax`, `role:total`)
-  - Checks: A) sum(line items) ~= subtotal (±0.02), B) subtotal + tax ~= total (±0.02)
+  - Inputs: `documentTypeId` + per-field normalized values from I4 (+ optional `pageNumber` + `boundingBox` for row banding)
+  - Role resolution: reads `document_type_fields.zone_hint` (`role:line_item_amount`, `role:subtotal`, `role:tax`, `role:total`, `role:unit_price`, `role:qty`, `role:line_total`)
+  - Checks: A) sum(line items) ~= subtotal (±0.02), B) subtotal + tax ~= total (±0.02), C) per-row unit_price × qty ~= line_total (±0.02; grouped by page + normalized Y band ±0.02)
   - Output patches:
     - pass: `mathReconciliation='pass'`, `confidenceScore=1.0` on participating fields
-    - fail: `mathReconciliation='fail'`, `confidenceScore=0.0`, `validationOverride='math_reconciliation_failed'`, `mathDelta`
+    - fail: `mathReconciliation='fail'`, `confidenceScore=0.0`, `validationOverride='math_reconciliation_failed'`, `mathDelta` (+ `failingCheck`; Check C adds `failingRowY` and row Y min/max)
     - skipped: `mathReconciliation='skipped'` when document type/roles/normalized values are insufficient
+  - Non-blocking guard: flags `taxRateSuspicious=true` when tax/subtotal ratio is implausible (>30% or negative) without zeroing confidence
 - Controller: AttachmentsController
   - Path: apps/api/src/attachments/attachments.controller.ts
   - Base route: /attachments
@@ -412,6 +426,7 @@
     - GET /attachments/:id/ocr ? listOcr() ? OcrService.listByAttachment()
     - GET /attachments/:id/ocr/redo-eligibility ? checkOcrRedoEligibility() ? OcrService.checkRedoEligibility()
     - GET /attachments/:id/ocr/current ? getCurrentOcr() ? OcrService.getCurrentConfirmedOcr()
+    - GET /attachments/:attachmentId/retry-status ? getRetryStatus() ? returns latest extraction_retry_jobs status/finalValues for polling
     - POST /attachments/:id/ocr ? triggerOcr() ? OcrService.extractFromWorker()/createDerivedOutput()
     - POST /attachments/:id/ocr/apply ? applyOcr() ? RemarksService.create() or TodosService.update() (via ApplyOcrDto target)
     - DELETE /attachments/:id ? delete() ? AttachmentsService.delete()
@@ -476,9 +491,11 @@
     - POST /baselines/:baselineId/review ? markReviewed() ? BaselineManagementService.markReviewed()
     - POST /baselines/:baselineId/confirm ? confirmBaseline() ? BaselineManagementService.confirmBaseline()
     - GET /baselines/:baselineId/assignments ? listAssignments() ? BaselineAssignmentsService.listAssignments()
+    - POST /baselines/:baselineId/suggestions/bulk-confirm ? bulkConfirmSuggestions() ? BaselineAssignmentsService.bulkConfirmSuggestions()
+    - GET /baselines/:baselineId/review-manifest ? getReviewManifest() ? BaselineAssignmentsService.assembleReviewManifest()
     - POST /baselines/:baselineId/assign ? assignField() ? BaselineAssignmentsService.upsertAssignment() (accepts AssignBaselineFieldDto with ML metadata: suggestionAccepted, suggestionConfidence, modelVersionId, correctedFrom, suggestionContext; C2 enforces accept=true preserve modelVersion, modify=false preserve modelVersion, manual=no-suggestion => NULL/NULL)
     - DELETE /baselines/:baselineId/assign/:fieldKey ? deleteAssignment() ? BaselineAssignmentsService.deleteAssignment() (accepts DeleteAssignmentDto with reason and ML rejection metadata: suggestionRejected, suggestionConfidence, modelVersionId; suggestion clear path is tracked via assignment upsert with `assignedValue=NULL`, `suggestionAccepted=false`, preserved modelVersionId)
-  - DTOs: apps/api/src/baseline/dto/{assign-baseline-field.dto.ts,delete-assignment.dto.ts}
+  - DTOs: apps/api/src/baseline/dto/{assign-baseline-field.dto.ts,delete-assignment.dto.ts}, apps/api/src/baseline/dto/review-manifest.dto.ts (response DTO for review manifest)
   - Guards/errors: JwtAuthGuard; attachment ownership enforced; lifecycle transitions validated (400 on invalid state)
 - Controller: TableController
   - Path: apps/api/src/baseline/table.controller.ts
@@ -514,12 +531,14 @@
     - Validation rules: varchar (length), int (no decimals/commas), decimal (numeric with normalization), date (ISO 8601), currency (ISO 4217 3-letter codes)
 - Service: BaselineAssignmentsService
   - Path: apps/api/src/baseline/baseline-assignments.service.ts
-  - Responsibilities: enforce ownership + not-archived/not-utilized guards, validate via FieldAssignmentValidatorService, upsert/delete/list baseline_field_assignments (including suggestionContext), require correctionReason on overwrite/delete (only for reviewed baselines), enforce C2 suggestion outcome integrity (`true` accept, `false` modify/clear, `NULL` manual no-suggestion), silently append to `extraction_training_examples` on upsert when saved assignment has non-null `boundingBox` + `zone` + `extractionMethod` (`isSynthetic=false`), emit baseline.assignment.upsert/delete audits with correctedFrom/correctionReason details
+  - Responsibilities: enforce ownership + not-archived/not-utilized guards, validate via FieldAssignmentValidatorService, upsert/delete/list baseline_field_assignments (including suggestionContext), derive per-assignment confidence `tier` on read from `confidenceScore`, require correctionReason on overwrite/delete (only for reviewed baselines), enforce C2 suggestion outcome integrity (`true` accept, `false` modify/clear, `NULL` manual no-suggestion), silently append to `extraction_training_examples` on upsert when saved assignment has non-null `boundingBox` + `zone` + `extractionMethod` (`isSynthetic=false`), emit baseline.assignment.upsert/delete audits with correctedFrom/correctionReason details
   - Methods:
     - getAggregatedBaseline(attachmentId, userId): Returns baseline with assignments + segments in single payload (excludes archived baselines, returns latest non-archived)
     - upsertAssignment(baselineId, fieldKey, value, userId, confirmInvalid, correctionReason): Validates value, requires correctionReason for overwrite on reviewed baselines, stores correctedFrom/sourceSegmentId
     - deleteAssignment(baselineId, fieldKey, userId, correctionReason): Requires correctionReason for reviewed baselines, emits audit log
     - listAssignments(baselineId, userId): Returns all assignments for a baseline with ownership check (includes suggestionContext)
+    - bulkConfirmSuggestions(baselineId, userId): Sets `suggestionAccepted=true` for rows where `confidenceScore >= ML_TIER_AUTOCONFIRM` and `suggestionAccepted IS NULL`, then emits `baseline.suggestions.bulk-confirm` audit with update count
+    - assembleReviewManifest(baselineId, userId): Assembles flattened review payload with `fields[]`, `similarContext` (top-3 pre-fetched entries per field), `tierCounts`, and `pageCount` for spatial verification mode
 - Controller: App bootstrap modules
   - Path: apps/api/src/bootstrap/bootstrap.service.ts (OnModuleInit)
   - Purpose: ensure systemSettings row exists, ensure admin user exists/promoted
@@ -542,6 +561,9 @@ Overlap logic:
   - ocr_corrections — id (uuid pk), ocrResultId fk ocr_results.id, correctedValue, correctionReason, correctedBy fk users.id, createdAt
   - field_library — id (uuid pk), fieldKey (text unique), label, characterType (enum: varchar/int/decimal/date/boolean), characterLimit (int nullable, varchar only), status (enum: active/hidden/archived), version (int, increments on characterType change), createdAt, updatedAt
   - extraction_baselines — id (uuid pk), attachmentId fk attachments.id (cascade), status (enum: draft/reviewed/confirmed/archived), confirmedAt, confirmedBy fk users.id, utilizedAt, utilizationType (enum: record_created/workflow_committed/data_exported nullable), archivedAt, archivedBy fk users.id, createdAt
+  - alias_rules — vendor-scoped OCR correction rules; status enum proposed/active/rejected; unique(vendor_id, field_key, raw_pattern)
+  - correction_events — raw log of every human edit for graduation into alias_rules; indexed on (vendor_id, field_key, raw_ocr_value)
+  - extraction_retry_jobs — state machine for async math retry (PENDING→RUNNING→COMPLETED/RECONCILIATION_FAILED); partial index on PENDING status
   - document_types — id (uuid pk), name (varchar(255) unique), description (text nullable), createdAt
   - document_type_fields — id (uuid pk), documentTypeId fk document_types.id (cascade), fieldKey fk field_library.fieldKey, required (boolean default false), zoneHint (text nullable), sortOrder (int default 0), createdAt; unique(documentTypeId, fieldKey)
   - extraction_training_examples — id (uuid pk), baselineId fk extraction_baselines.id (cascade), fieldKey fk field_library.fieldKey, assignedValue (text), zone (text nullable), boundingBox (jsonb nullable), extractionMethod (text), confidence (decimal(5,4) nullable), isSynthetic (boolean default false), createdAt

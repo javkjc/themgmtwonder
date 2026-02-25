@@ -28,6 +28,9 @@ import * as multer from 'multer';
 import { RemarksService } from '../remarks/remarks.service';
 import { TodosService } from '../todos/todos.service';
 import { ApplyOcrDto } from './dto/apply-ocr.dto';
+import { DbService } from '../db/db.service';
+import { extractionRetryJobs } from '../db/schema';
+import { desc, eq } from 'drizzle-orm';
 
 // Define file type to avoid Express.Multer.File issues
 type UploadedFileType = {
@@ -47,6 +50,7 @@ export class AttachmentsController {
     private readonly ocrQueueService: OcrQueueService,
     private readonly todosService: TodosService,
     private readonly remarksService: RemarksService,
+    private readonly dbs: DbService,
   ) {}
 
   // List attachments for a todo
@@ -128,6 +132,39 @@ export class AttachmentsController {
 
     const fileStream = fs.createReadStream(filePath);
     fileStream.pipe(res);
+  }
+
+  @Get(':attachmentId/retry-status')
+  async getRetryStatus(
+    @Req() req: any,
+    @Param('attachmentId') attachmentId: string,
+  ) {
+    await this.attachmentsService.getById(req.user.userId, attachmentId);
+
+    const [latestJob] = await this.dbs.db
+      .select({
+        status: extractionRetryJobs.status,
+        finalValues: extractionRetryJobs.finalValues,
+        failingFieldKeys: extractionRetryJobs.failingFieldKeys,
+      })
+      .from(extractionRetryJobs)
+      .where(eq(extractionRetryJobs.attachmentId, attachmentId))
+      .orderBy(desc(extractionRetryJobs.createdAt))
+      .limit(1);
+
+    if (!latestJob) {
+      return { status: 'none' };
+    }
+
+    return {
+      status: latestJob.status,
+      finalValues: latestJob.finalValues ?? null,
+      failingFieldKeys: latestJob.failingFieldKeys ?? [],
+      errorCode:
+        latestJob.status === 'RECONCILIATION_FAILED'
+          ? 'RECONCILIATION_FAILED'
+          : null,
+    };
   }
 
   // List OCR outputs for an attachment

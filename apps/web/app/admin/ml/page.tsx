@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import { apiFetchJson, isUnauthorized } from '../../lib/api';
 import { fetchMlMetrics, MlMetrics } from '../../lib/api/admin';
 import type { Me } from '../../types';
@@ -137,12 +138,33 @@ export default function MlMetricsPage() {
     return (
         <Layout currentPage="adminMl" userEmail={me.email} userRole={me.role} isAdmin={me.isAdmin} onLogout={logout}>
             <div style={{ marginBottom: 32 }}>
-                <h1 style={{ fontSize: 28, fontWeight: 700, fontFamily: 'var(--font-heading)', letterSpacing: '-0.025em', margin: 0, marginBottom: 8, color: 'var(--text-primary)' }}>
-                    ML Performance Evaluation
-                </h1>
-                <p style={{ color: 'var(--text-muted)', margin: 0 }}>
-                    Monitor suggestion quality and model performance across all baselines
-                </p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+                    <div>
+                        <h1 style={{ fontSize: 28, fontWeight: 700, fontFamily: 'var(--font-heading)', letterSpacing: '-0.025em', margin: 0, marginBottom: 8, color: 'var(--text-primary)' }}>
+                            ML Performance Evaluation
+                        </h1>
+                        <p style={{ color: 'var(--text-muted)', margin: 0 }}>
+                            Monitor suggestion quality and model performance across all baselines
+                        </p>
+                    </div>
+                    <Link
+                        href="/admin/ml/performance"
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            padding: '10px 14px',
+                            background: 'var(--surface)',
+                            border: '1px solid var(--border)',
+                            borderRadius: 8,
+                            color: 'var(--text-primary)',
+                            textDecoration: 'none',
+                            fontSize: 14,
+                            fontWeight: 600,
+                        }}
+                    >
+                        Open Performance UI
+                    </Link>
+                </div>
             </div>
 
             {/* Filters */}

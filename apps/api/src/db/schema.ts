@@ -11,9 +11,10 @@ import {
   varchar,
   numeric,
   unique,
+  check,
   customType,
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import { DEFAULT_TASK_STAGE_KEY } from '../common/constants';
 import { extractionBaselines } from '../baseline/schema';
 import { fieldLibrary } from '../field-library/schema';
@@ -535,6 +536,81 @@ export const mlTrainingState = pgTable('ml_training_state', {
   lastAttemptAt: timestamp('last_attempt_at'),
   lastAttemptThrough: timestamp('last_attempt_through'),
 });
+
+export const aliasRules = pgTable(
+  'alias_rules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    vendorId: text('vendor_id').notNull(),
+    fieldKey: text('field_key').notNull(),
+    rawPattern: text('raw_pattern').notNull(),
+    correctedValue: text('corrected_value').notNull(),
+    status: text('status').default('proposed').notNull(),
+    proposedAt: timestamp('proposed_at').defaultNow().notNull(),
+    approvedAt: timestamp('approved_at'),
+    approvedBy: text('approved_by'),
+    correctionEventCount: integer('correction_event_count').default(0).notNull(),
+  },
+  (table) => ({
+    checkVendorExists: check(
+      'check_vendor_exists',
+      sql`${table.vendorId} IS NOT NULL`,
+    ),
+    uniqueVendorPattern: unique('unique_vendor_pattern').on(
+      table.vendorId,
+      table.fieldKey,
+      table.rawPattern,
+    ),
+    idxAliasRulesActive: index('idx_alias_rules_active')
+      .on(table.vendorId, table.status)
+      .where(sql`${table.status} = 'active'`),
+  }),
+);
+
+export const correctionEvents = pgTable(
+  'correction_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    vendorId: text('vendor_id').notNull(),
+    fieldKey: text('field_key').notNull(),
+    rawOcrValue: text('raw_ocr_value').notNull(),
+    correctedValue: text('corrected_value').notNull(),
+    baselineId: uuid('baseline_id').notNull().references(() => extractionBaselines.id),
+    userId: text('user_id').notNull(),
+    correctedAt: timestamp('corrected_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    idxCorrectionEventsLookup: index('idx_correction_events_lookup').on(
+      table.vendorId,
+      table.fieldKey,
+      table.rawOcrValue,
+    ),
+  }),
+);
+
+export const extractionRetryJobs = pgTable(
+  'extraction_retry_jobs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    attachmentId: uuid('attachment_id').notNull(),
+    baselineId: uuid('baseline_id').notNull(),
+    status: text('status').default('PENDING').notNull(),
+    failingFieldKeys: text('failing_field_keys').array().notNull(),
+    failingYMin: decimal('failing_y_min', { precision: 6, scale: 4 }).notNull(),
+    failingYMax: decimal('failing_y_max', { precision: 6, scale: 4 }).notNull(),
+    preliminaryValues: jsonb('preliminary_values').notNull(),
+    finalValues: jsonb('final_values'),
+    retryCount: integer('retry_count').default(0).notNull(),
+    errorMessage: text('error_message'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    idxRetryStatusPending: index('idx_retry_status_pending')
+      .on(table.status)
+      .where(sql`${table.status} = 'PENDING'`),
+  }),
+);
 
 // Document Types table
 export const documentTypes = pgTable('document_types', {

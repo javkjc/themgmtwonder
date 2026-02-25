@@ -195,6 +195,28 @@ export class BaselineController {
     return this.assignmentsService.listAssignments(baselineId, req.user.userId);
   }
 
+  @Post('baselines/:baselineId/suggestions/bulk-confirm')
+  async bulkConfirmSuggestions(
+    @Req() req: RequestWithUser,
+    @Param('baselineId') baselineId: string,
+  ) {
+    return this.assignmentsService.bulkConfirmSuggestions(
+      baselineId,
+      req.user.userId,
+    );
+  }
+
+  @Get('baselines/:baselineId/review-manifest')
+  async getReviewManifest(
+    @Req() req: RequestWithUser,
+    @Param('baselineId') baselineId: string,
+  ) {
+    return this.assignmentsService.assembleReviewManifest(
+      baselineId,
+      req.user.userId,
+    );
+  }
+
   /**
    * Get current baselines (and utilization) for all attachments of a todo.
    * Returns a map of attachmentId -> Baseline.

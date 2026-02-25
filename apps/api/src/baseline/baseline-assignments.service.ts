@@ -2,9 +2,11 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, desc } from 'drizzle-orm';
+import { and, desc, eq, gte, isNotNull, isNull, ne } from 'drizzle-orm';
+import { ConfigService } from '@nestjs/config';
 import { DbService } from '../db/db.service';
 import {
   attachmentOcrOutputs,
@@ -22,6 +24,7 @@ import { FieldAssignmentValidatorService } from './field-assignment-validator.se
 import { FieldLibraryService } from '../field-library/field-library.service';
 import { AssignBaselineFieldDto } from './dto/assign-baseline-field.dto';
 import { DeleteAssignmentDto } from './dto/delete-assignment.dto';
+import { ReviewManifestDto, type SimilarContextEntryDto } from './dto/review-manifest.dto';
 import { AuthorizationService } from '../common/authorization.service';
 import { BaselineManagementService } from './baseline-management.service';
 import { normalizeFieldValue } from '../ml/field-value-normalizer';
@@ -39,6 +42,13 @@ type BoundingBox = { x: number; y: number; width: number; height: number };
 
 @Injectable()
 export class BaselineAssignmentsService {
+  private readonly logger = new Logger(BaselineAssignmentsService.name);
+  private readonly DEFAULT_AUTOCONFIRM_THRESHOLD = 0.9;
+  private readonly DEFAULT_VERIFY_THRESHOLD = 0.7;
+  private cachedTierThresholds:
+    | { autoConfirmThreshold: number; verifyThreshold: number }
+    | null = null;
+
   constructor(
     private readonly dbs: DbService,
     private readonly auditService: AuditService,
@@ -46,6 +56,7 @@ export class BaselineAssignmentsService {
     private readonly fieldLibraryService: FieldLibraryService,
     private readonly authService: AuthorizationService,
     private readonly baselineManagementService: BaselineManagementService,
+    private readonly configService: ConfigService,
   ) { }
 
   async getAggregatedBaseline(attachmentId: string, userId: string) {
@@ -225,6 +236,11 @@ export class BaselineAssignmentsService {
         row.confidenceScore === null || row.confidenceScore === undefined
           ? null
           : Number(row.confidenceScore),
+      tier: this.deriveTier(
+        row.confidenceScore === null || row.confidenceScore === undefined
+          ? null
+          : Number(row.confidenceScore),
+      ),
       llmReasoning:
         row.llmReasoning !== null && row.llmReasoning !== undefined
           ? (() => {
@@ -236,6 +252,156 @@ export class BaselineAssignmentsService {
           })()
           : null,
     }));
+  }
+
+  async bulkConfirmSuggestions(baselineId: string, userId: string) {
+    const context = await this.ensureBaselineEditable(baselineId, userId);
+    if (context.status === 'confirmed') {
+      throw new BadRequestException('Cannot bulk-confirm suggestions on an already confirmed baseline');
+    }
+    const { autoConfirmThreshold } = this.getTierThresholds();
+
+    const updatedRows = await this.dbs.db
+      .update(baselineFieldAssignments)
+      .set({
+        suggestionAccepted: true,
+      })
+      .where(
+        and(
+          eq(baselineFieldAssignments.baselineId, baselineId),
+          gte(
+            baselineFieldAssignments.confidenceScore,
+            autoConfirmThreshold.toFixed(4),
+          ),
+          isNull(baselineFieldAssignments.suggestionAccepted),
+        ),
+      )
+      .returning({ id: baselineFieldAssignments.id });
+
+    await this.auditService.log({
+      userId,
+      action: 'baseline.suggestions.bulk-confirm',
+      module: 'baseline',
+      resourceType: 'baseline',
+      resourceId: baselineId,
+      details: {
+        baselineId,
+        autoConfirmThreshold,
+        count: updatedRows.length,
+      },
+    });
+
+    return { count: updatedRows.length };
+  }
+
+  async assembleReviewManifest(
+    baselineId: string,
+    userId: string,
+  ): Promise<ReviewManifestDto> {
+    const context = await this.authService.ensureUserOwnsBaseline(
+      userId,
+      baselineId,
+    );
+
+    const rows = await this.dbs.db
+      .select({
+        fieldKey: baselineFieldAssignments.fieldKey,
+        suggestedValue: baselineFieldAssignments.assignedValue,
+        confidenceScore: baselineFieldAssignments.confidenceScore,
+        zone: baselineFieldAssignments.zone,
+        boundingBox: baselineFieldAssignments.boundingBox,
+        extractionMethod: baselineFieldAssignments.extractionMethod,
+        suggestionAccepted: baselineFieldAssignments.suggestionAccepted,
+        sourcePageNumber: extractedTextSegments.pageNumber,
+      })
+      .from(baselineFieldAssignments)
+      .leftJoin(
+        extractedTextSegments,
+        eq(baselineFieldAssignments.sourceSegmentId, extractedTextSegments.id),
+      )
+      .where(eq(baselineFieldAssignments.baselineId, baselineId));
+
+    const fields = rows
+      .map((row) => {
+        const confidenceScore =
+          row.confidenceScore === null || row.confidenceScore === undefined
+            ? null
+            : Number(row.confidenceScore);
+        const boundingBox = (row.boundingBox ?? null) as BoundingBox | null;
+        return {
+          fieldKey: row.fieldKey,
+          suggestedValue: row.suggestedValue ?? null,
+          confidenceScore,
+          tier: this.deriveTier(confidenceScore),
+          zone: row.zone ?? null,
+          boundingBox,
+          pageNumber: row.sourcePageNumber ?? 1,
+          extractionMethod: row.extractionMethod ?? null,
+          suggestionAccepted: row.suggestionAccepted ?? null,
+        };
+      })
+      .sort((a, b) => {
+        if (a.boundingBox && b.boundingBox) {
+          if (a.pageNumber !== b.pageNumber) return a.pageNumber - b.pageNumber;
+          return a.boundingBox.y - b.boundingBox.y;
+        }
+        if (a.boundingBox && !b.boundingBox) return -1;
+        if (!a.boundingBox && b.boundingBox) return 1;
+        return a.fieldKey.localeCompare(b.fieldKey);
+      });
+
+    const tierCounts: ReviewManifestDto['tierCounts'] = {
+      flag: 0,
+      verify: 0,
+      auto_confirm: 0,
+    };
+    for (const field of fields) {
+      if (field.tier === 'flag') tierCounts.flag += 1;
+      if (field.tier === 'verify') tierCounts.verify += 1;
+      if (field.tier === 'auto_confirm') tierCounts.auto_confirm += 1;
+    }
+
+    const segmentRows = await this.dbs.db
+      .select({
+        pageNumber: extractedTextSegments.pageNumber,
+      })
+      .from(extractedTextSegments)
+      .innerJoin(
+        attachmentOcrOutputs,
+        eq(
+          extractedTextSegments.attachmentOcrOutputId,
+          attachmentOcrOutputs.id,
+        ),
+      )
+      .where(
+        and(
+          eq(attachmentOcrOutputs.attachmentId, context.attachmentId),
+          eq(attachmentOcrOutputs.isCurrent, true),
+          isNotNull(extractedTextSegments.pageNumber),
+        ),
+      );
+
+    const pageCount = segmentRows.length
+      ? Math.max(...segmentRows.map((r) => r.pageNumber ?? 1))
+      : Math.max(1, ...fields.map((field) => field.pageNumber || 1), 1);
+
+    const similarContext: Record<string, SimilarContextEntryDto[]> = {};
+    for (const field of fields) {
+      similarContext[field.fieldKey] = await this.getSimilarContextForField(
+        baselineId,
+        field.fieldKey,
+        field.suggestedValue,
+      );
+    }
+
+    return {
+      baselineId,
+      attachmentId: context.attachmentId,
+      pageCount,
+      fields,
+      similarContext,
+      tierCounts,
+    };
   }
 
   async upsertAssignment(
@@ -677,5 +843,143 @@ export class BaselineAssignmentsService {
 
     // Refresh assignments list
     return this.listAssignments(baselineId, userId);
+  }
+
+  private deriveTier(
+    confidenceScore: number | null,
+  ): 'auto_confirm' | 'verify' | 'flag' | null {
+    if (confidenceScore === null || Number.isNaN(confidenceScore)) {
+      return null;
+    }
+
+    const { autoConfirmThreshold, verifyThreshold } = this.getTierThresholds();
+    if (confidenceScore >= autoConfirmThreshold) {
+      return 'auto_confirm';
+    }
+    if (confidenceScore >= verifyThreshold) {
+      return 'verify';
+    }
+    return 'flag';
+  }
+
+  private getTierThresholds(): {
+    autoConfirmThreshold: number;
+    verifyThreshold: number;
+  } {
+    if (this.cachedTierThresholds) {
+      return this.cachedTierThresholds;
+    }
+
+    const autoConfirmThreshold = this.parseTierThreshold(
+      'ML_TIER_AUTOCONFIRM',
+      this.DEFAULT_AUTOCONFIRM_THRESHOLD,
+    );
+    const verifyThreshold = this.parseTierThreshold(
+      'ML_TIER_VERIFY',
+      this.DEFAULT_VERIFY_THRESHOLD,
+    );
+
+    if (verifyThreshold > autoConfirmThreshold) {
+      this.logger.warn(
+        `ML_TIER_VERIFY (${verifyThreshold}) is greater than ML_TIER_AUTOCONFIRM (${autoConfirmThreshold}); falling back to defaults (${this.DEFAULT_VERIFY_THRESHOLD}/${this.DEFAULT_AUTOCONFIRM_THRESHOLD})`,
+      );
+      this.cachedTierThresholds = {
+        autoConfirmThreshold: this.DEFAULT_AUTOCONFIRM_THRESHOLD,
+        verifyThreshold: this.DEFAULT_VERIFY_THRESHOLD,
+      };
+      return this.cachedTierThresholds;
+    }
+
+    this.cachedTierThresholds = { autoConfirmThreshold, verifyThreshold };
+    return this.cachedTierThresholds;
+  }
+
+  private parseTierThreshold(key: string, defaultValue: number): number {
+    const raw = this.configService.get<string>(key);
+    if (raw === undefined || raw === null || String(raw).trim() === '') {
+      this.logger.warn(
+        `${key} is not set; defaulting to ${defaultValue.toFixed(2)}`,
+      );
+      return defaultValue;
+    }
+
+    const parsed = Number(raw);
+    if (Number.isNaN(parsed) || parsed < 0 || parsed > 1) {
+      this.logger.warn(
+        `${key} is invalid (${raw}); defaulting to ${defaultValue.toFixed(2)}`,
+      );
+      return defaultValue;
+    }
+
+    return parsed;
+  }
+
+  private async getSimilarContextForField(
+    baselineId: string,
+    fieldKey: string,
+    suggestedValue: string | null,
+  ): Promise<SimilarContextEntryDto[]> {
+    const rows = await this.dbs.db
+      .select({
+        assignedValue: baselineFieldAssignments.assignedValue,
+        confirmedAt: extractionBaselines.confirmedAt,
+        createdAt: extractionBaselines.createdAt,
+      })
+      .from(baselineFieldAssignments)
+      .innerJoin(
+        extractionBaselines,
+        eq(baselineFieldAssignments.baselineId, extractionBaselines.id),
+      )
+      .where(
+        and(
+          eq(baselineFieldAssignments.fieldKey, fieldKey),
+          eq(extractionBaselines.status, 'confirmed'),
+          ne(extractionBaselines.id, baselineId),
+          isNotNull(baselineFieldAssignments.assignedValue),
+        ),
+      )
+      .orderBy(desc(extractionBaselines.confirmedAt))
+      .limit(60);
+
+    return rows
+      .map((row) => {
+        const value = row.assignedValue ?? '';
+        const date = row.confirmedAt ?? row.createdAt ?? null;
+        return {
+          value,
+          confirmedAt: date ? this.formatLocalDate(date) : '',
+          similarity: this.computeTextSimilarity(suggestedValue ?? '', value),
+        };
+      })
+      .filter((row) => row.value.trim().length > 0)
+      .sort((a, b) => {
+        if (b.similarity !== a.similarity) return b.similarity - a.similarity;
+        return a.confirmedAt < b.confirmedAt ? 1 : -1;
+      })
+      .slice(0, 3);
+  }
+
+  private formatLocalDate(value: Date): string {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  private computeTextSimilarity(source: string, target: string): number {
+    const left = source.trim().toLowerCase();
+    const right = target.trim().toLowerCase();
+    if (!left && !right) return 1;
+    if (!left || !right) return 0;
+    if (left === right) return 1;
+
+    const leftTokens = new Set(left.split(/\s+/).filter(Boolean));
+    const rightTokens = new Set(right.split(/\s+/).filter(Boolean));
+    const intersectionSize = [...leftTokens].filter((t) =>
+      rightTokens.has(t),
+    ).length;
+    const unionSize = new Set([...leftTokens, ...rightTokens]).size;
+    if (!unionSize) return 0;
+    return Number((intersectionSize / unionSize).toFixed(4));
   }
 }
