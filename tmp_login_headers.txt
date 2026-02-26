@@ -1,0 +1,13 @@
+HTTP/1.1 201 Created
+X-Powered-By: Express
+Vary: Origin
+Access-Control-Allow-Credentials: true
+Set-Cookie: todo_auth=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiNjVlMDkwYS01NWNlLTRmODgtYjZiOS03YjBhZjMxY2QyOGIiLCJlbWFpbCI6ImFAYS5jb20iLCJpYXQiOjE3NzIwODk2MzIsImV4cCI6MTc3MjY5NDQzMn0.PkKpwV0QAjXAwLkl1TOArIip5rp_5MYCF_20nSjGubg; Path=/; HttpOnly; SameSite=Lax
+Set-Cookie: todo_csrf=190ff70f00bb63d93445369106232b935eda594acb72376e26e59b3a554c79c3; Path=/; SameSite=Lax
+Content-Type: application/json; charset=utf-8
+Content-Length: 11
+ETag: W/"b-Ai2R8hgEarLmHKwesT1qcY913ys"
+Date: Thu, 26 Feb 2026 07:07:12 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+

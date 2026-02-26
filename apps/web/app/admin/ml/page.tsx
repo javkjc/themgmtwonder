@@ -147,23 +147,42 @@ export default function MlMetricsPage() {
                             Monitor suggestion quality and model performance across all baselines
                         </p>
                     </div>
-                    <Link
-                        href="/admin/ml/performance"
-                        style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            padding: '10px 14px',
-                            background: 'var(--surface)',
-                            border: '1px solid var(--border)',
-                            borderRadius: 8,
-                            color: 'var(--text-primary)',
-                            textDecoration: 'none',
-                            fontSize: 14,
-                            fontWeight: 600,
-                        }}
-                    >
-                        Open Performance UI
-                    </Link>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <Link
+                            href="/admin/ml/performance"
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                padding: '10px 14px',
+                                background: 'var(--surface)',
+                                border: '1px solid var(--border)',
+                                borderRadius: 8,
+                                color: 'var(--text-primary)',
+                                textDecoration: 'none',
+                                fontSize: 14,
+                                fontWeight: 600,
+                            }}
+                        >
+                            Open Performance UI
+                        </Link>
+                        <Link
+                            href="/admin/rules"
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                padding: '10px 14px',
+                                background: 'var(--surface)',
+                                border: '1px solid var(--border)',
+                                borderRadius: 8,
+                                color: 'var(--text-primary)',
+                                textDecoration: 'none',
+                                fontSize: 14,
+                                fontWeight: 600,
+                            }}
+                        >
+                            Rule Management →
+                        </Link>
+                    </div>
                 </div>
             </div>
 

@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import { DbService } from '../db/db.service';
@@ -19,6 +19,7 @@ type SerializeSegment = {
   zone: string;
 };
 
+@Injectable()
 export class RagEmbeddingService {
   private readonly logger = new Logger(RagEmbeddingService.name);
   private readonly mlServiceUrl =
@@ -29,7 +30,7 @@ export class RagEmbeddingService {
   constructor(
     private readonly dbs: DbService,
     private readonly auditService: AuditService,
-  ) {}
+  ) { }
 
   async embedOnConfirm(baselineId: string): Promise<void> {
     const [baseline] = await this.dbs.db
@@ -191,7 +192,7 @@ export class RagEmbeddingService {
       baselineId,
       documentTypeId: currentOcr.documentTypeId,
       embedding,
-      serializedText,
+      serializedText: 'search_document: ' + serializedText,
       confirmedFields,
       isSynthetic: false,
       goldStandard:
@@ -352,7 +353,7 @@ export class RagEmbeddingService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'nomic-embed-text',
-          prompt: serializedText,
+          prompt: 'search_document: ' + serializedText,
         }),
         signal: controller.signal,
       });

@@ -17,6 +17,11 @@ import { MathReconciliationService } from './math-reconciliation.service';
 import { MlPerformanceController } from './ml-performance.controller';
 import { MlPerformanceService } from './ml-performance.service';
 import { MlRetryWorkerService } from './ml-retry-worker.service';
+import { RagRetrievalService } from './rag-retrieval.service';
+import { RagEmbeddingService } from './rag-embedding.service';
+import { AliasEngineService } from './alias-engine.service';
+import { AliasRulesController } from './alias-rules.controller';
+import { AliasRulesService } from './alias-rules.service';
 import { AuditModule } from '../audit/audit.module';
 import { CommonModule } from '../common/common.module';
 import { DbModule } from '../db/db.module';
@@ -33,6 +38,7 @@ import { FieldAssignmentValidatorService } from '../baseline/field-assignment-va
     MlModelsController,
     MlTrainingJobsController,
     MlPerformanceController,
+    AliasRulesController,
   ],
   providers: [
     MlService,
@@ -47,6 +53,10 @@ import { FieldAssignmentValidatorService } from '../baseline/field-assignment-va
     MathReconciliationService,
     MlPerformanceService,
     MlRetryWorkerService,
+    RagRetrievalService,
+    RagEmbeddingService,
+    AliasEngineService,
+    AliasRulesService,
   ],
   exports: [
     MlService,

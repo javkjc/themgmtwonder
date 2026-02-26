@@ -44,6 +44,7 @@ class ModelRegistry:
         base_url = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
         tags_url = f"{base_url}/api/tags"
 
+        # Step 1: confirm model is listed
         try:
             with httpx.Client(timeout=timeout_seconds) as client:
                 response = client.get(tags_url)
@@ -58,20 +59,36 @@ class ModelRegistry:
         models = body.get("models") or []
         names = {m.get("name") for m in models if isinstance(m, dict)}
 
-        if target_model in names:
-            self.mark_ready(target_model)
-            logging.info("ml.ollama.tags.ready", extra={"model": target_model})
-            return True
+        if target_model not in names:
+            self.mark_error(f"Model not found in /api/tags: {target_model}")
+            logging.warning(
+                "ml.ollama.tags.model_missing",
+                extra={
+                    "model": target_model,
+                    "availableModels": sorted(name for name in names if isinstance(name, str)),
+                },
+            )
+            return False
 
-        self.mark_error(f"Model not found in /api/tags: {target_model}")
-        logging.warning(
-            "ml.ollama.tags.model_missing",
-            extra={
-                "model": target_model,
-                "availableModels": sorted(name for name in names if isinstance(name, str)),
-            },
-        )
-        return False
+        # Step 2: fire a minimal inference to load the model into memory
+        generate_url = f"{base_url}/api/generate"
+        warmup_timeout = max(timeout_seconds, 300.0)
+        try:
+            with httpx.Client(timeout=warmup_timeout) as client:
+                response = client.post(
+                    generate_url,
+                    json={"model": target_model, "prompt": "hi", "stream": False, "keep_alive": -1},
+                )
+                response.raise_for_status()
+        except Exception as exc:  # noqa: BLE001
+            error = f"{type(exc).__name__}: {exc}"
+            self.mark_error(error)
+            logging.warning("ml.ollama.warmup.failed", extra={"model": target_model, "error": error})
+            return False
+
+        self.mark_ready(target_model)
+        logging.info("ml.ollama.tags.ready", extra={"model": target_model})
+        return True
 
 
 registry = ModelRegistry()

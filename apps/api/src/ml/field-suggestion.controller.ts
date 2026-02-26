@@ -15,7 +15,7 @@ import { FieldSuggestionService } from './field-suggestion.service';
 export class FieldSuggestionController {
   constructor(
     private readonly fieldSuggestionService: FieldSuggestionService,
-  ) {}
+  ) { }
 
   @Post('baselines/:baselineId/suggestions/generate')
   @HttpCode(HttpStatus.OK)
@@ -25,5 +25,17 @@ export class FieldSuggestionController {
   ) {
     const userId = req.user.userId;
     return this.fieldSuggestionService.generateSuggestions(baselineId, userId);
+  }
+
+  @Post('baselines/:baselineId/suggestions/prefetch')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async prefetchSuggestions(
+    @Param('baselineId') baselineId: string,
+    @Request() req: any,
+  ) {
+    const userId = req.user.userId;
+    // Fire and forget
+    void this.fieldSuggestionService.prefetchSuggestions(baselineId, userId);
+    return { status: 'accepted' };
   }
 }

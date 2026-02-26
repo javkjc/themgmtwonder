@@ -5,14 +5,16 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, gte, isNotNull, isNull, ne } from 'drizzle-orm';
+import { and, desc, eq, gte, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { ConfigService } from '@nestjs/config';
 import { DbService } from '../db/db.service';
 import {
   attachmentOcrOutputs,
+  aliasRules,
   attachments,
   baselineFieldAssignments,
   baselineTables,
+  correctionEvents,
   extractionTrainingExamples,
   extractedTextSegments,
   extractionBaselines,
@@ -584,6 +586,13 @@ export class BaselineAssignmentsService {
       });
     }
 
+    await this.recordCorrectionEventIfNeeded({
+      assignment,
+      baselineId,
+      attachmentId: context.attachmentId,
+      userId,
+    });
+
     await this.auditService.log({
       userId,
       action: 'baseline.assignment.upsert',
@@ -981,5 +990,179 @@ export class BaselineAssignmentsService {
     const unionSize = new Set([...leftTokens, ...rightTokens]).size;
     if (!unionSize) return 0;
     return Number((intersectionSize / unionSize).toFixed(4));
+  }
+
+  private async recordCorrectionEventIfNeeded(params: {
+    assignment: typeof baselineFieldAssignments.$inferSelect;
+    baselineId: string;
+    attachmentId: string;
+    userId: string;
+  }): Promise<void> {
+    const { assignment, baselineId, attachmentId, userId } = params;
+    if (
+      assignment.correctedFrom === null ||
+      assignment.correctedFrom === undefined ||
+      assignment.suggestionAccepted !== false
+    ) {
+      return;
+    }
+    if (assignment.assignedValue === null || assignment.assignedValue === undefined) {
+      return;
+    }
+
+    const vendorId = await this.resolveVendorIdForCorrection(
+      baselineId,
+      attachmentId,
+    );
+    if (!vendorId) {
+      return;
+    }
+
+    await this.dbs.db.insert(correctionEvents).values({
+      vendorId,
+      fieldKey: assignment.fieldKey,
+      rawOcrValue: assignment.correctedFrom,
+      correctedValue: assignment.assignedValue,
+      baselineId,
+      userId,
+    });
+
+    const [countRow] = await this.dbs.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(correctionEvents)
+      .where(
+        and(
+          eq(correctionEvents.vendorId, vendorId),
+          eq(correctionEvents.fieldKey, assignment.fieldKey),
+          eq(correctionEvents.rawOcrValue, assignment.correctedFrom),
+        ),
+      );
+    const correctionCount = Number(countRow?.count ?? 0);
+
+    this.logger.log(
+      `correction.event.recorded vendorId=${vendorId} fieldKey=${assignment.fieldKey} correctionCount=${correctionCount}`,
+    );
+
+    if (correctionCount < 3) {
+      return;
+    }
+
+    const [rule] = await this.dbs.db
+      .insert(aliasRules)
+      .values({
+        vendorId,
+        fieldKey: assignment.fieldKey,
+        rawPattern: assignment.correctedFrom,
+        correctedValue: assignment.assignedValue,
+        status: 'proposed',
+        correctionEventCount: correctionCount,
+        proposedAt: new Date(),
+        approvedAt: null,
+        approvedBy: null,
+      })
+      .onConflictDoUpdate({
+        target: [aliasRules.vendorId, aliasRules.fieldKey, aliasRules.rawPattern],
+        set: {
+          correctedValue: assignment.assignedValue,
+          status: 'proposed',
+          correctionEventCount: correctionCount,
+          proposedAt: new Date(),
+          approvedAt: null,
+          approvedBy: null,
+        },
+      })
+      .returning({ id: aliasRules.id });
+
+    this.logger.log(
+      `alias.rule.proposed ruleId=${rule?.id ?? 'unknown'} vendorId=${vendorId} fieldKey=${assignment.fieldKey}`,
+    );
+  }
+
+  private async resolveVendorIdForCorrection(
+    baselineId: string,
+    attachmentId: string,
+  ): Promise<string | null> {
+    const [baseline] = await this.dbs.db
+      .select({
+        utilizationMetadata: extractionBaselines.utilizationMetadata,
+      })
+      .from(extractionBaselines)
+      .where(eq(extractionBaselines.id, baselineId))
+      .limit(1);
+
+    const [currentOcr] = await this.dbs.db
+      .select({
+        metadata: attachmentOcrOutputs.metadata,
+      })
+      .from(attachmentOcrOutputs)
+      .where(
+        and(
+          eq(attachmentOcrOutputs.attachmentId, attachmentId),
+          eq(attachmentOcrOutputs.isCurrent, true),
+        ),
+      )
+      .limit(1);
+
+    const candidates: unknown[] = [
+      this.extractVendorFromUnknown(baseline?.utilizationMetadata),
+      this.extractVendorFromUnknown(this.parseJsonValue(currentOcr?.metadata)),
+    ];
+
+    for (const candidate of candidates) {
+      if (typeof candidate !== 'string') {
+        continue;
+      }
+      const normalized = candidate.trim();
+      if (normalized) {
+        return normalized;
+      }
+    }
+
+    return null;
+  }
+
+  private parseJsonValue(value: string | null | undefined): unknown {
+    if (!value) {
+      return null;
+    }
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+
+  private extractVendorFromUnknown(value: unknown): string | null {
+    if (!value || typeof value !== 'object') {
+      return null;
+    }
+
+    const source = value as Record<string, unknown>;
+    const directKeys = [
+      'vendorId',
+      'vendor_id',
+      'vendor',
+      'vendorName',
+      'vendor_name',
+    ];
+    for (const key of directKeys) {
+      const directValue = source[key];
+      if (typeof directValue === 'string' && directValue.trim()) {
+        return directValue;
+      }
+    }
+
+    const nestedVendor = source.vendor;
+    if (nestedVendor && typeof nestedVendor === 'object') {
+      const nestedSource = nestedVendor as Record<string, unknown>;
+      for (const key of ['id', 'vendorId', 'vendor_id', 'name']) {
+        const nestedValue = nestedSource[key];
+        if (typeof nestedValue === 'string' && nestedValue.trim()) {
+          return nestedValue;
+        }
+      }
+    }
+
+    return null;
   }
 }

@@ -5,6 +5,7 @@ interface MlServiceResponse<T> {
   ok: boolean;
   error?: { code: string; message: string };
   data?: T;
+  reasoning?: string | null;
 }
 
 interface FieldSuggestion {
@@ -80,7 +81,7 @@ interface DetectTablesPayload {
 export class MlService {
   private readonly logger = new Logger(MlService.name);
   private readonly mlServiceUrl: string;
-  private readonly timeout = 5000; // 5 seconds
+  private readonly timeout = 180000; // 60 seconds
 
   constructor(private configService: ConfigService) {
     this.mlServiceUrl =
@@ -213,7 +214,7 @@ export class MlService {
 
       // Success - extract data (field suggestions or table detections)
       const data = result.suggestions || result.tables || [];
-      return { ok: true, data };
+      return { ok: true, data, reasoning: result.reasoning ?? null };
     } catch (error) {
       clearTimeout(timeoutId);
 
@@ -241,3 +242,5 @@ export class MlService {
     }
   }
 }
+
+

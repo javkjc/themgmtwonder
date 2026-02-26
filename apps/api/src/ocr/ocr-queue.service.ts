@@ -11,6 +11,9 @@ import { DbService } from '../db/db.service';
 import { attachments, extractionBaselines, ocrJobs, todos } from '../db/schema';
 import { AuditService } from '../audit/audit.service';
 import { OcrService } from './ocr.service';
+import { ModuleRef } from '@nestjs/core';
+import { fieldLibrary } from '../field-library/schema';
+import { FieldSuggestionService } from '../ml/field-suggestion.service';
 
 type OcrJobStatus = 'queued' | 'processing' | 'completed' | 'failed';
 
@@ -28,7 +31,8 @@ export class OcrQueueService implements OnModuleInit, OnModuleDestroy {
     private readonly dbs: DbService,
     private readonly ocrService: OcrService,
     private readonly auditService: AuditService,
-  ) {}
+    private readonly moduleRef: ModuleRef,
+  ) { }
 
   async onModuleInit() {
     if (process.env.OCR_QUEUE_ENABLED === 'false') {
@@ -91,24 +95,24 @@ export class OcrQueueService implements OnModuleInit, OnModuleDestroy {
 
     const whereClause = attachmentId
       ? and(
-          eq(ocrJobs.userId, userId),
-          eq(ocrJobs.attachmentId, attachmentId),
-          inArray(ocrJobs.status, [
-            'queued',
-            'processing',
-            'completed',
-            'failed',
-          ]),
-        )
+        eq(ocrJobs.userId, userId),
+        eq(ocrJobs.attachmentId, attachmentId),
+        inArray(ocrJobs.status, [
+          'queued',
+          'processing',
+          'completed',
+          'failed',
+        ]),
+      )
       : and(
-          eq(ocrJobs.userId, userId),
-          inArray(ocrJobs.status, [
-            'queued',
-            'processing',
-            'completed',
-            'failed',
-          ]),
-        );
+        eq(ocrJobs.userId, userId),
+        inArray(ocrJobs.status, [
+          'queued',
+          'processing',
+          'completed',
+          'failed',
+        ]),
+      );
 
     return this.dbs.db
       .select({
@@ -366,6 +370,41 @@ export class OcrQueueService implements OnModuleInit, OnModuleDestroy {
           workerHost: workerResult.workerHost,
         },
       });
+
+      if (process.env.ML_PREFETCH_STRATEGY === 'OCR_COMPLETE') {
+        const [draftBaseline] = await this.dbs.db
+          .select()
+          .from(extractionBaselines)
+          .where(
+            and(
+              eq(extractionBaselines.attachmentId, attachment.id),
+              eq(extractionBaselines.status, 'draft'),
+            ),
+          )
+          .limit(1);
+
+        if (draftBaseline) {
+          const [{ count }] = await this.dbs.db
+            .select({ count: sql<number>`count(*)` })
+            .from(fieldLibrary)
+            .where(eq(fieldLibrary.status, 'active'));
+
+          if (count > 0) {
+            try {
+              const fieldSuggestionService = this.moduleRef.get(
+                FieldSuggestionService,
+                { strict: false },
+              );
+              void fieldSuggestionService.prefetchSuggestions(
+                draftBaseline.id,
+                job.userId,
+              );
+            } catch (err) {
+              this.logger.error('Failed to prefetch suggestions', err as Error);
+            }
+          }
+        }
+      }
     } catch (err) {
       const errorMessage =
         err instanceof Error ? err.message : 'OCR worker request failed';

@@ -35,6 +35,7 @@ import {
   RagRetrievedExample,
   RagRetrievalService,
 } from './rag-retrieval.service';
+import { AliasEngineService } from './alias-engine.service';
 
 export interface SuggestionSummary {
   suggestedAssignments: Array<{
@@ -42,7 +43,7 @@ export interface SuggestionSummary {
     assignedValue: string;
     confidence: number;
     tier: 'auto_confirm' | 'verify' | 'flag';
-    sourceSegmentId: string;
+    sourceSegmentId: string | null;
     pageNumber?: number | null;
     zone?: string;
     boundingBox?: Record<string, number> | null;
@@ -78,9 +79,14 @@ interface PreparedSuggestionForPersistence {
   normalizationError: string | null;
 }
 
+type SegmentForMl = typeof extractedTextSegments.$inferSelect & {
+  aliasApplied?: boolean;
+};
+
 @Injectable()
 export class FieldSuggestionService {
   private readonly logger = new Logger(FieldSuggestionService.name);
+  private isOllamaBusy = false;
   private readonly RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
   private readonly MAX_REQUESTS_PER_HOUR = 1000;
   private readonly DEFAULT_AUTOCONFIRM_THRESHOLD = 0.9;
@@ -100,6 +106,7 @@ export class FieldSuggestionService {
     private readonly configService: ConfigService,
     private readonly mathReconciliationService: MathReconciliationService,
     private readonly ragRetrievalService: RagRetrievalService,
+    private readonly aliasEngineService: AliasEngineService,
   ) {
     this.mlServiceUrl =
       this.configService.get<string>('ML_SERVICE_URL') ||
@@ -109,346 +116,352 @@ export class FieldSuggestionService {
   async generateSuggestions(
     baselineId: string,
     userId: string,
+    prefetchOnly = false,
   ): Promise<SuggestionSummary> {
-    // 1. Verify ownership and baseline status
-    const context = await this.authService.ensureUserOwnsBaseline(
-      userId,
-      baselineId,
-    );
-
-    if (context.status === 'archived') {
-      throw new BadRequestException(
-        'Cannot generate suggestions for archived baseline',
-      );
+    if (!prefetchOnly) {
+      let waited = 0;
+      while (this.isOllamaBusy && waited < 5000) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        waited += 500;
+      }
+      if (this.isOllamaBusy) {
+        throw new HttpException(
+          'Service is busy processing another request',
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
+      }
+      this.isOllamaBusy = true;
     }
 
-    if (context.utilizationType || context.utilizedAt) {
-      throw new BadRequestException(
-        'Cannot generate suggestions for utilized baseline',
-      );
-    }
-
-    // 2. Rate limit check
-    await this.enforceRateLimit(userId);
-
-    // 3. Load baseline segments
-    const [baseline] = await this.dbs.db
-      .select()
-      .from(extractionBaselines)
-      .where(eq(extractionBaselines.id, baselineId))
-      .limit(1);
-
-    if (!baseline) {
-      throw new NotFoundException('Baseline not found');
-    }
-
-    const [currentOcr] = await this.dbs.db
-      .select()
-      .from(attachmentOcrOutputs)
-      .where(
-        and(
-          eq(attachmentOcrOutputs.attachmentId, baseline.attachmentId),
-          eq(attachmentOcrOutputs.isCurrent, true),
-        ),
-      )
-      .limit(1);
-
-    if (!currentOcr) {
-      throw new NotFoundException('No OCR output found for this baseline');
-    }
-
-    const segments = await this.dbs.db
-      .select()
-      .from(extractedTextSegments)
-      .where(eq(extractedTextSegments.attachmentOcrOutputId, currentOcr.id));
-
-    if (segments.length === 0) {
-      this.logger.warn('No segments found for baseline', { baselineId });
-      return {
-        suggestedAssignments: [],
-        modelVersionId: 'none',
-        suggestionCount: 0,
-      };
-    }
-
-    // 4. Load active fields
-    const activeFields = await this.dbs.db
-      .select()
-      .from(fieldLibrary)
-      .where(eq(fieldLibrary.status, 'active'));
-
-    if (activeFields.length === 0) {
-      this.logger.warn('No active fields in field library');
-      return {
-        suggestedAssignments: [],
-        modelVersionId: 'none',
-        suggestionCount: 0,
-      };
-    }
-
-    // 5. Resolve active model (Step 1 of I3: extraction_models first, fallback to ml_model_versions)
-    const selectedModel = await this.selectModelForBaseline(baselineId);
-
-    // 6. Extract page metadata from OCR output metadata for ML request (Step 2 of I3)
-    const ocrMeta = this.parseOcrMetadata(currentOcr.metadata);
-    const pageWidth: number = ocrMeta.pageWidth ?? 1000;
-    const pageHeight: number = ocrMeta.pageHeight ?? 1000;
-    const pageType: 'digital' | 'scanned' =
-      currentOcr.extractionPath === 'text_layer' ? 'digital' : 'scanned';
-
-    const serializedText = await this.serializeCurrentDocument(
-      segments,
-      pageWidth,
-    );
-    const ragExamples = await this.ragRetrievalService.retrieve(
-      serializedText,
-      currentOcr.documentTypeId,
-    );
-    this.logger.log(
-      `rag.retrieval.used retrievedCount=${ragExamples.length} documentTypeId=${currentOcr.documentTypeId ?? 'null'}`,
-    );
-
-    const mlPayload = {
-      baselineId,
-      documentTypeId: currentOcr.documentTypeId,
-      pageWidth,
-      pageHeight,
-      pageType,
-      segments: segments.map((s) => {
-        const segment: any = {
-          id: s.id,
-          text: s.text,
-        };
-        if (s.boundingBox) {
-          segment.boundingBox = s.boundingBox;
-        }
-        if (s.pageNumber) {
-          segment.pageNumber = s.pageNumber;
-        }
-        return segment;
-      }),
-      fields: activeFields.map((f) => ({
-        fieldKey: f.fieldKey,
-        label: f.label,
-        fieldType: f.characterType,
-      })),
-      ragExamples,
-    };
-
-    const mlResult = await this.mlService.suggestFields(mlPayload);
-
-    if (!mlResult.ok || !mlResult.data) {
-      this.logger.error('ML service failed', {
+    try {
+      // 1. Verify ownership and baseline status
+      const context = await this.authService.ensureUserOwnsBaseline(
+        userId,
         baselineId,
-        error: mlResult.error,
-      });
-      // Graceful degradation: return empty suggestions
-      return {
-        suggestedAssignments: [],
-        modelVersionId: 'none',
-        suggestionCount: 0,
-      };
-    }
-
-    const rawSuggestions = mlResult.data;
-
-    // 7. Use selected model version record
-    const modelVersionId = selectedModel.id;
-
-    // 8. Load existing assignments
-    const existingAssignments = await this.dbs.db
-      .select()
-      .from(baselineFieldAssignments)
-      .where(eq(baselineFieldAssignments.baselineId, baselineId));
-
-    // 9. Filter suggestions: skip null values and manually-assigned fields.
-    //    Qwen returns a suggestion per field — null suggestedValue means the
-    //    model found nothing for that field, so drop it.
-    const filteredRaw = rawSuggestions.filter((s: any) => {
-      if (!s.suggestedValue || !String(s.suggestedValue).trim()) return false;
-
-      const existing = existingAssignments.find(
-        (a) => a.fieldKey === s.fieldKey,
-      );
-      if (!existing) return true;
-
-      const hasManualValue =
-        existing.suggestionConfidence === null &&
-        existing.assignedValue !== null &&
-        String(existing.assignedValue).trim() !== '';
-
-      return !hasManualValue;
-    });
-
-    const fieldByKey = new Map(activeFields.map((f) => [f.fieldKey, f]));
-
-    // 10. Run DSPP + type validation + weighted FinalScore per suggestion (Steps 3-5 of I3).
-    //     Qwen response shape: { fieldKey, suggestedValue, zone, boundingBox,
-    //     extractionMethod, rawOcrConfidence, ragAgreement, modelConfidence: null }.
-    //     There is no segmentId — the contributing segment was identified inside ml-service.
-    //     We use a stable synthetic segmentId (fieldKey) so downstream code that
-    //     references segmentId for auditing still has a non-null string.
-    const processedSuggestions: ProcessedSuggestion[] = [];
-
-    for (const rawSug of filteredRaw) {
-      const field = fieldByKey.get((rawSug as any).fieldKey);
-      if (!field) continue;
-
-      const suggestedValue = String((rawSug as any).suggestedValue ?? '').trim();
-      if (!suggestedValue) continue;
-
-      const processed = processSuggestion(
-        {
-          segmentId: `qwen-${field.fieldKey}`,
-          fieldKey: (rawSug as any).fieldKey,
-          confidence: (rawSug as any).rawOcrConfidence ?? 0.0,
-          ragAgreement: (rawSug as any).ragAgreement ?? 0.0,
-          zone: (rawSug as any).zone ?? 'unknown',
-          boundingBox: (rawSug as any).boundingBox ?? null,
-          extractionMethod: (rawSug as any).extractionMethod ?? 'qwen-1.5b-rag',
-        },
-        {
-          text: suggestedValue,
-          confidence: (rawSug as any).rawOcrConfidence ?? null,
-        },
-        {
-          fieldKey: field.fieldKey,
-          characterType: field.characterType,
-        },
       );
 
-      processedSuggestions.push(processed);
-    }
-
-    // 11. Conflicting field detection (Step 6 of I3)
-    detectConflictingZones(processedSuggestions);
-
-    // 12. I5: multi-page conflict scan — Qwen suggestions have no source segment,
-    //     so pageNumber is always null. Conflicts across pages cannot be detected
-    //     without segment provenance; policy is a no-op for Qwen suggestions.
-    const processedForPersistence = this.applyMultiPageFieldConflictPolicy(
-      processedSuggestions,
-      new Map(), // empty — no segment lookup needed; Qwen suggestions are per-field not per-segment
-    );
-
-    // 13. Drop any suggestion whose finalScore was zeroed by type validation or
-    //     conflict detection — these are known-bad matches and should not be
-    //     persisted or shown to the user. Manual drag-to-assign captures ground
-    //     truth for those fields instead.
-    const validSuggestions = processedForPersistence.filter(
-      (s) => s.finalScore > 0,
-    );
-
-    // Normalize first (I4), then run math reconciliation (I6), then persist.
-    const suggestedAssignments: SuggestionSummary['suggestedAssignments'] = [];
-    const preparedSuggestions: PreparedSuggestionForPersistence[] = [];
-
-    for (const processed of validSuggestions) {
-      // Preserve the raw OCR value for human review, do not use cleanedValue as assignedValue.
-      const assignedValue = processed.originalValue;
-      // Qwen suggestions have no source segment — pageNumber is not available.
-      const pageNumber: number | null = null;
-
-      const field = fieldByKey.get(processed.fieldKey);
-      const normResult = normalizeFieldValue({
-        rawValue: assignedValue,
-        fieldType: field?.characterType ?? 'text',
-      });
-
-      if (normResult.normalizationError) {
-        this.logger.warn(
-          `Normalization error for fieldKey=${processed.fieldKey} type=${field?.characterType}: ${normResult.normalizationError}`,
+      if (context.status === 'archived') {
+        throw new BadRequestException(
+          'Cannot generate suggestions for archived baseline',
         );
       }
 
-      preparedSuggestions.push({
-        processed,
-        assignedValue,
-        pageNumber,
-        normalizedValue: normResult.normalizedValue,
-        normalizationError: normResult.normalizationError,
-      });
-    }
-
-    const mathReconciliation = await this.mathReconciliationService.reconcile(
-      currentOcr.documentTypeId,
-      preparedSuggestions.map((item) => ({
-        fieldKey: item.processed.fieldKey,
-        normalizedValue: item.normalizedValue,
-      })),
-    );
-
-    for (const item of preparedSuggestions) {
-      const { processed, assignedValue, pageNumber, normalizedValue, normalizationError } = item;
-      const mathPatch = mathReconciliation.get(processed.fieldKey);
-      const finalScore = mathPatch?.confidenceScore ?? processed.finalScore;
-      const finalValidationOverride: string | null =
-        mathPatch?.validationOverride ?? processed.validationOverride;
-
-      const llmReasoningWithNorm: Record<string, unknown> = {
-        ...processed.llmReasoning,
-        normalizationError,
-        finalScore,
-        ragAgreement: this.resolveRagAgreement(
-          processed.fieldKey,
-          normalizedValue,
-          assignedValue,
-          ragExamples,
-        ),
-        ragRetrievedCount: ragExamples.length,
-      };
-
-      if (mathPatch) {
-        llmReasoningWithNorm.mathReconciliation = mathPatch.mathReconciliation;
-        if (mathPatch.mathDelta) {
-          llmReasoningWithNorm.mathDelta = mathPatch.mathDelta;
-        }
-        if (mathPatch.validationOverride) {
-          llmReasoningWithNorm.validationOverride = mathPatch.validationOverride;
-        }
-        if (mathPatch.failingCheck) {
-          llmReasoningWithNorm.failingCheck = mathPatch.failingCheck;
-        }
-        if (mathPatch.failingRowY !== undefined) {
-          llmReasoningWithNorm.failingRowY = mathPatch.failingRowY;
-        }
-        if (mathPatch.failingYMin !== undefined) {
-          llmReasoningWithNorm.failingYMin = mathPatch.failingYMin;
-        }
-        if (mathPatch.failingYMax !== undefined) {
-          llmReasoningWithNorm.failingYMax = mathPatch.failingYMax;
-        }
-        if (mathPatch.taxRateSuspicious) {
-          llmReasoningWithNorm.taxRateSuspicious = true;
-        }
+      if (context.utilizationType || context.utilizedAt) {
+        throw new BadRequestException(
+          'Cannot generate suggestions for utilized baseline',
+        );
       }
 
-      await this.dbs.db
-        .insert(baselineFieldAssignments)
-        .values({
+      // 2. Rate limit check
+      await this.enforceRateLimit(userId);
+
+      // 3. Load baseline segments
+      const [baseline] = await this.dbs.db
+        .select()
+        .from(extractionBaselines)
+        .where(eq(extractionBaselines.id, baselineId))
+        .limit(1);
+
+      if (!baseline) {
+        throw new NotFoundException('Baseline not found');
+      }
+
+      const [currentOcr] = await this.dbs.db
+        .select()
+        .from(attachmentOcrOutputs)
+        .where(
+          and(
+            eq(attachmentOcrOutputs.attachmentId, baseline.attachmentId),
+            eq(attachmentOcrOutputs.isCurrent, true),
+          ),
+        )
+        .limit(1);
+
+      if (!currentOcr) {
+        throw new NotFoundException('No OCR output found for this baseline');
+      }
+
+      const segments = await this.dbs.db
+        .select()
+        .from(extractedTextSegments)
+        .where(eq(extractedTextSegments.attachmentOcrOutputId, currentOcr.id));
+
+      if (segments.length === 0) {
+        this.logger.warn('No segments found for baseline', { baselineId });
+        return {
+          suggestedAssignments: [],
+          modelVersionId: 'none',
+          suggestionCount: 0,
+        };
+      }
+
+      // 4. Load active fields
+      const activeFields = await this.dbs.db
+        .select()
+        .from(fieldLibrary)
+        .where(eq(fieldLibrary.status, 'active'));
+
+      if (activeFields.length === 0) {
+        this.logger.warn('No active fields in field library');
+        return {
+          suggestedAssignments: [],
+          modelVersionId: 'none',
+          suggestionCount: 0,
+        };
+      }
+
+      // 5. Resolve active model (Step 1 of I3: extraction_models first, fallback to ml_model_versions)
+      const selectedModel = await this.selectModelForBaseline(baselineId);
+
+      // 6. Extract page metadata from OCR output metadata for ML request (Step 2 of I3)
+      const ocrMeta = this.parseOcrMetadata(currentOcr.metadata);
+      const pageWidth: number = ocrMeta.pageWidth ?? 1000;
+      const pageHeight: number = ocrMeta.pageHeight ?? 1000;
+      const pageType: 'digital' | 'scanned' =
+        currentOcr.extractionPath === 'text_layer' ? 'digital' : 'scanned';
+
+      const vendorId = this.resolveVendorId(baseline, currentOcr);
+      const segmentsForMl: SegmentForMl[] = vendorId
+        ? await this.aliasEngineService.applyAliases(segments, vendorId)
+        : segments;
+      const serializedText = await this.serializeCurrentDocument(
+        segmentsForMl,
+        pageWidth,
+      );
+      const ragExamples = await this.ragRetrievalService.retrieve(
+        serializedText,
+        currentOcr.documentTypeId,
+      );
+      this.logger.log(
+        `rag.retrieval.used retrievedCount=${ragExamples.length} documentTypeId=${currentOcr.documentTypeId ?? 'null'}`,
+      );
+
+      const mlPayload = {
+        baselineId,
+        documentTypeId: currentOcr.documentTypeId,
+        pageWidth,
+        pageHeight,
+        pageType,
+        segments: segmentsForMl.map((s) => {
+          const segment: any = {
+            id: s.id,
+            text: s.text,
+            confidence:
+              s.confidence === null || s.confidence === undefined
+                ? null
+                : Number(s.confidence),
+            aliasApplied: Boolean(s.aliasApplied),
+          };
+          if (s.boundingBox) {
+            segment.boundingBox = s.boundingBox;
+          }
+          if (s.pageNumber) {
+            segment.pageNumber = s.pageNumber;
+          }
+          return segment;
+        }),
+        fields: activeFields.map((f) => ({
+          fieldKey: f.fieldKey,
+          label: f.label,
+          fieldType: f.characterType,
+        })),
+        ragExamples,
+      };
+
+      const mlResult = await this.mlService.suggestFields(mlPayload);
+
+      if (!mlResult.ok || !mlResult.data) {
+        this.logger.error('ML service failed', {
           baselineId,
-          fieldKey: processed.fieldKey,
+          error: mlResult.error,
+        });
+        // Graceful degradation: return empty suggestions
+        return {
+          suggestedAssignments: [],
+          modelVersionId: 'none',
+          suggestionCount: 0,
+        };
+      }
+
+      const rawSuggestions = mlResult.data;
+      const llmQwenReasoning = mlResult.reasoning ?? null;
+
+      // 7. Use selected model version record
+      const modelVersionId = selectedModel.id;
+
+      // 8. Load existing assignments
+      const existingAssignments = await this.dbs.db
+        .select()
+        .from(baselineFieldAssignments)
+        .where(eq(baselineFieldAssignments.baselineId, baselineId));
+
+      // 9. Filter suggestions: skip null values and manually-assigned fields.
+      //    Qwen returns a suggestion per field — null suggestedValue means the
+      //    model found nothing for that field, so drop it.
+      const filteredRaw = rawSuggestions.filter((s: any) => {
+        if (!s.suggestedValue || !String(s.suggestedValue).trim()) return false;
+
+        const existing = existingAssignments.find(
+          (a) => a.fieldKey === s.fieldKey,
+        );
+        if (!existing) return true;
+
+        const hasManualValue =
+          existing.suggestionConfidence === null &&
+          existing.assignedValue !== null &&
+          String(existing.assignedValue).trim() !== '';
+
+        return !hasManualValue;
+      });
+
+      const fieldByKey = new Map(activeFields.map((f) => [f.fieldKey, f]));
+
+      // 10. Run DSPP + type validation + weighted FinalScore per suggestion (Steps 3-5 of I3).
+      //     Qwen response shape: { fieldKey, suggestedValue, zone, boundingBox,
+      //     extractionMethod, rawOcrConfidence, ragAgreement, modelConfidence: null }.
+      //     There is no segmentId — the contributing segment was identified inside ml-service.
+      //     sourceSegmentId is stored as null; the FK column is nullable.
+      const processedSuggestions: ProcessedSuggestion[] = [];
+
+      for (const rawSug of filteredRaw) {
+        const field = fieldByKey.get((rawSug as any).fieldKey);
+        if (!field) continue;
+
+        const suggestedValue = String((rawSug as any).suggestedValue ?? '').trim();
+        if (!suggestedValue) continue;
+
+        const processed = processSuggestion(
+          {
+            segmentId: null,
+            fieldKey: (rawSug as any).fieldKey,
+            confidence: (rawSug as any).rawOcrConfidence ?? 0.0,
+            ragAgreement: (rawSug as any).ragAgreement ?? 0.0,
+            zone: (rawSug as any).zone ?? 'unknown',
+            boundingBox: (rawSug as any).boundingBox ?? null,
+            extractionMethod: (rawSug as any).extractionMethod ?? 'qwen-1.5b-rag',
+          },
+          {
+            text: suggestedValue,
+            confidence: (rawSug as any).rawOcrConfidence ?? null,
+          },
+          {
+            fieldKey: field.fieldKey,
+            characterType: field.characterType,
+          },
+        );
+
+        processedSuggestions.push(processed);
+      }
+
+      // 11. Conflicting field detection (Step 6 of I3)
+      detectConflictingZones(processedSuggestions);
+
+      // 12. I5: multi-page conflict scan — Qwen suggestions have no source segment,
+      //     so pageNumber is always null. Conflicts across pages cannot be detected
+      //     without segment provenance; policy is a no-op for Qwen suggestions.
+      const processedForPersistence = this.applyMultiPageFieldConflictPolicy(
+        processedSuggestions,
+        new Map(), // empty — no segment lookup needed; Qwen suggestions are per-field not per-segment
+      );
+
+      // 13. Drop any suggestion whose finalScore was zeroed by type validation or
+      //     conflict detection — these are known-bad matches and should not be
+      //     persisted or shown to the user. Manual drag-to-assign captures ground
+      //     truth for those fields instead.
+      const validSuggestions = processedForPersistence.filter(
+        (s) => s.finalScore > 0,
+      );
+
+      // Normalize first (I4), then run math reconciliation (I6), then persist.
+      const suggestedAssignments: SuggestionSummary['suggestedAssignments'] = [];
+      const preparedSuggestions: PreparedSuggestionForPersistence[] = [];
+
+      for (const processed of validSuggestions) {
+        // Preserve the raw OCR value for human review, do not use cleanedValue as assignedValue.
+        const assignedValue = processed.originalValue;
+        // Qwen suggestions have no source segment — pageNumber is not available.
+        const pageNumber: number | null = null;
+
+        const field = fieldByKey.get(processed.fieldKey);
+        const normResult = normalizeFieldValue({
+          rawValue: assignedValue,
+          fieldType: field?.characterType ?? 'text',
+        });
+
+        if (normResult.normalizationError) {
+          this.logger.warn(
+            `Normalization error for fieldKey=${processed.fieldKey} type=${field?.characterType}: ${normResult.normalizationError}`,
+          );
+        }
+
+        preparedSuggestions.push({
+          processed,
           assignedValue,
-          sourceSegmentId: processed.segmentId,
-          assignedBy: userId,
-          assignedAt: new Date(),
-          suggestionConfidence: processed.confidence.toFixed(2),
-          suggestionAccepted: null,
-          modelVersionId,
-          confidenceScore: finalScore.toFixed(4),
-          zone: processed.zone,
-          boundingBox: processed.boundingBox as any,
-          extractionMethod: processed.extractionMethod,
-          llmReasoning: JSON.stringify(llmReasoningWithNorm),
-          normalizedValue,
+          pageNumber,
+          normalizedValue: normResult.normalizedValue,
+          normalizationError: normResult.normalizationError,
+        });
+      }
+
+      const mathReconciliation = await this.mathReconciliationService.reconcile(
+        currentOcr.documentTypeId,
+        preparedSuggestions.map((item) => ({
+          fieldKey: item.processed.fieldKey,
+          normalizedValue: item.normalizedValue,
+        })),
+      );
+
+      for (const item of preparedSuggestions) {
+        const { processed, assignedValue, pageNumber, normalizedValue, normalizationError } = item;
+        const mathPatch = mathReconciliation.get(processed.fieldKey);
+        const finalScore = mathPatch?.confidenceScore ?? processed.finalScore;
+        const finalValidationOverride: string | null =
+          mathPatch?.validationOverride ?? processed.validationOverride;
+
+        const llmReasoningWithNorm: Record<string, unknown> = {
+          ...processed.llmReasoning,
+          qwenReasoning: llmQwenReasoning,
           normalizationError,
-        })
-        .onConflictDoUpdate({
-          target: [
-            baselineFieldAssignments.baselineId,
-            baselineFieldAssignments.fieldKey,
-          ],
-          set: {
+          finalScore,
+          ragAgreement: this.resolveRagAgreement(
+            processed.fieldKey,
+            normalizedValue,
+            assignedValue,
+            ragExamples,
+          ),
+          ragRetrievedCount: ragExamples.length,
+        };
+
+        if (mathPatch) {
+          llmReasoningWithNorm.mathReconciliation = mathPatch.mathReconciliation;
+          if (mathPatch.mathDelta) {
+            llmReasoningWithNorm.mathDelta = mathPatch.mathDelta;
+          }
+          if (mathPatch.validationOverride) {
+            llmReasoningWithNorm.validationOverride = mathPatch.validationOverride;
+          }
+          if (mathPatch.failingCheck) {
+            llmReasoningWithNorm.failingCheck = mathPatch.failingCheck;
+          }
+          if (mathPatch.failingRowY !== undefined) {
+            llmReasoningWithNorm.failingRowY = mathPatch.failingRowY;
+          }
+          if (mathPatch.failingYMin !== undefined) {
+            llmReasoningWithNorm.failingYMin = mathPatch.failingYMin;
+          }
+          if (mathPatch.failingYMax !== undefined) {
+            llmReasoningWithNorm.failingYMax = mathPatch.failingYMax;
+          }
+          if (mathPatch.taxRateSuspicious) {
+            llmReasoningWithNorm.taxRateSuspicious = true;
+          }
+        }
+
+        await this.dbs.db
+          .insert(baselineFieldAssignments)
+          .values({
+            baselineId,
+            fieldKey: processed.fieldKey,
             assignedValue,
             sourceSegmentId: processed.segmentId,
             assignedBy: userId,
@@ -463,135 +476,193 @@ export class FieldSuggestionService {
             llmReasoning: JSON.stringify(llmReasoningWithNorm),
             normalizedValue,
             normalizationError,
-          },
+          })
+          .onConflictDoUpdate({
+            target: [
+              baselineFieldAssignments.baselineId,
+              baselineFieldAssignments.fieldKey,
+            ],
+            set: {
+              assignedValue,
+              sourceSegmentId: processed.segmentId,
+              assignedBy: userId,
+              assignedAt: new Date(),
+              suggestionConfidence: processed.confidence.toFixed(2),
+              suggestionAccepted: null,
+              modelVersionId,
+              confidenceScore: finalScore.toFixed(4),
+              zone: processed.zone,
+              boundingBox: processed.boundingBox as any,
+              extractionMethod: processed.extractionMethod,
+              llmReasoning: JSON.stringify(llmReasoningWithNorm),
+              normalizedValue,
+              normalizationError,
+            },
+          });
+
+        suggestedAssignments.push({
+          fieldKey: processed.fieldKey,
+          assignedValue,
+          confidence: processed.confidence,
+          tier: this.deriveTier(finalScore),
+          sourceSegmentId: processed.segmentId,
+          pageNumber,
+          zone: processed.zone,
+          boundingBox: processed.boundingBox,
+          extractionMethod: processed.extractionMethod,
+          finalScore,
+          validationOverride: finalValidationOverride,
         });
+      }
 
-      suggestedAssignments.push({
-        fieldKey: processed.fieldKey,
-        assignedValue,
-        confidence: processed.confidence,
-        tier: this.deriveTier(finalScore),
-        sourceSegmentId: processed.segmentId,
-        pageNumber,
-        zone: processed.zone,
-        boundingBox: processed.boundingBox,
-        extractionMethod: processed.extractionMethod,
-        finalScore,
-        validationOverride: finalValidationOverride,
+      // 14. Log audit event
+      await this.auditService.log({
+        userId,
+        action: 'ml.suggest.generate',
+        module: 'ml',
+        resourceType: 'baseline',
+        resourceId: baselineId,
+        details: {
+          baselineId,
+          abGroup: selectedModel.abGroup,
+          modelVersionId,
+          modelVersion: selectedModel.version,
+          count: suggestedAssignments.length,
+          totalSegments: segmentsForMl.length,
+          totalFields: activeFields.length,
+          pageWidth,
+          pageHeight,
+          pageType,
+        },
       });
-    }
 
-    // 14. Log audit event
-    await this.auditService.log({
-      userId,
-      action: 'ml.suggest.generate',
-      module: 'ml',
-      resourceType: 'baseline',
-      resourceId: baselineId,
-      details: {
-        baselineId,
-        abGroup: selectedModel.abGroup,
-        modelVersionId,
-        modelVersion: selectedModel.version,
-        count: suggestedAssignments.length,
-        totalSegments: segments.length,
-        totalFields: activeFields.length,
-        pageWidth,
-        pageHeight,
-        pageType,
-      },
-    });
+      const retryEnabled =
+        String(this.configService.get<string>('ML_MATH_RETRY_ENABLED') ?? 'false')
+          .trim()
+          .toLowerCase() === 'true';
+      const failingSuggestions = suggestedAssignments.filter(
+        (assignment) =>
+          assignment.validationOverride === 'math_reconciliation_failed',
+      );
 
-    const retryEnabled =
-      String(this.configService.get<string>('ML_MATH_RETRY_ENABLED') ?? 'false')
-        .trim()
-        .toLowerCase() === 'true';
-    const failingSuggestions = suggestedAssignments.filter(
-      (assignment) =>
-        assignment.validationOverride === 'math_reconciliation_failed',
-    );
-
-    let retryJobId: string | null = null;
-    if (retryEnabled && failingSuggestions.length > 0) {
-      const preliminaryValues: Record<string, string> = {};
-      for (const assignment of suggestedAssignments) {
-        preliminaryValues[assignment.fieldKey] = assignment.assignedValue;
-      }
-
-      const failingYCandidates: Array<{ y: number; height: number }> = [];
-      for (const failing of failingSuggestions) {
-        const boundingBox = failing.boundingBox as
-          | { y?: unknown; height?: unknown }
-          | null
-          | undefined;
-        const y =
-          typeof boundingBox?.y === 'number' && Number.isFinite(boundingBox.y)
-            ? boundingBox.y
-            : null;
-        const height =
-          typeof boundingBox?.height === 'number' &&
-          Number.isFinite(boundingBox.height)
-            ? Math.max(0, boundingBox.height)
-            : 0;
-        if (y !== null) {
-          failingYCandidates.push({ y, height });
+      let retryJobId: string | null = null;
+      if (retryEnabled && failingSuggestions.length > 0) {
+        const preliminaryValues: Record<string, string> = {};
+        for (const assignment of suggestedAssignments) {
+          preliminaryValues[assignment.fieldKey] = assignment.assignedValue;
         }
-      }
 
-      const rawYMin =
-        failingYCandidates.length > 0
-          ? Math.min(...failingYCandidates.map((candidate) => candidate.y))
-          : 0;
-      const rawYMax =
-        failingYCandidates.length > 0
-          ? Math.max(
+        const failingYCandidates: Array<{ y: number; height: number }> = [];
+        for (const failing of failingSuggestions) {
+          const boundingBox = failing.boundingBox as
+            | { y?: unknown; height?: unknown }
+            | null
+            | undefined;
+          const y =
+            typeof boundingBox?.y === 'number' && Number.isFinite(boundingBox.y)
+              ? boundingBox.y
+              : null;
+          const height =
+            typeof boundingBox?.height === 'number' &&
+              Number.isFinite(boundingBox.height)
+              ? Math.max(0, boundingBox.height)
+              : 0;
+          if (y !== null) {
+            failingYCandidates.push({ y, height });
+          }
+        }
+
+        const rawYMin =
+          failingYCandidates.length > 0
+            ? Math.min(...failingYCandidates.map((candidate) => candidate.y))
+            : 0;
+        const rawYMax =
+          failingYCandidates.length > 0
+            ? Math.max(
               ...failingYCandidates.map(
                 (candidate) => candidate.y + candidate.height,
               ),
             )
-          : 1;
+            : 1;
 
-      const failingYMin = Math.max(0, rawYMin - 0.05);
-      const failingYMax = Math.min(1, rawYMax + 0.05);
+        const failingYMin = Math.max(0, rawYMin - 0.05);
+        const failingYMax = Math.min(1, rawYMax + 0.05);
 
-      const [createdRetryJob] = await this.dbs.db
-        .insert(extractionRetryJobs)
-        .values({
-          attachmentId: baseline.attachmentId,
-          baselineId,
-          status: 'PENDING',
+        const [createdRetryJob] = await this.dbs.db
+          .insert(extractionRetryJobs)
+          .values({
+            attachmentId: baseline.attachmentId,
+            baselineId,
+            status: 'PENDING',
+            failingFieldKeys: failingSuggestions.map(
+              (suggestion) => suggestion.fieldKey,
+            ),
+            failingYMin: failingYMin.toFixed(4),
+            failingYMax: failingYMax.toFixed(4),
+            preliminaryValues,
+            retryCount: 0,
+            updatedAt: new Date(),
+          })
+          .returning({ id: extractionRetryJobs.id });
+
+        retryJobId = createdRetryJob?.id ?? null;
+      }
+
+      if (retryJobId) {
+        return {
+          suggestedAssignments,
+          modelVersionId,
+          suggestionCount: suggestedAssignments.length,
+          status: 'preliminary',
+          retryJobId,
           failingFieldKeys: failingSuggestions.map(
             (suggestion) => suggestion.fieldKey,
           ),
-          failingYMin: failingYMin.toFixed(4),
-          failingYMax: failingYMax.toFixed(4),
-          preliminaryValues,
-          retryCount: 0,
-          updatedAt: new Date(),
-        })
-        .returning({ id: extractionRetryJobs.id });
+        };
+      }
 
-      retryJobId = createdRetryJob?.id ?? null;
-    }
-
-    if (retryJobId) {
       return {
         suggestedAssignments,
         modelVersionId,
         suggestionCount: suggestedAssignments.length,
-        status: 'preliminary',
-        retryJobId,
-        failingFieldKeys: failingSuggestions.map(
-          (suggestion) => suggestion.fieldKey,
-        ),
       };
+    } finally {
+      if (!prefetchOnly) {
+        this.isOllamaBusy = false;
+      }
+    }
+  }
+
+  async prefetchSuggestions(baselineId: string, userId: string): Promise<void> {
+    const strategy = this.configService.get<string>('ML_PREFETCH_STRATEGY') ?? 'PAGE_LOAD';
+    if (strategy === 'DISABLED') {
+      this.logger.debug('prefetch.skipped.disabled', { baselineId });
+      return;
     }
 
-    return {
-      suggestedAssignments,
-      modelVersionId,
-      suggestionCount: suggestedAssignments.length,
-    };
+    if (this.isOllamaBusy) {
+      this.logger.debug('prefetch.skipped.busy', { baselineId });
+      return; // Silent skip — never queue, never error
+    }
+    // Check if suggestions already exist and are fresh
+    const existing = await this.dbs.db.select()
+      .from(baselineFieldAssignments)
+      .where(eq(baselineFieldAssignments.baselineId, baselineId))
+      .limit(1);
+    if (existing.length > 0) {
+      this.logger.debug('prefetch.skipped.already_exists', { baselineId });
+      return;
+    }
+    try {
+      this.isOllamaBusy = true;
+      await this.generateSuggestions(baselineId, userId, true);
+      this.logger.log('prefetch.complete', { baselineId });
+    } catch (err: any) {
+      this.logger.warn('prefetch.failed', { baselineId, error: err.message });
+      // Swallow — prefetch failure must never surface to user
+    } finally {
+      this.isOllamaBusy = false;
+    }
   }
 
   /**
@@ -617,7 +688,7 @@ export class FieldSuggestionService {
     segmentById: Map<string, typeof extractedTextSegments.$inferSelect>,
   ): ProcessedSuggestion[] {
     const withPage: ProcessedSuggestionWithPage[] = suggestions.map((s) => {
-      const segment = segmentById.get(s.segmentId);
+      const segment = s.segmentId ? segmentById.get(s.segmentId) : undefined;
       return {
         ...s,
         pageNumber: segment?.pageNumber ?? null,
@@ -755,8 +826,75 @@ export class FieldSuggestionService {
     );
   }
 
+  private resolveVendorId(
+    baseline: typeof extractionBaselines.$inferSelect,
+    currentOcr: typeof attachmentOcrOutputs.$inferSelect,
+  ): string | null {
+    const candidates: unknown[] = [
+      this.extractVendorFromUnknown(baseline.utilizationMetadata),
+      this.extractVendorFromUnknown(this.parseJsonValue(currentOcr.metadata)),
+    ];
+
+    for (const candidate of candidates) {
+      if (typeof candidate !== 'string') {
+        continue;
+      }
+      const normalized = candidate.trim();
+      if (normalized) {
+        return normalized;
+      }
+    }
+
+    return null;
+  }
+
+  private parseJsonValue(value: string | null | undefined): unknown {
+    if (!value) {
+      return null;
+    }
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+
+  private extractVendorFromUnknown(value: unknown): string | null {
+    if (!value || typeof value !== 'object') {
+      return null;
+    }
+
+    const source = value as Record<string, unknown>;
+    const directKeys = [
+      'vendorId',
+      'vendor_id',
+      'vendor',
+      'vendorName',
+      'vendor_name',
+    ];
+    for (const key of directKeys) {
+      const directValue = source[key];
+      if (typeof directValue === 'string' && directValue.trim()) {
+        return directValue;
+      }
+    }
+
+    const nestedVendor = source.vendor;
+    if (nestedVendor && typeof nestedVendor === 'object') {
+      const nestedSource = nestedVendor as Record<string, unknown>;
+      for (const key of ['id', 'vendorId', 'vendor_id', 'name']) {
+        const nestedValue = nestedSource[key];
+        if (typeof nestedValue === 'string' && nestedValue.trim()) {
+          return nestedValue;
+        }
+      }
+    }
+
+    return null;
+  }
+
   private async serializeCurrentDocument(
-    segments: typeof extractedTextSegments.$inferSelect[],
+    segments: SegmentForMl[],
     pageWidth: number,
   ): Promise<string> {
     const payload = {

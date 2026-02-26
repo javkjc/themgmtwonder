@@ -2,6 +2,7 @@
 
 ## 0) Repo Index
 - Root: docker-compose.yml, .env, README.md
+- Root: seed_corpus/ (one JSON file per document type; Phase 2 zone-tagged synthetic gold-standard examples for RAG seeding)
 - tasks/: plan.md, features.md, executionnotes.md, codemapcc.md (this file), prompt_guidelines.md
 - Root: .claude/, node_modules/, apps/
 - apps/web (Next.js App Router, frontend)
@@ -9,6 +10,7 @@
   - public/, next.config.ts, web.Dockerfile, package.json, tsconfig.json, next-env.d.ts
 - apps/api (NestJS + Drizzle ORM)
   - src/{main.ts,app.module.ts,app.controller.ts,app.service.ts}
+  - src/scripts/seed-corpus.ts (idempotent deploy script; reads root seed_corpus/, embeds via Ollama nomic-embed-text, upserts baseline_embeddings with gold_standard=true; run: `docker compose exec api npx ts-node src/scripts/seed-corpus.ts`)
   - src/auth, todos, categories, settings, audit, admin, bootstrap, db, common, users
   - src/attachments (upload/download/delete plus OCR trigger/list/apply via ApplyOcrDto)
   - src/ocr (OcrModule + OcrService that wraps worker calls, derived output storage, ownership checks)
@@ -18,11 +20,11 @@
   - requirements.txt (fastapi, uvicorn, paddleocr, paddlepaddle, Pillow, numpy, PyMuPDF)
   - ocrw.Dockerfile (python:3.10-slim build, apt deps, uvicorn main:app --host 0.0.0.0 --port 4000)
 - apps/ml-service (FastAPI inference microservice for ML suggestions; internal-only)
-  - main.py (FastAPI app; GET /health returns {status: "ok"}; /ml/suggest-fields builds zone-aware serialized text, injects RAG few-shot examples, and calls Ollama Qwen 2.5 1.5B for nullable JSON field extraction with per-field ragAgreement/rawOcrConfidence)
-  - model.py (Ollama HTTP client using httpx; POST /api/generate with model qwen2.5:1.5b and JSON schema format; graceful model_not_ready errors when Ollama is unavailable)
+  - main.py (FastAPI app; GET /health returns {status: "ok"}; /ml/suggest-fields builds zone-aware serialized text, passes segment confidence and `aliasApplied` flag into `PromptSegment` for LOW_CONF signal tagging with alias suppression, injects RAG few-shot examples, and calls Ollama Qwen 2.5 1.5B for nullable JSON field extraction with per-field ragAgreement/rawOcrConfidence plus optional response `reasoning` sourced from `_reasoning`)
+  - model.py (Ollama HTTP client using httpx; POST /api/generate with model qwen2.5:1.5b and JSON schema format; num_ctx: 8192; graceful model_not_ready errors when Ollama is unavailable)
   - model_registry.py (ModelRegistry singleton for Ollama readiness; warm-up is GET /api/tags and validates qwen2.5:1.5b is pulled)
   - requirements.txt (fastapi, uvicorn, torch, numpy, Pillow, httpx)
-  - prompt_builder.py (Phase 2 serializer for zone-tagged OCR segments and prompt assembly for Ollama payload with nullable JSON schema)
+  - prompt_builder.py (Phase 2 serializer for zone-tagged OCR segments and prompt assembly for Ollama payload with nullable JSON schema; `PromptSegment` includes optional `confidence` and `alias_applied`; `serialize_segments()` appends `[LOW_CONF]` when confidence < 0.6 and not alias_applied; appends terse bbox annotation `[b{y_pct}%,{side}]` to footer and line_items segments only; 2+8 truncation fires when line_items > 10 rows and pre-truncation serialized chars > 6000 (keeps first 2 + last 8, logs `prompt.truncated droppedRowCount`); `_serialize_zone_lines()` private helper; `build_nullable_json_schema()` injects optional first `_reasoning` property; `build_prompt_payload()` includes LOW_CONF linguistic-correction guidance in system prompt)
   - ml.Dockerfile (python:3.14-slim build, installs requirements.txt, copies main.py/model.py/model_registry.py/table_detect.py, preloads microsoft/layoutlmv3-base, uvicorn main:app on port 5000; internal only — no host port mapping)
 - docker-compose.yml (to wire ml-service container on backend network)
 - docker-compose.yml (services include Ollama model serving on backend network; named volume `ollama_models`)
@@ -69,10 +71,15 @@
 - ROUTE: /admin/ml
   - Path: apps/web/app/admin/ml/page.tsx
   - Purpose: ML performance evaluation dashboard
-  - Uses: Layout, fetchMlMetrics, KPI cards, Confusion table, link to /admin/ml/performance
+  - Uses: Layout, fetchMlMetrics, KPI cards, Confusion table, link to /admin/ml/performance, link to /admin/rules (Rule Management →)
   - Auto-refresh: Loads on mount and refreshes every 15 seconds for admins
   - Default date range: Last 14 days (from today - 14 days to today)
   - Mutations at: loadMetrics() via manual Refresh button or auto-refresh interval
+- ROUTE: /admin/rules
+  - Path: apps/web/app/admin/rules/page.tsx
+  - Purpose: Admin rule management — lists proposed alias rules grouped by vendor; Approve/Reject buttons call POST /admin/rules/:id/approve|reject; auto-refreshes every 30s; empty state shows "No pending rules. The system is up to date."
+  - API client: apps/web/app/lib/api/rules.ts (listRules, approveRule, rejectRule)
+  - Access: Admin-only
 - ROUTE: /admin/ml/performance
   - Path: apps/web/app/admin/ml/performance/page.tsx
   - Purpose: Admin performance dashboard for model summaries, version table, 12-week trend chart, 7-day confidence histogram, and candidate activation control
@@ -100,6 +107,7 @@
   - Attachments/OCR: attachments panel uploads to POST /attachments/todo/:todoId, downloads via `${API_BASE_URL}/attachments/:id/download`, triggers OCR with POST /attachments/:id/ocr, fetches outputs via GET /attachments/:id/ocr, displays attachment_ocr_outputs text with copy/apply actions; Review OCR link available ONLY when status is confirmed; apply uses POST /attachments/:id/ocr/apply to add remark or append description; status badges now show lifecycle state when extracted text exists and warn for failed processing with available text; no PDF viewer or bounding boxes on task detail page
 - ROUTE: /attachments/[attachmentId]/review
   - Path: apps/web/app/attachments/[attachmentId]/review/page.tsx
+  - Hook: apps/web/app/attachments/[attachmentId]/review/hooks/useReviewPageData.ts — data-fetching hook for the review page; loads `me`, `ocrData`, `baseline`, `libraryFields`, and `tableSuggestions`; handles auth check, baseline creation, and OCR result fetching
   - Purpose: Visual OCR evidence review (attachment viewer + parsed field list + correction/history modals).
   - Uses: PdfDocumentViewer, VerificationPanel (apps/web/app/components/ocr/VerificationPanel.tsx), JumpBar (apps/web/app/components/ocr/JumpBar.tsx), ExtractedTextPool (apps/web/app/components/ocr/ExtractedTextPool.tsx for truncated confidence badges and hover highlight), FieldAssignmentPanel (apps/web/app/components/FieldAssignmentPanel.tsx renders baseline assignment inputs with validation status and read-only reason banners), TableCreationModal (apps/web/app/components/tables/TableCreationModal.tsx for table structure detection and creation), TableEditorPanel (apps/web/app/components/tables/TableEditorPanel.tsx for inline cell editing, mapping, validation), TableConfirmationModal (apps/web/app/components/tables/TableConfirmationModal.tsx confirm/read-only lock), TableListPanel (apps/web/app/components/tables/TableListPanel.tsx for list + switching), ValidationConfirmationModal (apps/web/app/components/ValidationConfirmationModal.tsx prompts user to confirm invalid values with optional suggested corrections), OcrFieldList, OcrFieldEditModal, OcrCorrectionHistoryModal, CorrectionReasonModal, NotificationToast, lib/api/ocr.ts helpers (fetchAttachmentOcrResults, createOcrCorrection, fetchOcrCorrectionHistory), lib/api/baselines.ts (upsertAssignment, deleteAssignment, fetchBaselineForAttachment, markBaselineReviewed, confirmBaseline), lib/api/tables.ts (createTable, fetchTablesForBaseline, fetchTable, updateCell, deleteRow, assignColumn, confirmTable), API_BASE_URL for downloads and document playback.
   - Mutations at: POST /ocr-results/:ocrResultId/corrections via lib/api/ocr.ts; POST /baselines/:baselineId/assign for field assignments with validation (requires confirmInvalid flag for invalid values); Task detail page links to this route when attachment OCR status is confirmed.
@@ -163,8 +171,8 @@
       - Audit: logs `ignoredOverlapFiltered` count in `ml.table.detect` details
   - Utilities:
     - apps/ml-service/table_detect.py - Rule-based table detection heuristics
-    - apps/ml-service/model.py - Ollama Qwen inference client (`/api/generate`) and `model_not_ready` handling
-    - apps/ml-service/prompt_builder.py - phase-2 zone serialization + nullable JSON schema/prompt assembly for Ollama
+    - apps/ml-service/model.py - Ollama Qwen inference client (`/api/generate`), num_ctx: 8192, and `model_not_ready` handling
+    - apps/ml-service/prompt_builder.py - phase-2 zone serialization + nullable JSON schema/prompt assembly for Ollama; terse bbox annotation `[b{y_pct}%,{side}]` on footer/line_items zones; 2+8 truncation when line_items > 10 rows and chars > 6000; [ANCHORS] block appended containing deduplicated canonical layout anchors (highest Y-value tied-confidence kept); `PromptSegment.confidence` optional, `alias_applied` suppresses `[LOW_CONF]`; `build_nullable_json_schema()` prepends optional `_reasoning`; `build_prompt_payload()` uses spatial-anchor + math-discrepancy + LOW_CONF system guidance
     - apps/ml-service/zone_classifier.py - Rule-based zone classifier: assigns header/addresses/line_items/instructions/footer zone to each segment by normalised y-midpoint ratio (y_ratio = (bbox.y + bbox.height/2) / pageHeight); returns 'unknown' for segments without a bounding box
 - Utility: FieldTypeValidator
   - Path: apps/api/src/ml/field-type-validator.ts
@@ -265,8 +273,21 @@
   - Path: apps/api/src/ml/ml.module.ts
   - Purpose: ML service client module for field suggestions, table detection, admin metrics/performance, training data export, and assisted training job orchestration
   - Imports: DbModule, AuditModule, CommonModule, BaselineModule
-  - Controllers: FieldSuggestionController, TableSuggestionController, MlMetricsController, MlTrainingDataController, MlModelsController, MlTrainingJobsController, MlPerformanceController
-  - Providers: MlService, FieldSuggestionService, TableSuggestionService, FieldAssignmentValidatorService, MlMetricsService, MlTrainingDataService, MlModelsService, MlTrainingJobsService, MlTrainingAutomationService, MathReconciliationService, MlPerformanceService, MlRetryWorkerService
+  - Controllers: FieldSuggestionController, TableSuggestionController, MlMetricsController, MlTrainingDataController, MlModelsController, MlTrainingJobsController, MlPerformanceController, AliasRulesController
+  - Providers: MlService, FieldSuggestionService, TableSuggestionService, FieldAssignmentValidatorService, MlMetricsService, MlTrainingDataService, MlModelsService, MlTrainingJobsService, MlTrainingAutomationService, MathReconciliationService, MlPerformanceService, MlRetryWorkerService, AliasEngineService, AliasRulesService
+- Controller: AliasRulesController
+  - Path: apps/api/src/ml/alias-rules.controller.ts
+  - Base route: admin/rules (admin-only: JwtAuthGuard + CsrfGuard + AdminGuard)
+  - Endpoints:
+    - GET /admin/rules?status=proposed → listRules() → AliasRulesService.listRulesByStatus()
+    - POST /admin/rules/:id/approve → approveRule() → AliasRulesService.approveRule() + audit alias.rule.approved
+    - POST /admin/rules/:id/reject → rejectRule() → AliasRulesService.rejectRule() + audit alias.rule.rejected
+- Service: AliasRulesService
+  - Path: apps/api/src/ml/alias-rules.service.ts
+  - Purpose: DB queries for alias_rules (list by status, approve, reject); invalidates AliasEngineService vendorRuleCache entry on approve/reject
+- Service: AliasEngineService
+  - Path: apps/api/src/ml/alias-engine.service.ts
+  - Purpose: vendor-scoped alias lookup + in-memory 5-min TTL cache (`Map<vendorId, {rules, loadedAt}>`); `applyAliases(segments, vendorId)` performs exact case-insensitive match against `alias_rules` where `status='active'`, replaces `segment.text` with `corrected_value`, sets `aliasApplied: true`; logs `alias.engine.applied` with vendorId, ruleCount, correctedCount
 - Service: MlTrainingAutomationService
   - Path: apps/api/src/ml/ml-training-automation.service.ts
   - Purpose: Polls qualified correction volume and enqueues global training jobs when threshold (>=1000) is reached
@@ -295,7 +316,7 @@
   - Path: apps/api/src/ml/ml.service.ts
   - Purpose: HTTP client wrapper for ML service with timeouts, error handling, and graceful degradation
   - Methods:
-    - suggestFields(payload): Calls POST /ml/suggest-fields with 5s timeout; payload can include selected `modelVersionId` and `filePath` (C1 A/B routing)
+    - suggestFields(payload): Calls POST /ml/suggest-fields with 5s timeout; payload can include selected `modelVersionId` and `filePath` (C1 A/B routing); success response can include optional `reasoning` alongside `data`
     - detectTables(payload): Calls POST /ml/detect-tables with 5s timeout
     - activateModel({version, filePath}): Calls POST /ml/models/activate with 5s timeout; returns { ok, activeVersion?, error? } (v8.9 B3)
   - Error handling: Normalizes errors to { ok: false, error: { code, message } }
@@ -303,10 +324,10 @@
   - Config: Reads ML_SERVICE_URL from env (defaults to http://ml-service:5000)
 - Service: RagRetrievalService
   - Path: apps/api/src/ml/rag-retrieval.service.ts
-  - Purpose: retrieve(serializedText, documentTypeId): embeds via Ollama nomic-embed-text, queries baseline_embeddings with pgvector cosine distance, returns top-3 {serializedText, confirmedFields}; graceful degradation to [] on failure.
+  - Purpose: retrieve(serializedText, documentTypeId): embeds via Ollama nomic-embed-text using `search_query: ` prefix, queries baseline_embeddings with pgvector cosine distance, returns top-3 {serializedText, confirmedFields}; graceful degradation to [] on failure.
 - Service: RagEmbeddingService
   - Path: apps/api/src/ml/rag-embedding.service.ts
-  - Purpose: quality gate check (math_pass/zero_corrections/admin), ML service Phase-2 serialization call (POST /ml/serialize), Ollama nomic-embed-text embedding call, volume cap enforcement (max 5 per document_type_id, evict oldest non-gold), insert into baseline_embeddings, audit/log events (rag.embed.stored / rag.embed.skipped).
+  - Purpose: quality gate check (math_pass/zero_corrections/admin), ML service Phase-2 serialization call (POST /ml/serialize), Ollama nomic-embed-text embedding call using `search_document: ` prefix, volume cap enforcement (max 5 per document_type_id, evict oldest non-gold), insert into baseline_embeddings, audit/log events (rag.embed.stored / rag.embed.skipped).
   - Called from: BaselineManagementService.confirmBaseline() (non-blocking)
 - Service: TableSuggestionService
   - Path: apps/api/src/ml/table-suggestion.service.ts
@@ -394,7 +415,7 @@
   - Path: apps/api/src/ml/field-suggestion.service.ts
   - Purpose: Orchestrates ML field suggestion generation and persistence for baselines
   - Methods:
-    - generateSuggestions(baselineId, userId): Loads segments and active fields, calls `POST /ml/serialize` to build `serializedText`, calls `RagRetrievalService.retrieve(serializedText, documentTypeId)` before `POST /ml/suggest-fields`, includes `ragExamples` in the ML request body, logs `rag.retrieval.used` (`retrievedCount`, `documentTypeId`), persists suggestions with metadata, enforces rate limits, and returns per-field confidence `tier` (`auto_confirm`/`verify`/`flag`) derived at read time from `confidenceScore` thresholds (`ML_TIER_AUTOCONFIRM`, `ML_TIER_VERIFY`)
+    - generateSuggestions(baselineId, userId): Loads segments and active fields, calls `POST /ml/serialize` to build `serializedText`, calls `RagRetrievalService.retrieve(serializedText, documentTypeId)` before `POST /ml/suggest-fields`, includes `ragExamples` in the ML request body, logs `rag.retrieval.used` (`retrievedCount`, `documentTypeId`), persists suggestions with metadata (including `llm_reasoning.qwenReasoning` from ML response `reasoning`), enforces rate limits, and returns per-field confidence `tier` (`auto_confirm`/`verify`/`flag`) derived at read time from `confidenceScore` thresholds (`ML_TIER_AUTOCONFIRM`, `ML_TIER_VERIFY`)
     - I6 math wire-up: after I4 normalization, calls MathReconciliationService with `currentOcr.documentTypeId` + normalized values, re-evaluates `llm_reasoning.ragAgreement` from normalized values against retrieved examples, then applies final confidence override (`1.0` pass, `0.0` fail + `math_reconciliation_failed`) before DB upsert
     - applyMultiPageFieldConflictPolicy(suggestions, segmentById): I5 post-aggregation scan grouped by fieldKey; Strategy A (strict) flags all occurrences with `validationOverride='conflicting_pages'` and `finalScore=0.0` when normalized values disagree across pages, or deduplicates to the highest-confidence occurrence when values are consistent
     - normalizeForPageConflictComparison(value): lowercases and strips whitespace for case-insensitive cross-page value comparison
@@ -444,6 +465,9 @@
     - `OcrService.getOcrResultsWithCorrections` (`apps/api/src/ocr/ocr.service.ts`) calls `getCurrentConfirmedOcr(attachmentId)` so the aggregation returns raw/parsed data and corrections only for the confirmed OCR output; missing confirmation yields `rawOcr: null` and empty `parsedFields`.
   - Added markOcrUtilized service method to persist `utilizedAt`/`utilizationType`/`utilizationMetadata` on confirmed outputs while emitting `OCR_UTILIZED_*` audit events for Categories A/B/C utilization.
   - Added archiveOcrResult for Option-C archiving so confirmed `data_export` outputs owned by the requester are marked `status='archived'`, timestamped, and fire `OCR_ARCHIVED` while remaining hidden from current confirmed reads.
+- Service: OcrQueueService
+  - Path: apps/api/src/ocr/ocr-queue.service.ts
+  - Responsibilities: in-memory polling queue for OCR jobs (`OnModuleInit`/`OnModuleDestroy`); dispatches queued jobs to OcrService at 1500ms intervals; enforces MAX_ACTIVE_PER_USER=3 concurrency limit; reads from `ocr_jobs` table; disabled via `OCR_QUEUE_ENABLED=false`
 - Controller: OcrController
   - Path: apps/api/src/ocr/ocr.controller.ts
   - Base route: none (methods declare their own `/ocr`, `/attachments`, `/ocr-results` paths)
@@ -538,6 +562,7 @@
     - deleteAssignment(baselineId, fieldKey, userId, correctionReason): Requires correctionReason for reviewed baselines, emits audit log
     - listAssignments(baselineId, userId): Returns all assignments for a baseline with ownership check (includes suggestionContext)
     - bulkConfirmSuggestions(baselineId, userId): Sets `suggestionAccepted=true` for rows where `confidenceScore >= ML_TIER_AUTOCONFIRM` and `suggestionAccepted IS NULL`, then emits `baseline.suggestions.bulk-confirm` audit with update count
+  - N6 correction tracking: after upsertAssignment, if `correctedFrom` non-null and `suggestionAccepted=false`, resolves vendorId from baseline/attachment and writes to `correction_events`; if count for (vendor_id, field_key, raw_ocr_value) >= 3, upserts `alias_rules` with `status='proposed'`; logs `correction.event.recorded` and `alias.rule.proposed`
     - assembleReviewManifest(baselineId, userId): Assembles flattened review payload with `fields[]`, `similarContext` (top-3 pre-fetched entries per field), `tierCounts`, and `pageCount` for spatial verification mode
 - Controller: App bootstrap modules
   - Path: apps/api/src/bootstrap/bootstrap.service.ts (OnModuleInit)

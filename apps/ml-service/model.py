@@ -65,6 +65,10 @@ def generate_fields(prompt: str, json_schema: Dict[str, Any], timeout_seconds: f
         "prompt": prompt,
         "format": json_schema,
         "stream": False,
+        "keep_alive": -1,
+        "options": {
+            "num_ctx": 8192,
+        },
     }
 
     try:
@@ -94,4 +98,3 @@ def generate_fields(prompt: str, json_schema: Dict[str, Any], timeout_seconds: f
     except json.JSONDecodeError:
         logging.warning("ml.ollama.parse.invalid_json")
         return {}
-

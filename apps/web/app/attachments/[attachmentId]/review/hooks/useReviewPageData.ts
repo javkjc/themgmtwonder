@@ -102,6 +102,17 @@ export function useReviewPageData(attachmentId: string | undefined) {
     loadBaseline();
   }, [authLoading, loadBaseline, me]);
 
+  // Fire prefetch when baseline and OCR data are both ready
+  useEffect(() => {
+    if (baseline?.id && ocrData) {
+      apiFetchJson(`/baselines/${baseline.id}/suggestions/prefetch`, {
+        method: 'POST',
+      }).catch(() => {
+        // Ignore failures completely
+      });
+    }
+  }, [baseline?.id, ocrData]);
+
   // Load table suggestions
   const loadSuggestions = useCallback(async () => {
     if (!attachmentId || !me) return;

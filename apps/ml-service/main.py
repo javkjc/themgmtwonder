@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import time
 from typing import Any, Dict, List, Literal, Optional
 
@@ -30,6 +30,7 @@ class SegmentInput(BaseModel):
     boundingBox: Optional[SegmentBoundingBoxInput] = None
     pageNumber: int = 0
     confidence: float = 0.0
+    aliasApplied: bool = False
 
 
 class FieldInput(BaseModel):
@@ -74,6 +75,7 @@ class SuggestFieldsResponse(BaseModel):
     ok: bool
     modelVersion: str
     suggestions: List[Suggestion]
+    reasoning: Optional[str] = None
     ragAgreementNote: str = (
         "ragAgreement is pre-normalization string matching in ml-service; API re-evaluates after normalization."
     )
@@ -280,6 +282,8 @@ def suggest_fields(payload: SuggestFieldsRequest) -> SuggestFieldsResponse:
                 zone=_segment_zone(segment, payload.pageHeight),
                 bounding_box=segment.boundingBox.model_dump() if segment.boundingBox else None,
                 page_number=int(segment.pageNumber or 0),
+                confidence=segment.confidence,
+                alias_applied=segment.aliasApplied,
             )
         )
 
@@ -290,7 +294,6 @@ def suggest_fields(payload: SuggestFieldsRequest) -> SuggestFieldsResponse:
         )
 
     serialized_document = serialize_segments(serialized_segments, page_width=float(payload.pageWidth))
-
     fields_payload = [field.model_dump() for field in payload.fields]
     rag_payload = [example.model_dump() for example in payload.ragExamples]
     prompt_payload = build_prompt_payload(
@@ -303,7 +306,7 @@ def suggest_fields(payload: SuggestFieldsRequest) -> SuggestFieldsResponse:
         generated = generate_fields(
             prompt=prompt_payload["prompt"],
             json_schema=prompt_payload["format"],
-            timeout_seconds=45.0,
+            timeout_seconds=300.0,
         )
     except ModelNotReadyError as exc:
         return SuggestFieldsResponse(
@@ -327,6 +330,8 @@ def suggest_fields(payload: SuggestFieldsRequest) -> SuggestFieldsResponse:
             suggestions=[],
             error=ErrorPayload(code="SUGGESTION_FAILED", message=f"{type(exc).__name__}: {exc}"),
         )
+
+    reasoning_text: Optional[str] = (generated.get("_reasoning") or "")[:300] or None
 
     suggestions: List[Suggestion] = []
     for field in payload.fields:
@@ -367,6 +372,7 @@ def suggest_fields(payload: SuggestFieldsRequest) -> SuggestFieldsResponse:
         ok=True,
         modelVersion=registry.active_version or MODEL_VERSION,
         suggestions=suggestions,
+        reasoning=reasoning_text,
     )
 
 
@@ -511,4 +517,3 @@ def detect_tables_endpoint(payload: DetectTablesRequest) -> DetectTablesResponse
                 message=f"{type(exc).__name__}: {exc}",
             ),
         )
-

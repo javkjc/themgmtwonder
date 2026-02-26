@@ -25,7 +25,7 @@ export interface LlmReasoning {
 }
 
 export interface ProcessedSuggestion {
-    segmentId: string;
+    segmentId: string | null;
     fieldKey: string;
     /** Original value returned by the model — never modified */
     originalValue: string;
@@ -226,7 +226,7 @@ export function computeFinalScore(opts: {
 // ─── Per-suggestion Processing ────────────────────────────────────────────────
 
 export interface RawMlSuggestion {
-    segmentId: string;
+    segmentId: string | null;
     fieldKey: string;
     confidence: number;
     ragAgreement?: number;

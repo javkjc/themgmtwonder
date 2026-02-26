@@ -18,7 +18,7 @@ export class RagRetrievalService {
   private readonly timeoutMs = 5000;
   private readonly ollamaEmbeddingsUrl = 'http://ollama:11434/api/embeddings';
 
-  constructor(private readonly dbs: DbService) {}
+  constructor(private readonly dbs: DbService) { }
 
   async retrieve(
     serializedText: string,
@@ -61,6 +61,8 @@ export class RagRetrievalService {
   }
 
   private async embedQuery(prompt: string): Promise<number[]> {
+    const prefixedPrompt = 'search_query: ' + prompt;
+    this.logger.log(`[TEMP-VERIFY] embedQuery prompt prefix: "${prefixedPrompt.substring(0, 40)}..."`);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
 
@@ -70,7 +72,7 @@ export class RagRetrievalService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'nomic-embed-text',
-          prompt,
+          prompt: prefixedPrompt,
         }),
         signal: controller.signal,
       });

@@ -1283,6 +1283,7 @@ The "Confirm Extraction" button on the task detail page is vestigial. Since M4 w
 ---
 
 ### N_FIX — Nomic Embedding Prefix Correction (Complexity: Simple)
+**Status:** ✅ Completed on 2026-02-25
 **Must run before L6.** Nomic Embed Text was trained with task-specific prefixes. Without them the semantic space is degraded — retrieval accuracy drops silently with no error signal.
 
 **Problem statement**
@@ -1313,6 +1314,7 @@ The "Confirm Extraction" button on the task detail page is vestigial. Since M4 w
 ---
 
 ### N2.5 — Schema-Aware Chain-of-Thought Prompt (Complexity: Simple)
+**Status:** ✅ Completed on 2026-02-25
 **Depends on:** N_FIX (same files — apply after).
 
 **Problem statement**
@@ -1346,16 +1348,122 @@ Qwen's current system prompt is 3 lines with no structural guidance. Ollama enfo
 
 **Checkpoint N2.5 — Verification:**
 - Manual: Generate suggestions; inspect raw ML service response → `_reasoning` key present with a non-empty string ≤ 200 chars.
-- Manual: Field extraction values unchanged from pre-N2.5 baseline (CoT must not degrade extraction).
+- Manual: Field extraction values unchanged from pre-N2.5 baseline (CoT must not degrade extraction). **Comparison must use `normalizedValue`, not `assignedValue` — normalization layer (I4) strips currency symbols and reformats dates. `$110.00` → `110.00` is correct behaviour, not regression. For date fields, compare parsed ISO 8601 timestamp, not formatted string.**
 - Manual: `_reasoning` does not appear in `baseline_field_assignments.llm_reasoning` DB column (not persisted).
 - Regression: `POST /ml/serialize` endpoint unaffected (uses `serialize_segments()` not `build_prompt_payload()`).
+
+**Status: ✅ Completed 2026-02-25 — blockers resolved:**
+- Blocker 1 (`_reasoning` absent in DB): Root cause confirmed — `main.py` never extracted it from `generated`. Fixed in N_FIX2 below.
+- Blocker 2 (formatting drift): `$110.00` vs `110.00` is normalization behaviour. Checkpoint methodology amended — compare `normalizedValue`, not `assignedValue`.
 
 **Estimated effort:** 20 minutes
 **Complexity flag:** Simple
 
 ---
 
+### N_FIX2 — Wire `_reasoning` Through the ML Pipeline (Complexity: Simple)
+**Status:** ✅ Completed on 2026-02-25
+**Depends on:** N2.5 complete.
+
+**Problem statement**
+N2.5 added `_reasoning` to the Qwen schema and prompt, but `main.py` never extracts it from the generated response. It is silently dropped before reaching the API. The `llm_reasoning` JSONB column in `baseline_field_assignments` therefore never contains Qwen's CoT output. This fix closes the pipeline gap.
+
+**Root cause (confirmed):**
+- `main.py` loop (`for field in payload.fields`) only extracts field keys — `_reasoning` is in `generated` but never read.
+- `SuggestFieldsResponse` Pydantic model has no `reasoning` field.
+- TypeScript `field-suggestion.service.ts` has no path to receive it.
+
+**Files / Locations:**
+- Amend: `apps/ml-service/prompt_builder.py` — harden `_reasoning` description to document-level
+- Amend: `apps/ml-service/main.py` — extract `_reasoning`, hard-cap at 300 chars, add to response model
+- Amend: `apps/api/src/ml/ml.service.ts` — add `reasoning?: string | null` to response interface
+- Amend: `apps/api/src/ml/field-suggestion.service.ts` — inject `qwenReasoning` into `llmReasoningWithNorm`
+- Docs: `tasks/codemapcc.md`
+
+**Implementation plan:**
+
+1. **`apps/ml-service/prompt_builder.py`** — update `_reasoning` to make clear it is document-level:
+   - In `build_nullable_json_schema()`, change description to: `"Overall document structure analysis: spatial anchor for totals, any math discrepancy. One sentence. Do not describe individual fields."`
+   - In `build_prompt_payload()` system prompt, change the `_reasoning` instruction line to: `"In '_reasoning', briefly describe the overall document structure: the spatial anchor used for totals and any math discrepancy observed. This applies to the entire document, not individual fields."`
+
+2. **`apps/ml-service/main.py`** — after `generated = generate_fields(...)`:
+   - Extract with hard server-side cap (schema `maxLength` is a hint only — Ollama does not enforce it):
+     ```python
+     reasoning_text: Optional[str] = (generated.get("_reasoning") or "")[:300] or None
+     ```
+   - Add `reasoning: Optional[str] = None` to `SuggestFieldsResponse` Pydantic model.
+   - Return `reasoning=reasoning_text` in the final `SuggestFieldsResponse`.
+
+3. **`apps/api/src/ml/ml.service.ts`** — add to the `SuggestFieldsResponse` TypeScript interface:
+   ```typescript
+   reasoning?: string | null;
+   ```
+   This enables proper typing in step 4 — no `as any` cast needed.
+
+4. **`apps/api/src/ml/field-suggestion.service.ts`** — after ML call returns, extract using typed interface:
+   ```typescript
+   const llmQwenReasoning = mlResult.reasoning ?? null;
+   ```
+   Inject into `llmReasoningWithNorm` (line ~383):
+   ```typescript
+   const llmReasoningWithNorm: Record<string, unknown> = {
+     ...processed.llmReasoning,
+     qwenReasoning: llmQwenReasoning,  // document-level; same value on every field assignment
+     normalizationError,
+     finalScore,
+     // ... rest unchanged
+   };
+   ```
+   Stored in existing `llm_reasoning` JSONB column under key `qwenReasoning` — **no migration needed**.
+
+**Why document-level reasoning on every field assignment is correct:**
+- Any field clicked in the review UI exposes the full extraction context
+- 300-char string in existing JSONB — no size concern
+- Global token budget: 300 chars ≈ 75 tokens added to completion. Acceptable on iGPU. Hard cap prevents drift.
+
+**Checkpoint N_FIX2 — Verification:**
+```bash
+# After restarting todo-api and todo-ml-service, trigger suggestions, then:
+docker exec todo-db psql -U todo -d todo_db -c \
+  "SELECT field_key, llm_reasoning->>'qwenReasoning' AS reasoning
+   FROM baseline_field_assignments
+   WHERE llm_reasoning->>'qwenReasoning' IS NOT NULL
+   LIMIT 5;"
+# Expect: rows with non-null reasoning text ≤ 300 chars
+```
+- Confirm `reasoning` key is present in `SuggestFieldsResponse` in ML service logs.
+- Confirm TypeScript build passes: `docker compose exec api npm run build`.
+- Regression: existing `llm_reasoning` fields (`normalizationError`, `finalScore`, `ragAgreement`, math patch fields) all still present.
+
+**Estimated effort:** 1 hour
+**Complexity flag:** Simple
+
+---
+
+### N_PERF — Ollama Cold-Start + Keep-Alive Fix
+**Status:** ✅ Completed on 2026-02-26
+
+**Problem statement**
+Ollama's default `keep_alive` is 5 minutes. After idle or container restart, Qwen is evicted from memory. The first real inference request then pays a cold-load penalty (observed: 122–172s on i5-7300U). `warm_up_model` only checked `/api/tags` — confirming the model was listed but never loading it into RAM.
+
+**Files Changed**
+- `apps/ml-service/model_registry.py` — `warm_up_model` Step 2: after `/api/tags` confirms model is listed, fires `POST /api/generate` with `{"prompt": "hi", "keep_alive": -1}` to force Ollama to load Qwen into memory at startup. Warmup timeout: `max(timeout_seconds, 300.0)`.
+- `apps/ml-service/model.py` — `generate_fields` payload: added `"keep_alive": -1` (prevents eviction between requests) and `"options": {"num_ctx": 8192}` (aligns with N3 requirement; replaces earlier 4096 interim value).
+- `apps/ml-service/main.py` — `generate_fields` call timeout raised 120s → 300s (safety net for cold-load scenarios).
+
+**Deployment note:** `ml-service` has no bind mount — full image rebuild required for any Python change: `docker compose build ml-service && docker compose up -d ml-service`.
+
+**Verification**
+- Startup log sequence: `GET /api/tags (200) → POST /api/generate warmup (200) → ml.ollama.tags.ready → Application startup complete`.
+- `docker exec todo-docker-ollama-1 ollama ps` shows `UNTIL: Forever` and `CONTEXT: 8192` after warmup.
+- Warm inference latency: 33–35s (down from 39–44s with 32768 context). Cold eviction runs eliminated.
+
+**Hardware note:** i5-7300U, no `/dev/dri` device passthrough — 100% CPU inference. `num_gpu` flags are silently ignored. GPU acceleration not available in this environment.
+
+---
+
 ### L6 — Seed Corpus (Complexity: Simple)
+**Status:** ✅ Completed on 2026-02-25
 
 **Problem statement**
 RAG retrieval returns no results until confirmed baselines accumulate. A seed corpus of synthetic gold-standard examples provides immediate few-shot context for all supported document types before any real baselines are confirmed.
@@ -1556,11 +1664,11 @@ RAG retrieval returns no results until confirmed baselines accumulate. A seed co
 
 ---
 
-## v8.12 — Norma: Self-Healing Document Intelligence
+## v8.12 — Self-Healing Document Intelligence
 
 **Date:** 2026-02-25
 **Status:** MISSION READY — Pending E1/E2 completion (v8.9 remainder)
-**Prerequisite:** E1 + E2 must be complete and verified before Norma begins.
+**Prerequisite:** E1 + E2 must be complete and verified before v8.12 begins.
 
 **Vision:** Transition from a Sequential Extractor to a Self-Healing Document Agent. Address the three core failure points of document AI — OCR noise, layout variance, and silent math failures — using the existing local hardware stack. No new infrastructure. No new dependencies beyond what is already approved.
 
@@ -1579,15 +1687,16 @@ RAG retrieval returns no results until confirmed baselines accumulate. A seed co
 - [NO] SSE — polling only for retry status.
 
 **STOP Events:**
-- **STOP — N0 null rate > 20%:** Fix confidence propagation before any further Norma work.
+- **STOP — N0 null rate > 20%:** Fix confidence propagation before any further v8.12 work.
 - **STOP — N5 without N6:** Do not ship correction event tracking unless the `/admin/rules` UI is scheduled in the same sprint.
 - **STOP — zone_classifier.py touched:** Revert immediately. Use prompt annotation only.
 
 ---
 
-## PART 4 — Norma v8.12: Signal Layer
+## PART 4 — v8.12: Signal Layer
 
 ### N0 — Confidence Propagation Audit (Prerequisite — Hard Blocker)
+**Status:** ✅ Completed on 2026-02-26
 
 **Problem statement**
 `[LOW_CONF]` tagging (N1) is only meaningful if PaddleOCR confidence values survive the full pipeline from OCR Worker to ML Service. Currently there is no verification that confidence is non-null at each layer. This audit must be completed and documented before any Signal Layer feature is written.
@@ -1626,6 +1735,7 @@ RAG retrieval returns no results until confirmed baselines accumulate. A seed co
 ---
 
 ### N1 — Contextual Linguistic Correction via LOW_CONF Tagging
+**Status:** ✅ Completed on 2026-02-26
 
 **Problem statement**
 PaddleOCR produces a confidence score per segment but this signal is discarded before serialization. Segments with low confidence (e.g. `5tory` at 0.42) are treated identically to high-confidence segments (e.g. `Story` at 0.97). Qwen has no signal to distrust the literal string and apply linguistic correction.
@@ -1658,9 +1768,10 @@ PaddleOCR produces a confidence score per segment but this signal is discarded b
 
 ---
 
-## PART 5 — Norma v8.12: Alias Engine
+## PART 5 — v8.12: Alias Engine
 
 ### N2 — M5 Alias Engine (Vendor-Scoped, Pre-LLM)
+**Status:** ✅ Completed on 2026-02-26
 
 **Problem statement**
 Known OCR noise patterns for specific vendors (e.g. `5tory → Story` for vendor X) are currently corrected manually on every document. A deterministic pre-LLM substitution pass using a vendor-scoped alias table eliminates recurring corrections before they reach Qwen.
@@ -1699,9 +1810,10 @@ Known OCR noise patterns for specific vendors (e.g. `5tory → Story` for vendor
 
 ---
 
-## PART 6 — Norma v8.12: Spatial Layer
+## PART 6 — v8.12: Spatial Layer
 
 ### N3 — Selective Terse Annotation + 2+8 Truncation
+**Status:** ✅ Completed on 2026-02-26
 
 **Problem statement**
 Zone serialization sends full text blocks to Qwen with no spatial metadata. For `footer` and `line_items` zones, positional context (e.g. "this value is in the bottom-right") meaningfully aids extraction. Dense line-item tables also risk exceeding the effective context window on long invoices.
@@ -1740,6 +1852,7 @@ Zone serialization sends full text blocks to Qwen with no spatial metadata. For 
 ---
 
 ### N4 — Keyword Anchor Normalization with Synonym Groups (Option B — Prompt Annotation Only)
+**Status:** ✅ Completed on 2026-02-26
 
 **Problem statement**
 Zone boundaries are fixed Y-coordinate thresholds. If a vendor places "Subtotal" at Y=0.70 instead of the expected Y=0.82, the zone classifier assigns it correctly but Qwen has no spatial landmark to anchor its understanding of the document's financial structure. Additionally, vendors use inconsistent terminology — "Total Due," "Balance Due," "Amount to Pay" all mean the same landmark. Keyword anchors with synonym groups provide layout-tolerant, vendor-agnostic spatial context without touching `zone_classifier.py`.
@@ -1815,7 +1928,7 @@ Zone boundaries are fixed Y-coordinate thresholds. If a vendor places "Subtotal"
 
 ---
 
-## PART 7 — Norma v8.12: Immune System
+## PART 7 — v8.12: Immune System
 
 ### N_MIG — Migration: Three New Tables (Prerequisite for N2, N5, N6_RETRY)
 **Status:** ✅ Completed on 2026-02-25
@@ -1999,9 +2112,99 @@ The existing I6 math reconciliation runs synchronously and flags failures with `
 
 ---
 
-## PART 8 — Norma v8.12: Learning Layer (Hard Gate)
+## PART 7b — v8.12: Perceived Latency Layer
+
+### N_PREFETCH — Background Suggestion Prefetch (Complexity: Simple)
+**Status:** ✅ Completed on 2026-02-27
+**Depends on:** N3, N4 complete (prompt pipeline stable before prefetch fires it automatically).
+
+**Problem statement**
+Suggestion generation takes 33–35s of wall-clock time on this hardware. That time is irreducible. However, 30–120s of dead time already exists between "OCR completes" and "user clicks Get Suggestions" — the user is reading the OCR result, checking the document type, naming the baseline. Prefetching consumes this dead time invisibly, making perceived latency near-zero for the common case without changing the actual inference time.
+
+**Concurrency constraint (i5-7300U single-lane bridge):**
+Ollama processes one `/api/generate` at a time on this hardware. Concurrent prefetch jobs queue behind each other, potentially making tail latency worse for concurrent users. A concurrency guard is mandatory.
+
+**Strategy: `ML_PREFETCH_STRATEGY` environment variable**
+- `PAGE_LOAD` (default, recommended): prefetch fires when the user opens the review page. Safe under concurrency — only fires when a user has active intent.
+- `OCR_COMPLETE` (opt-in): prefetch fires immediately after OCR job completes. Maximum latency savings but consumes CPU for every upload regardless of whether the user ever reviews it. Only appropriate for single-user deployments.
+- `DISABLED`: no prefetch; behaviour identical to today.
+
+**Files / Locations:**
+- Amend: `apps/api/src/ml/field-suggestion.service.ts` — add `isOllamaBusy` in-memory lock + `prefetchSuggestions()` fire-and-forget method.
+- Amend: `apps/api/src/ml/field-suggestion.controller.ts` — `GET /baselines/:baselineId/suggestions/prefetch` endpoint (page-load trigger).
+- Amend: `apps/api/src/ocr/ocr-queue.service.ts` — OCR_COMPLETE trigger (only when `ML_PREFETCH_STRATEGY=OCR_COMPLETE`).
+- Amend: `apps/web/app/attachments/[attachmentId]/review/hooks/useReviewPageData.ts` — fire prefetch on page load (PAGE_LOAD strategy).
+- Docs: `tasks/codemapcc.md`.
+
+**Implementation plan:**
+
+1. **Concurrency guard** in `FieldSuggestionService`:
+   ```typescript
+   private isOllamaBusy = false;
+
+   async prefetchSuggestions(baselineId: string, userId: string): Promise<void> {
+     if (this.isOllamaBusy) {
+       this.logger.debug('prefetch.skipped.busy', { baselineId });
+       return; // Silent skip — never queue, never error
+     }
+     // Check if suggestions already exist and are fresh
+     const existing = await this.db.select()
+       .from(baselineFieldAssignments)
+       .where(eq(baselineFieldAssignments.baselineId, baselineId))
+       .limit(1);
+     if (existing.length > 0) {
+       this.logger.debug('prefetch.skipped.already_exists', { baselineId });
+       return;
+     }
+     try {
+       this.isOllamaBusy = true;
+       await this.generateSuggestions(baselineId, userId);
+       this.logger.log('prefetch.complete', { baselineId });
+     } catch (err) {
+       this.logger.warn('prefetch.failed', { baselineId, error: err.message });
+       // Swallow — prefetch failure must never surface to user
+     } finally {
+       this.isOllamaBusy = false;
+     }
+   }
+   ```
+
+2. **`isOllamaBusy` scope:** NestJS services are singletons — the flag is process-wide. This is correct: one flag guards one Ollama instance. No Redis or DB needed.
+
+   **Stuck-lock analysis:** The `finally` block handles all normal error paths. A NestJS process crash resets in-memory state on restart — not a concern. The real risk is a hung Ollama connection that never closes. This is already bounded: `httpx.Client(timeout=300.0)` in `model.py` covers total request time — after 300s, httpx raises `ReadTimeout`, which propagates as `ModelNotReadyError`, which the `except` block catches, which hits `finally` and releases the lock. Maximum lock hold time is 300s. **No additional timeout guard needed on the lock itself** — the httpx timeout is already the guard. Do not add a separate lock TTL; it would add complexity without closing any real gap.
+
+3. **Existing assignments short-circuit:** if `baseline_field_assignments` already has rows for this baseline, prefetch returns immediately. This prevents re-running on repeat page visits and ensures explicit "Get Suggestions" re-runs always work (they bypass the prefetch path entirely).
+
+4. **PAGE_LOAD trigger** (default):
+   - New endpoint: `POST /baselines/:baselineId/suggestions/prefetch` — calls `prefetchSuggestions()` fire-and-forget (returns 202 immediately, work runs async).
+   - Frontend: in `useReviewPageData.ts`, after baseline loads and OCR output exists, fire `POST /baselines/:id/suggestions/prefetch` with no await. Ignore response. If it fails, no error shown.
+
+5. **OCR_COMPLETE trigger** (opt-in, `ML_PREFETCH_STRATEGY=OCR_COMPLETE` only):
+   - In `ocr-queue.service.ts`, after successful OCR job write to `attachment_ocr_outputs`: check env flag, resolve `baselineId` from attachment, call `prefetchSuggestions()` fire-and-forget.
+   - Guard: only fires if a draft baseline exists for the attachment and it has associated fields. If no baseline or no fields, skip silently.
+
+6. **`isOllamaBusy` also wraps explicit `generateSuggestions`:** when user explicitly clicks "Get Suggestions", `generateSuggestions` sets/clears the same flag. This prevents a prefetch and an explicit call overlapping.
+   - If user clicks while prefetch is in-flight: explicit call sees `isOllamaBusy = true`, waits... actually it should NOT skip — explicit user action must not be silently dropped. Use different behaviour: prefetch skips silently, explicit call blocks until lock is free (or errors after timeout).
+   - Implementation: use a `prefetchOnly` param — if `prefetchOnly=true` and busy, skip; if `prefetchOnly=false` (explicit), acquire lock with a short wait (5s) then proceed or throw a 503.
+
+**Checkpoint N_PREFETCH — Verification:**
+- Manual (PAGE_LOAD): Open review page for a baseline with OCR done but no suggestions → wait 5s → check `baseline_field_assignments` → rows populated without clicking "Get Suggestions".
+- Manual: Open same review page again → `prefetch.skipped.already_exists` in API logs.
+- Manual: Two users open review pages simultaneously → second user's prefetch logs `prefetch.skipped.busy`; first user's suggestions still complete.
+- Manual: `ML_PREFETCH_STRATEGY=DISABLED` → no prefetch fires; "Get Suggestions" button works as today.
+- Manual (OCR_COMPLETE): Upload file → after OCR completes, API logs show `prefetch.complete` before user opens review page.
+- Regression: Explicit "Get Suggestions" click always produces a result regardless of prefetch state.
+- Regression: Prefetch failure (Ollama down) → page loads normally, no error shown to user, "Get Suggestions" still works.
+
+**Estimated effort:** 4 hours
+**Complexity flag:** Medium
+
+---
+
+## PART 8 — v8.12: Learning Layer (Hard Gate)
 
 ### N6 — Correction Event Tracking (Phase 1 — Data Only)
+**Status:** ✅ Completed on 2026-02-27
 
 **Problem statement**
 Every human edit on the review page that corrects a suggested value is a learning signal. Currently these corrections are stored in `baseline_field_assignments` (`correctedFrom` field) but are not aggregated into a trainable alias corpus. This task captures the raw correction signal.
@@ -2047,6 +2250,7 @@ Every human edit on the review page that corrects a suggested value is a learnin
 ---
 
 ### N7 — Rule Management UI: /admin/rules (Hard Gate — unlocks N6)
+**Status:** ✅ Completed on 2026-02-27
 
 **Problem statement**
 Proposed alias rules sit in `PROPOSED` state indefinitely without human review. This page gives admins visibility into all proposed rules and the ability to approve or reject them. Only approved rules become `active` and enter the alias engine pipeline. This is the governance gate that prevents rule poisoning.
@@ -2094,13 +2298,13 @@ Proposed alias rules sit in `PROPOSED` state indefinitely without human review. 
 
 ---
 
-## PART 9 — Norma v8.12: Execution Order
+## PART 9 — v8.12: Execution Order
 
-**Prerequisites (must complete before Norma begins):**
+**Prerequisites (must complete before v8.12 begins):**
 - E1 Performance API ✅ or in-progress
 - E2 Performance UI ✅ or in-progress
 
-**Norma critical path:**
+**v8.12 critical path:**
 ```
 N_MIG (migration) ──────────────────────────────────────────────┐
                                                                  ↓
@@ -2134,7 +2338,7 @@ N7 (rules UI) ──────────────────────
 
 ---
 
-## PART 10 — Norma v8.12: Definition of Done
+## PART 10 — v8.12: Definition of Done
 
 **Feature completeness:**
 - [ ] Confidence null rate documented in `executionnotes.md` at all four pipeline checkpoints (N0).
@@ -2161,7 +2365,7 @@ N7 (rules UI) ──────────────────────
 - [ ] Reject action sets rule `rejected`; alias engine never loads it (N7).
 
 **Guardrail compliance:**
-- [ ] `zone_classifier.py` has zero modifications across all Norma tasks.
+- [ ] `zone_classifier.py` has zero modifications across all v8.12 tasks.
 - [ ] No alias rule with `vendor_id = NULL` exists in DB (schema constraint enforced).
 - [ ] No alias rule with `status = 'active'` exists before N7 ships (verified by DB query).
 - [ ] `ML_MATH_RETRY_ENABLED=false` default confirmed in `.env` and `docker-compose.yml`.
@@ -2179,9 +2383,276 @@ N7 (rules UI) ──────────────────────
 - [ ] `tasks/executionnotes.md` updated with N0 audit results and completion evidence.
 - [ ] `tasks/features.md` v8.12 section reflects actual state.
 
-**Tag:** `git tag v8.12 -m "Norma: Self-Healing Document Intelligence complete"`
+**Tag:** `git tag v8.12 -m "Self-Healing Document Intelligence complete"`
 
 ---
+
+---
+
+## PART 11 — v8.13 Intent Layer: Document-Type-Aware Field Scoping
+
+**Date:** 2026-02-25
+**Status:** 📋 Planned — begins after v8.12 complete
+**Prerequisite:** v8.12 complete. `document_types` and `document_type_fields` tables already exist in DB (built in F1, v8.10). No new migrations required.
+
+**Vision:** Move from a "Global Field Pool" to a "Scoped Extraction Workspace." Every document is classified by type before extraction begins. Only fields relevant to that document type are shown, extracted, and validated — eliminating validation fatigue from irrelevant empty fields.
+
+**Architect's Guardrails (non-negotiable):**
+1. **Null fallback everywhere:** If `documentTypeId` is null at any layer, fall back silently to all active fields. No breakage for unclassified documents.
+2. **Atomic M+1 deployment:** `math_check_suppressions` table and suppression check in `math-reconciliation.service.ts` must ship in the same sprint as the Surgical Removal UI. Never ship one without the other.
+3. **Human-in-the-loop template evolution (M+2):** Cron proposes template changes via `template_change_proposals`; admin approves in UI before any template is mutated. No auto-promotion.
+4. **Background classification only:** Document type auto-detection is fire-and-forget after OCR. Never blocks the upload or review flow.
+
+**Approved packages:** None new. All features use existing stack.
+
+**Out of scope:**
+- [NO] Per-attachment field overrides (use `schema_adaptation_signals` + template proposals instead)
+- [NO] Manual vendor tables (layout fingerprinting via `baseline_embeddings` clusters)
+- [NO] Auto-promotion of template changes without admin approval
+- [NO] Changes to `zone_classifier.py`
+
+**STOP Events:**
+- **STOP — M+1 without math suppression:** Do not ship Surgical Removal UI unless `math_check_suppressions` and reconciliation bypass are in the same deploy.
+- **STOP — Auto-template mutation:** Cron must write to `template_change_proposals` only. Never directly update `document_type_fields`.
+
+---
+
+## PART 11a — v8.13 M1: Intent Layer (5 Phases)
+
+### I1 — Document Type Admin API (Complexity: Simple)
+
+**Problem statement**
+No CRUD API exists for managing `document_types` or `document_type_fields`. Admin users have no way to define which fields belong to which document type.
+
+**Files / Locations:**
+- New: `apps/api/src/document-types/document-types.module.ts`
+- New: `apps/api/src/document-types/document-types.service.ts`
+- New: `apps/api/src/document-types/document-types.controller.ts`
+- New: `apps/api/src/document-types/dto/create-document-type.dto.ts`
+- New: `apps/api/src/document-types/dto/update-document-type.dto.ts`
+- New: `apps/api/src/document-types/dto/add-document-type-field.dto.ts`
+- New: `apps/api/src/document-types/dto/update-document-type-field.dto.ts`
+- Amend: `apps/api/src/app.module.ts` — register `DocumentTypesModule`
+- Docs: `tasks/codemapcc.md`
+
+**Routes:**
+```
+GET    /document-types                        → listDocumentTypes()           [any auth]
+POST   /document-types                        → createDocumentType()          [admin]
+PATCH  /document-types/:id                    → updateDocumentType()          [admin]
+DELETE /document-types/:id                    → deleteDocumentType()          [admin]
+GET    /document-types/:id/fields             → getDocumentTypeFields()       [any auth]
+POST   /document-types/:id/fields             → addFieldToDocumentType()      [admin]
+PATCH  /document-types/:id/fields/:fieldKey   → updateDocumentTypeField()     [admin]
+DELETE /document-types/:id/fields/:fieldKey   → removeFieldFromDocumentType() [admin]
+```
+
+`getDocumentTypeFields()` JOINs `document_type_fields` with `field_library` to return `label` and `characterType` alongside `fieldKey`, `required`, `zoneHint`, `sortOrder`. Order by `sortOrder ASC`.
+
+**Checkpoint I1:**
+```bash
+curl -H "Cookie: ..." http://localhost:3001/document-types  # → []
+# Create type, add field, then:
+curl http://localhost:3001/document-types/<id>/fields -H "Cookie: ..."
+# → [{fieldKey, label, characterType, required, zoneHint, sortOrder}]
+```
+
+**Estimated effort:** 2–3 hours
+**Complexity flag:** Simple
+
+---
+
+### I2 — Document Type Admin UI (Complexity: Simple)
+
+**Problem statement**
+No frontend page exists to manage document types or their field templates.
+
+**Files / Locations:**
+- New: `apps/web/app/lib/api/document-types.ts` — API client + types (`DocumentType`, `DocumentTypeField`)
+- New: `apps/web/app/admin/document-types/page.tsx` — two-panel admin page (list left, field template right); auth/style pattern matches `apps/web/app/admin/fields/page.tsx`
+- Amend: `apps/web/app/components/Layout.tsx` (or admin nav) — add link to `/admin/document-types`
+- Docs: `tasks/codemapcc.md`
+
+**Checkpoint I2:**
+- Create "Purchase Invoice" type, add fields with sort order
+- Confirm GET returns fields in correct sort order
+- Non-admin user gets 403 on mutation routes
+
+**Estimated effort:** 2–3 hours
+**Complexity flag:** Simple
+
+---
+
+### I3 — Auto-Classification After OCR (Complexity: Medium)
+
+**Problem statement**
+`attachmentOcrOutputs.documentTypeId` is always null. No mechanism exists to detect the document type from OCR text.
+
+**Files / Locations:**
+- Amend: `apps/ml-service/main.py` — new endpoint `POST /ml/classify-document-type`
+- New: `apps/api/src/document-types/document-classifier.service.ts`
+- Amend: `apps/api/src/ocr/ocr-queue.service.ts` — fire-and-forget classification after `createDerivedOutput()`
+- Amend: `apps/api/src/ocr/ocr.module.ts` — import `DocumentTypesModule`
+- Docs: `tasks/codemapcc.md`
+
+**ML endpoint:**
+```
+POST /ml/classify-document-type
+Body: { text: str (first 800 chars), documentTypeNames: List[str] }
+Response: { ok: bool, matchedName: str | null, confidence: float }
+```
+Uses Qwen 1.5B zero-shot prompt. Confidence threshold: 0.6. Timeout: 8s. Returns `matchedName: null` below threshold or on error.
+
+**Classification flow in `OcrQueueService`:**
+1. After `createDerivedOutput()` succeeds, call `void this.classifyDocumentType(ocrOutputId, text)`
+2. Private method: fetch all doc types → call classifier → if match, `UPDATE attachment_ocr_outputs SET document_type_id = <id>`
+3. Any error caught and logged — never throws, never blocks OCR job
+
+**Checkpoint I3:**
+```bash
+# After OCR completes on an invoice PDF:
+docker exec todo-db psql -U todo -d todo_db -c \
+  "SELECT id, document_type_id FROM attachment_ocr_outputs ORDER BY created_at DESC LIMIT 3;"
+# Expect: document_type_id populated for the new attachment
+```
+
+**Estimated effort:** 3–4 hours
+**Complexity flag:** Medium
+
+---
+
+### I4 — Scoped Field Loading on Review Page (Complexity: Simple)
+
+**Problem statement**
+Review page always fetches all active fields regardless of document type. `documentTypeId` is not exposed in the OCR results response.
+
+**Files / Locations:**
+- Amend: `apps/api/src/ocr/ocr.service.ts` — add `documentTypeId` to `GET /attachments/:id/ocr/results` response
+- Amend: `apps/web/app/lib/api/ocr.ts` — add `documentTypeId?: string | null` to response type
+- Amend: `apps/web/app/attachments/[attachmentId]/review/hooks/useReviewPageData.ts` — branch on `documentTypeId` at line ~68
+- Docs: `tasks/codemapcc.md`
+
+**Logic change in `useReviewPageData`:**
+```ts
+const fields = documentTypeId
+  ? await apiFetchJson(`/document-types/${documentTypeId}/fields`)
+  : await apiFetchJson('/fields?status=active');  // fallback unchanged
+```
+
+**Cold-start UX safeguard:**
+When `documentTypeId` is null (no document types seeded yet, or classifier below threshold), the field panel silently shows the global pool — the user may think the AI is broken. Add a subtle info banner in `FieldAssignmentPanel` or the review page header when `documentTypeId` is null:
+> *"No document type detected. Showing all available fields. Set up document type templates in Admin → Document Types to enable auto-scoping."*
+One conditional render. Transforms "broken AI" into a clear admin setup call-to-action.
+
+**Checkpoint I4:**
+- Classified attachment: network call is `GET /document-types/<id>/fields`
+- Unclassified attachment: falls back to `GET /fields?status=active` AND info banner is visible
+- `FieldAssignmentPanel` renders only relevant fields in `sortOrder` sequence
+
+**Estimated effort:** 1–2 hours
+**Complexity flag:** Simple
+
+---
+
+### I5 — ML Extraction + Baseline Draft Scoping (Complexity: Simple)
+
+**Problem statement**
+ML suggestion generation and baseline draft creation both send/populate all active fields regardless of document type.
+
+**Files / Locations:**
+- Amend: `apps/api/src/ml/field-suggestion.service.ts` — scope fields query at line ~174
+- Amend: `apps/api/src/baseline/baseline-management.service.ts` — scope `validKeys` construction at lines ~126–155
+- Docs: `tasks/codemapcc.md`
+
+**Pattern (both files):**
+```ts
+if (currentOcr.documentTypeId) {
+  // JOIN document_type_fields with field_library WHERE documentTypeId = X AND status = 'active'
+  // ORDER BY sortOrder
+} else {
+  // existing: SELECT * FROM field_library WHERE status = 'active'
+}
+```
+Import `documentTypeFields` from `apps/api/src/db/schema.ts` (not from field-library or baseline schema files).
+
+**Checkpoint I5:**
+```bash
+docker exec todo-db psql -U todo -d todo_db -c \
+  "SELECT field_key FROM baseline_field_assignments WHERE baseline_id = '<new draft id>';"
+# Expect: only fields from the document type template
+```
+
+**Estimated effort:** 1–2 hours
+**Complexity flag:** Simple
+
+---
+
+## PART 11b — v8.13 M+1: Controlled Fluidity (Post-M1)
+
+**Prerequisite:** I1–I5 complete and in production with populated `documentTypeId` on OCR outputs.
+
+**Atomic requirement:** Surgical Removal UI and `math_check_suppressions` ship together. Never split.
+
+### Tasks (to be fully specced when M1 is live):
+- **IF1** — Add-from-Library UI: pull orphan fields from global library into the current baseline's field set
+- **IF2** — Surgical Removal UI: dismiss irrelevant fields; emits `schema_adaptation_signals` event (write path only)
+- **IF3** — `math_check_suppressions` table + reconciliation bypass: if any "Financial Triangle" role (subtotal/tax/total) is suppressed, entire math check returns `BYPASSED` (not `FAILED`); no retry triggered
+- **IF4** — Document Type Badge + Override on review page: visible badge showing detected type; dropdown to correct misclassification; correction emits `schema_adaptation_signals` with `weight: 10.0`
+- **IF5** — `schema_adaptation_signals` table (write path): logs add/remove/override events with `layout_cluster_id` (nullable until M+2 clusters exist), `document_type_id`, `user_id`, `weight`
+
+**New tables (Drizzle migration required):**
+- `math_check_suppressions`: `id`, `baseline_id` (fk), `suppressed_role` (text — e.g. 'subtotal'), `suppressed_by` (fk users), `suppressed_at`, `reason` (text nullable)
+- `schema_adaptation_signals`: `id`, `baseline_id` (fk), `field_key`, `action` (added|removed|accepted|rejected_suggestion|type_override), `document_type_id` (fk), `layout_cluster_id` (uuid nullable), `user_id` (fk), `weight` (decimal, default 1.0), `occurred_at`. Partition by month from day one.
+
+---
+
+## PART 11c — v8.13 M+2: Signal Harvesting (Post-M+1)
+
+**Prerequisite:** M+1 live with `schema_adaptation_signals` accumulating real data.
+
+### Tasks (to be fully specced when M+1 is live):
+- **IH1** — Layout clustering: cluster `baseline_embeddings` vectors (using confirmed field structure, not raw OCR text) to assign `layout_cluster_id` to signals
+- **IH2** — Background cron (Rule Suggester): queries `schema_adaptation_signals`; if cluster X rejects field Y in ≥5 baselines → writes to `template_change_proposals` with status `proposed`. Runs as background job, never on request path. O(N log N) operation.
+- **IH3** — `template_change_proposals` table: `id`, `document_type_id` (fk), `field_key`, `action` (add|remove), `layout_cluster_id`, `signal_count`, `status` (proposed|approved|rejected), `proposed_at`, `reviewed_by`, `reviewed_at`
+- **IH4** — Admin review UI (`/admin/template-proposals`): diff view per proposal; `[Promote to Template]` updates `document_type_fields`; `[Reject]` closes proposal. Human must approve before template changes.
+
+---
+
+## PART 11d — v8.13 M+3: Geometric Memory (Post-M+2)
+
+**Prerequisite:** M+2 live. `bounding_box` data confirmed live in `baseline_field_assignments` (verified 2026-02-25 — ML service returns `{x, y, width, height}` and it is persisted to JSONB column).
+
+### Tasks (to be fully specced when M+2 is live):
+- **IG1** — Hybrid vector construction: augment `baseline_embeddings` with geometric features from `bounding_box` data captured via drag-and-drop spatial assignments; transition from semantic-only to semantic+geometric vectors
+- **IG2** — Spatial anchor feedback: `$(X, Y)` and anchor text from confirmed drag-and-drop assignments feed into `search_query:` prefix for RAG retrieval; layout fingerprint improves "zero-guess" extraction for known vendor layouts
+
+---
+
+## PART 11e — v8.13 Execution Order
+
+**Critical path:**
+```
+I1 (Admin API) → I2 (Admin UI) → I3 (Auto-classify) → I4 (Scoped UI) → I5 (ML scoping)
+       ↓ (M1 complete, production data accumulating)
+IF1–IF5 (M+1 — Controlled Fluidity) [atomic: IF2+IF3 must ship together]
+       ↓
+IH1–IH4 (M+2 — Signal Harvesting)
+       ↓
+IG1–IG2 (M+3 — Geometric Memory)
+```
+
+**Definition of Done (M1 only — I1–I5):**
+- [ ] `GET /document-types` returns configured types
+- [ ] `GET /document-types/:id/fields` returns fields with label + characterType, ordered by sortOrder
+- [ ] Admin UI at `/admin/document-types` allows creating types and managing field templates
+- [ ] OCR pipeline auto-classifies new attachments (documentTypeId non-null in DB after OCR)
+- [ ] Review page network call switches to `/document-types/:id/fields` for classified attachments
+- [ ] Unclassified attachments fall back to full field library (no regression)
+- [ ] `baseline_field_assignments` for new classified baselines contains only doc-type-scoped fields
+- [ ] ML suggestions scoped to doc-type fields only for classified documents
+- [ ] `tasks/codemapcc.md` updated with all new files, endpoints, tables
+
+**Tag:** `git tag v8.13-m1 -m "Intent Layer: Document-Type-Aware Field Scoping (M1) complete"`
 
 ---
 
@@ -2397,33 +2868,64 @@ Define/retain the enrichment hook interface contract only. Defer concrete enrich
 Remaining Tasks — Execution Path
 PART 1 — v8.9 Remainder
 ID	Task	Status
-D5	Activation Gates (Online Only)	✅
-E1	Performance API	✅
-Anomaly: session-state.md says "E1 complete" but plan.md has no Status: ✅ under E1. Either E1 was done but plan.md never got the completion write, or session-state is ahead of reality. Needs reconciliation before proceeding past E2.
+D5	Activation Gates (Online Only)	✅ Completed 2026-02-25
+E1	Performance API	✅ Completed 2026-02-25
+E2	Admin Performance UI	✅ Completed 2026-02-25
 
 D4 — 🗑️ Deleted (SLM+RAG pivot, do not implement).
 
 PART 2 — v8.10 Optimal Extraction Accuracy
 ID	Task	Status
-I6.1	Deep Arithmetic Audit (Check C: unit_price × qty)	✅
-J1	Confidence Tier Logic + Bulk Confirm	✅
-K1	Side-by-Side Verification Layout	🔳 Pending
-K2	Keyboard Flow	🔳 Pending
-M4	Wire M1–M3 into field-suggestion.service.ts	🔳 Pending
-M5-pre	Remove "Confirm Extraction" Button	🔳 Pending
-L6	Seed Corpus	🔳 Pending
+F1	New Tables Migration	✅ Completed 2026-02-23
+F2	Amend Existing Tables Migration	✅ Completed 2026-02-23
+F3	pgvector Migration + baseline_embeddings Table	✅ Completed 2026-02-24
+G1	Preprocessor Container Setup	✅ Completed 2026-02-23
+H1	PyMuPDF Integration in OCR Pipeline	✅ Completed 2026-02-23
+H2	Ollama Service in docker-compose	✅ Completed 2026-02-24
+I1	Ollama/RAG Orchestrator in ml-service	✅ Completed 2026-02-24
+I2	Zone Classifier Integration	✅ Completed 2026-02-23
+I3	Updated Field Suggestion Service	✅ Completed 2026-02-23
+I4	Value Normalization Layer	✅ Completed 2026-02-23
+I5	Multi-Page Field Conflict Resolution	✅ Completed 2026-02-23
+I6	Line-Item Math Reconciliation	✅ Completed 2026-02-23
+I6.1	Deep Arithmetic Audit (Check C: unit_price × qty)	✅ Completed 2026-02-25
+J1	Confidence Tier Logic + Bulk Confirm	✅ Completed 2026-02-25
+K1	Side-by-Side Verification Layout	✅ Completed 2026-02-25
+K2	Keyboard Flow	✅ Completed 2026-02-25
+L1	training-worker Container Setup	✅ Completed 2026-02-23
+L4	Populate extraction_training_examples on Assignment	✅ Completed 2026-02-23
+M1	Embed-on-Confirm	✅ Completed 2026-02-24
+M2	RAG Retrieval Service	✅ Completed 2026-02-24
+M3	Prompt Builder Serialization Endpoint	✅ Completed 2026-02-24
+M4	Wire M1–M3 into field-suggestion.service.ts	✅ Completed 2026-02-25
+M5-pre	Remove "Confirm Extraction" Button	✅ Completed 2026-02-25
+N_FIX	Nomic Embedding Prefix Correction	✅ Completed 2026-02-25
+N2.5	Schema-Aware CoT Prompt	✅ Completed 2026-02-25
+L6	Seed Corpus	✅ Completed 2026-02-25
+N_FIX2	Wire _reasoning Through ML Pipeline	✅ Verified 2026-02-26
 
-PART 3–10 — v8.12 Norma Signal/Alias/Spatial/Immune/Learning
+PART 3–10 — v8.12 Self-Healing Document Intelligence
 ID	Task	Status
-N0	Confidence Propagation Audit (Hard Blocker)	🔳 Pending
-N1	Contextual Linguistic Correction (LOW_CONF tagging)	🔳 Pending
-N2	M5 Alias Engine (Vendor-Scoped, Pre-LLM)	🔳 Pending
-N3	Selective Terse Annotation + 2+8 Truncation	🔳 Pending
-N4	Keyword Anchor Normalization with Synonym Groups	🔳 Pending
-N5	I6 Async Math Retry Loop	🔳 Pending
-N6	Correction Event Tracking (Phase 1 — Data Only)	🔳 Pending
-N7	Rule Management UI: /admin/rules (Hard Gate)	🔳 Pending
+N_MIG	Migration: Three New Tables	✅ Completed 2026-02-25
+N5	I6 Async Math Retry Loop	✅ Completed 2026-02-25
+N0	Confidence Propagation Audit (Hard Blocker)	✅ Completed 2026-02-26
+N1	Contextual Linguistic Correction (LOW_CONF tagging)	✅ Completed 2026-02-26
+N2	M5 Alias Engine (Vendor-Scoped, Pre-LLM)	✅ Completed 2026-02-26
+N_PERF	Ollama Cold-Start + Keep-Alive Fix	✅ Completed 2026-02-26
+N3	Selective Terse Annotation + 2+8 Truncation	✅ Completed 2026-02-26
+N4	Keyword Anchor Normalization with Synonym Groups	✅ Completed 2026-02-26
+N_PREFETCH	Background Suggestion Prefetch	✅ Completed 2026-02-27
+N6	Correction Event Tracking (Phase 1 — Data Only)	✅ Completed 2026-02-27
+N7	Rule Management UI: /admin/rules (Hard Gate)	✅ Completed 2026-02-27
 
-PART 11 — v8.11 Semantic Search
+PART 3 — v8.11 Semantic Search
 ID	Task	Status
 S1	Semantic Search Endpoint + UI	🔳 Pending
+
+PART 11 — v8.13 Intent Layer: Document-Type-Aware Field Scoping
+ID	Task	Status
+I1	Document Type Admin API	🔳 Pending
+I2	Document Type Admin UI	🔳 Pending
+I3	Auto-Classification After OCR	🔳 Pending
+I4	Scoped Field Loading on Review Page	🔳 Pending
+I5	ML Extraction + Baseline Draft Scoping	🔳 Pending
