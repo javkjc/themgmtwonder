@@ -93,7 +93,8 @@ export type AuditAction =
   | 'ml.table.detect'
   | 'ml.table.ignore'
   | 'ml.table.convert'
-  | 'baseline.suggestions.bulk-confirm';
+  | 'baseline.suggestions.bulk-confirm'
+  | 'search.extractions';
 
 export type AuditModule =
   | 'auth'
@@ -107,7 +108,8 @@ export type AuditModule =
   | 'field_library'
   | 'baseline'
   | 'table'
-  | 'ml';
+  | 'ml'
+  | 'search';
 
 export type CreateAuditLogDto = {
   userId?: string | null;
@@ -131,7 +133,7 @@ export type ListAuditLogsQuery = {
 
 @Injectable()
 export class AuditService {
-  constructor(private readonly dbs: DbService) {}
+  constructor(private readonly dbs: DbService) { }
 
   async log(dto: CreateAuditLogDto) {
     try {

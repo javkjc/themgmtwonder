@@ -453,6 +453,7 @@ List tasks with weak evidence: [task IDs or "All tasks have strong evidence"]
 **Audience**: Project owner needs clear go/no-go decision
 
 # for generating task from plan.md 1 each time ********************************
+
 Generate execution prompt for next task from tasks/plan.md.
 Output must be anti-hallucination: explicit sources, no assumptions, verification-heavy.
 

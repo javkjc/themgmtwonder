@@ -3040,7 +3040,7 @@
 
   --- 
 
-  ## v8.9 — ML Model Training & Fine-Tuning 🚧 (In Progress — partially superseded)
+  ## v8.9 — ML Model Training & Fine-Tuning ✅ (Complete — partially superseded)
 
   **What this is**
 
@@ -3055,7 +3055,7 @@
   **Scope Clarification**
   - v8.9 builds on v8.8.1 outputs (pairing/context/selection) and does not change v8.8.x invariants.
   - Milestones 8.9.1–8.9.3 and 8.9.6 (A1/A2/B1/B2/B3 in plan.md) are confirmed complete.
-  - Milestones 8.9.7–8.9.11 (C1/C2/D0–D5/E1/E2 in plan.md) are **in progress / not yet complete**.
+  - Milestones 8.9.7–8.9.11 (C1/C2/D0–D5/E1/E2 in plan.md) are **complete**.
   - Milestones 8.9.4–8.9.5 (SentenceTransformer fine-tuning + model versioning semantics) are superseded by the LayoutLMv3 pipeline introduced in v8.10.
 
   ---
@@ -3155,24 +3155,24 @@
 
   ---
 
-  **Capability E: Performance Dashboard** 📋 Not yet complete (plan.md E1/E2)
+  **Capability E: Performance Dashboard** ✅ Complete (plan.md E1/E2)
 
-  **Milestone 8.9.15: Performance API** 📋 Planned (plan.md E1)
+  **Milestone 8.9.15: Performance API** ✅ Complete 2026-02-25 (plan.md E1)
   - `GET /admin/ml/performance` — per-model acceptance rates, 12-week trends, recommendation signal.
   - Files: `ml-performance.controller.ts`, `ml-performance.service.ts`.
 
-  **Milestone 8.9.16: Admin Performance UI** 📋 Planned (plan.md E2)
+  **Milestone 8.9.16: Admin Performance UI** ✅ Complete 2026-02-25 (plan.md E2)
   - Route: `/admin/ml/performance`.
   - Summary cards, model table, 12-week trend chart, Activate button (gated by D5 online gate).
   - File: `apps/web/app/admin/ml/performance/page.tsx`.
 
   **Status**
-  🚧 In Progress — A1/A2/B1/B2/B3/C1/C2/D3 complete. D4 dropped (SLM+RAG pivot). D5 revised (online gate only). E1/E2 pending.
+  ✅ Complete — A1/A2/B1/B2/B3/C1/C2/D3/D5/E1/E2 complete. D4 dropped (SLM+RAG pivot). D5 revised to online-gate-only. Fine-tuning pipeline (8.9.4/8.9.5/8.9.13) superseded by SLM+RAG architecture.
 
 
 
 
-  ## v8.10 — Optimal Extraction Accuracy 🚧 (In Progress — SLM+RAG pivot applied 2026-02-24)
+  ## v8.10 — Optimal Extraction Accuracy ✅ (Complete — SLM+RAG pivot applied 2026-02-24)
 
   **Pivot note:** Original v8.10 planned LayoutLMv3 + fine-tuning pipeline. ADR 2026-02-24 replaced LayoutLMv3 inference with Qwen 2.5 1.5B via Ollama + pgvector RAG few-shot injection. Fine-tuning pipeline (training-worker, L2/L3/L5, D4) dropped entirely. All deterministic post-processing (zone classifier, DSPP, type validation, normalization, conflict detection, math reconciliation) preserved unchanged.
 
@@ -3182,11 +3182,11 @@
   - Dedicated `preprocessor` container: OpenCV deskew, orientation correction, shadow removal, contrast enhancement, quality gate ✅ Built
   - Zone classifier: assigns document regions to `header`, `addresses`, `line_items`, `instructions`, `footer` ✅ Built
   - Qwen 2.5 1.5B via Ollama (replacing LayoutLMv3): grammar-constrained JSON extraction with structured output schema; all fields nullable to prevent hallucination ✅ Built (I1)
-  - pgvector RAG: top-3 confirmed baselines retrieved by cosine similarity and injected as few-shot examples before each SLM call 🔄 In progress (F3 ✅ / M2/M4 pending)
-  - Embed-on-confirm learning loop: qualifying baselines embedded with nomic-embed-text and stored in `baseline_embeddings`; no GPU training required 📋 Pending (M1)
-  - Seed corpus: 5–10 synthetic gold-standard examples per document type bootstrap the RAG corpus at cold start 📋 Pending (L6)
-  - Per-field confidence scoring: hard overrides (math reconciliation, type validation, conflict detection) + RAG-agreement fallback formula; auto-confirm / verify / flag tiers 📋 Pending (J1)
-  - Verification UI: side-by-side PDF viewer + extracted fields; PDF auto-scrolls to flagged field region; confidence-driven highlighting; bulk confirm and keyboard flow 📋 Pending (K1/K2)
+  - pgvector RAG: top-3 confirmed baselines retrieved by cosine similarity and injected as few-shot examples before each SLM call ✅ Built (F3/M2/M4)
+  - Embed-on-confirm learning loop: qualifying baselines embedded with nomic-embed-text and stored in `baseline_embeddings`; no GPU training required ✅ Built (M1)
+  - Seed corpus: 5–10 synthetic gold-standard examples per document type bootstrap the RAG corpus at cold start ✅ Built (L6)
+  - Per-field confidence scoring: hard overrides (math reconciliation, type validation, conflict detection) + RAG-agreement fallback formula; auto-confirm / verify / flag tiers ✅ Built (J1)
+  - Verification UI: side-by-side PDF viewer + extracted fields; PDF auto-scrolls to flagged field region; confidence-driven highlighting; bulk confirm and keyboard flow ✅ Built (K1/K2)
 
   **What this is not**
 
@@ -3380,17 +3380,17 @@
   8. I2 Zone classifier ✅ Done
   9. I3–I6 post-processing pipeline ✅ Done
   10. M3 prompt builder endpoint ✅ Done (2026-02-24)
-  11. M2 RAG retrieval 📋 (depends F3, H2)
-  12. M4 wire RAG into suggestion flow 📋 (depends M2, M3, I1)
-  13. M1 embed-on-confirm 📋 (depends F3, H2, M3)
+  11. M2 RAG retrieval ✅ Done (2026-02-24)
+  12. M4 wire RAG into suggestion flow ✅ Done (2026-02-25)
+  13. M1 embed-on-confirm ✅ Done (2026-02-24)
   14. L4 training examples capture ✅ Done
-  15. L6 seed corpus 📋 (depends I1, F3, H2)
-  16. J1 confidence tiers + bulk confirm 📋 (depends I3)
-  17. K1 verification UI layout 📋 (depends J1)
-  18. K2 keyboard flow 📋 (depends K1)
+  15. L6 seed corpus ✅ Done (2026-02-25)
+  16. J1 confidence tiers + bulk confirm ✅ Done (2026-02-25)
+  17. K1 verification UI layout ✅ Done (2026-02-25)
+  18. K2 keyboard flow ✅ Done (2026-02-25)
   19. D3 volume trigger ✅ Done
-  20. D5 activation gate (online only) 📋
-  21. E1/E2 performance dashboard 📋
+  20. D5 activation gate (online only) ✅ Done (2026-02-25)
+  21. E1/E2 performance dashboard ✅ Done (2026-02-25)
 
   ---
 
@@ -3401,11 +3401,11 @@
   - **No background automation:** Embed-on-confirm is post-confirmation hook, not a cron job; volume trigger (D3) is the only scheduled task (already built)
 
   **Status**
-  🚧 In Progress — F1/F2/G1/H1/H2/C1/C2/D3/F3/I1/I2/I3/I4/I5/I6/L4/M3 complete. M1 (embed-on-confirm), M2 (RAG retrieval), M4 (wire RAG), L6 (seed corpus), J1/K1/K2 (UI), D5 (activation gate), E1/E2 (performance dashboard) pending. Fine-tuning pipeline (L2/L3/L5/D4) dropped by SLM+RAG pivot.
+  ✅ Complete — All tasks complete as of 2026-02-25. Fine-tuning pipeline (L2/L3/L5/D4) dropped by SLM+RAG pivot (ADR 2026-02-24). training-worker container decommissioned.
 
   ---
 
-  ## v8.11 — Semantic Search 📋 (Planned)
+  ## v8.11 — Semantic Search ✅ (Complete)
 
   **Pivot note (ADR 2026-02-24):** The original v8.11 scope included pgvector infrastructure (F3), embed-on-confirm (M1), RAG retrieval (M2/M4), Golden Set (N1), and field similarity check (N2). All of F3/M1–M4 were **pulled into v8.10** as core requirements of the SLM+RAG pivot. N1 (Golden Set gate) was dropped — the D5 activation gate now uses online gate only. N2 (field similarity) deferred to v8.12. v8.11 scope is now limited to semantic search on top of the v8.10 RAG corpus.
 
@@ -3435,11 +3435,11 @@
   **REQUIRES:** v8.10 complete. `baseline_embeddings` must have entries (seed corpus from L6 sufficient for initial queries).
 
   **Status**
-  📋 Planned — depends on v8.10 completion
+  ✅ Complete — S1 completed 2026-02-27
 
   ---
 
-  ## v8.12 — Self-Healing Document Intelligence 📋 (Planned)
+  ## v8.12 — Self-Healing Document Intelligence ✅ (Complete)
 
   **Pivot note (2026-02-25):** Original v8.12 scope (M5/K3/M6 — Alias Library, Shadow Editing, Predictive UI) has been superseded by the Self-Healing Document Intelligence specification. The alias engine concept is retained and significantly strengthened. K3 (Shadow Spatial Editing) deferred to v8.13+. The spec was finalised through a structured Principal Architect review cycle (2026-02-25) and is fully documented in `tasks/plan.md` PART 4–10.
 
@@ -3456,12 +3456,12 @@
   - **N2** ✅ — Vendor-Scoped Alias Engine: deterministic pre-LLM string substitution using `alias_rules` table. Vendor-scoped only (global aliases prohibited by schema). Alias-corrected segments bypass `[LOW_CONF]` tagging.
   - **N_PERF** ✅ — Ollama Cold-Start + Keep-Alive Fix: `warm_up_model` fires real inference at startup (`keep_alive: -1`) to load Qwen into memory before first request. `num_ctx: 8192` set in generate payload. Eliminates 120–170s cold-load penalty; warm inference 33–35s on i5-7300U (CPU-only, no GPU passthrough).
   - **N3** ✅ — Selective Terse Annotation + 2+8 Truncation: terse bbox annotations (`[b87%,r]`) on footer and line_items zones only; `num_ctx: 8192` (already live via N_PERF); 2+8 truncation preserves table headers (first 2 rows) + totals area (last 8 rows) when line_items > 10 rows and char count > 6000.
-  - **N4 + N4.1** 🚧 — Keyword Anchor Normalization with Synonym Groups: eight canonical synonym groups (Total/Subtotal/Tax/Invoice Date/Due Date/Invoice/Bill To/Ship To) resolved to canonical labels in `[ANCHORS]` block. "Balance Due" → `"Total"`. Vendor-agnostic regardless of terminology.
+  - **N4 + N4.1** ✅ — Keyword Anchor Normalization with Synonym Groups: eight canonical synonym groups (Total/Subtotal/Tax/Invoice Date/Due Date/Invoice/Bill To/Ship To) resolved to canonical labels in `[ANCHORS]` block. "Balance Due" → `"Total"`. Vendor-agnostic regardless of terminology.
   - **I6.1** ✅ — Deep Arithmetic Audit (Triple-Check): extends existing I6 with Check C (unit_price × qty ≈ line_total per row). Row-scoped failure — only corrupt rows are zeroed, not the entire document. Tax rate suspicion flag (>30%) is a warning, not a hard failure.
   - **N5** ✅ — I6 Async Math Retry Loop: `MAX_MATH_RETRIES = 1` enforced via `retry_count` column. First pass returns `status: "preliminary"` immediately. Background worker (D3 bounded-interval pattern) re-prompts Qwen with filtered sub-document. Doc-level failures target footer zone (Y=0.75–1.0); row-level failures target the union of failing row bbox bounds. Gated by `ML_MATH_RETRY_ENABLED=false` default.
-  - **N_PREFETCH** — Background Suggestion Prefetch: fire-and-forget prefetch triggered on review page load (default, `ML_PREFETCH_STRATEGY=PAGE_LOAD`) or OCR completion (opt-in, `ML_PREFETCH_STRATEGY=OCR_COMPLETE`). In-memory `isOllamaBusy` singleton lock prevents concurrent Ollama jobs — prefetch skips silently when busy, explicit "Get Suggestions" always takes priority. Perceived latency near-zero for common case; actual inference time unchanged. OCR_COMPLETE strategy only suitable for single-user deployments on this hardware.
-  - **N6** — Correction Event Tracking (Phase 1 — data only): writes to `correction_events` on every human edit. Graduation at 3+ corrections for same `(vendor_id, field_key, raw_ocr_value)` → upserts `alias_rules` with `status='proposed'`. Never activates without human approval.
-  - **N7** — Rule Management UI `/admin/rules`: lists proposed alias rules grouped by vendor. `[Approve]` → `status='active'`; `[Reject]` → `status='rejected'`. Alias engine cache invalidated on state change. Hard gate — N6 ships only alongside N7.
+  - **N_PREFETCH** ✅ — Background Suggestion Prefetch: fire-and-forget prefetch triggered on review page load (default, `ML_PREFETCH_STRATEGY=PAGE_LOAD`) or OCR completion (opt-in, `ML_PREFETCH_STRATEGY=OCR_COMPLETE`). In-memory `isOllamaBusy` singleton lock prevents concurrent Ollama jobs — prefetch skips silently when busy, explicit "Get Suggestions" always takes priority. Perceived latency near-zero for common case; actual inference time unchanged. OCR_COMPLETE strategy only suitable for single-user deployments on this hardware.
+  - **N6** ✅ — Correction Event Tracking (Phase 1 — data only): writes to `correction_events` on every human edit. Graduation at 3+ corrections for same `(vendor_id, field_key, raw_ocr_value)` → upserts `alias_rules` with `status='proposed'`. Never activates without human approval.
+  - **N7** ✅ — Rule Management UI `/admin/rules`: lists proposed alias rules grouped by vendor. `[Approve]` → `status='active'`; `[Reject]` → `status='rejected'`. Alias engine cache invalidated on state change. Hard gate — N6 ships only alongside N7.
 
   **What this is not**
   - Not silent auto-activation of alias rules (proposed rules are inert until human approves in `/admin/rules`)
@@ -3514,11 +3514,11 @@
   **Dependencies**
   - **REQUIRES:** v8.10 complete (Qwen/Ollama running, I6 math reconciliation live, RAG corpus populated)
   - **REQUIRES:** E1 + E2 complete (v8.9 Performance Dashboard — final v8.9 tasks)
-  - **BLOCKS:** v8.13 (Embedding Anonymization / Privacy Guardrail)
+  - **BLOCKS:** v8.13 (Intent Layer — self-healing loop must be established first)
 
   **Execution entry point:** `tasks/plan.md` PART 4–10 (N0 through N7 + I6.1)
 
-  **Status:** 📋 Planned — E1/E2 must complete first
+  **Status:** ✅ Complete — N_MIG/N0/N1/N2/N3/N4/N5/N6/N7/N_PERF/N_PREFETCH/I6.1 all complete as of 2026-02-27
 
   **Capability A: Alias Override Layer (M5)**
 
@@ -3625,18 +3625,18 @@
 
   ---
 
-  ## v8.13 — Intent Layer: Document-Type-Aware Field Scoping 📋 (Planned)
+  ## v8.13 — Intent Layer: Document-Type-Aware Field Scoping 🚧 (In Progress)
 
   **Pivot note (2026-02-25):** Designed through a structured Principal Architect review cycle (2026-02-25). Full specification in `tasks/plan.md` PART 11a–11e.
 
   **Vision:** Move from a "Global Field Pool" to a "Scoped Extraction Workspace." Today the extraction review page shows every active field regardless of document type — a delivery order shows invoice fields, leaving them empty and creating validation fatigue. This version makes the system document-type-aware at every layer: classification, field display, ML extraction, and baseline creation.
 
   **What this is**
-  - **I1** — Document Type Admin API: full CRUD for `document_types` and `document_type_fields` templates (which fields belong to which document type, with `required`, `zoneHint`, `sortOrder`)
-  - **I2** — Document Type Admin UI: `/admin/document-types` two-panel page — list of types on left, field template manager on right
-  - **I3** — Auto-Classification After OCR: Qwen 1.5B zero-shot classifier detects document type from first 800 chars of OCR text; writes `documentTypeId` to `attachmentOcrOutputs` as fire-and-forget background step; confidence threshold 0.6; silent fallback to null on failure
-  - **I4** — Scoped Field Loading on Review Page: review page fetches `/document-types/:id/fields` instead of `/fields?status=active` when `documentTypeId` is known; falls back to full library if null
-  - **I5** — ML Extraction + Baseline Draft Scoping: field suggestion service and baseline draft creation both scope to `documentTypeFields` template when `documentTypeId` is set; null fallback to all active fields
+  - **I1** ✅ — Document Type Admin API: full CRUD for `document_types` and `document_type_fields` templates (which fields belong to which document type, with `required`, `zoneHint`, `sortOrder`) — completed 2026-02-27
+  - **I2** ✅ — Document Type Admin UI: `/admin/document-types` two-panel page — list of types on left, field template manager on right — completed 2026-02-27
+  - **I3** ✅ — Auto-Classification After OCR: Qwen 1.5B zero-shot classifier detects document type from first 800 chars of OCR text; writes `documentTypeId` to `attachmentOcrOutputs` as fire-and-forget background step; confidence threshold 0.6; silent fallback to null on failure — completed 2026-02-27
+  - **I4** ✅ — Scoped Field Loading on Review Page: review page fetches `/document-types/:id/fields` instead of `/fields?status=active` when `documentTypeId` is known; falls back to full library if null — completed 2026-02-27
+  - **I5** ✅ — ML Extraction + Baseline Draft Scoping: field suggestion service and baseline draft creation both scope to `documentTypeFields` template when `documentTypeId` is set; null fallback to all active fields — completed 2026-02-27
 
   **What this is not**
   - Not a manual vendor table (layout fingerprinting uses `baseline_embeddings` clusters in M+2)
@@ -3645,9 +3645,49 @@
   - Not a new Docker service (classifier reuses existing Qwen/Ollama)
 
   **Milestones (post-M1, future sprints):**
-  - **M+1 — Controlled Fluidity:** Add-from-Library UI, Surgical Removal UI (atomic with `math_check_suppressions`), Document Type Badge + override on review page, `schema_adaptation_signals` write path
-  - **M+2 — Signal Harvesting:** Background cron proposes template changes via `template_change_proposals`; human admin approves before any template mutation
-  - **M+3 — Geometric Memory:** Hybrid semantic+geometric vectors using `bounding_box` data (already live in `baseline_field_assignments`) for layout-aware RAG retrieval
+
+  ### M+1 — Controlled Fluidity (IF1–IF5)
+
+  **Prerequisite:** I1–I5 complete and in production with populated `documentTypeId` on OCR outputs.
+  **Atomic constraint:** IF2 (Surgical Removal UI) and IF3 (`math_check_suppressions`) must ship together — never split.
+
+  - **IF1** — Add-from-Library UI: pull orphan fields from the global library into the current baseline's field set (fields the document type template doesn't include but the user wants to add)
+  - **IF2** — Surgical Removal UI: dismiss irrelevant fields from the current baseline; emits `schema_adaptation_signals` event (write path only); must ship with IF3
+  - **IF3** — `math_check_suppressions` table + reconciliation bypass: if any "Financial Triangle" role (subtotal/tax/total) is suppressed, entire math check returns `BYPASSED` (not `FAILED`); no retry triggered; UI shows "Math validation disabled: [Subtotal] removed."
+  - **IF4** — Document Type Badge + Override on review page: visible badge showing detected document type; dropdown to correct misclassification; correction emits `schema_adaptation_signals` with `weight: 10.0`
+  - **IF5** — `schema_adaptation_signals` table (write path): logs add/remove/override events with `layout_cluster_id` (nullable until M+2 clusters exist), `document_type_id`, `user_id`, `weight`
+
+  **New tables required (Drizzle migration):**
+  - `math_check_suppressions`: `id`, `baseline_id` (fk), `suppressed_role` (text — e.g. `'subtotal'`), `suppressed_by` (fk users), `suppressed_at`, `reason` (text nullable)
+  - `schema_adaptation_signals`: `id`, `baseline_id` (fk), `field_key`, `action` (added|removed|accepted|rejected_suggestion|type_override), `document_type_id` (fk), `layout_cluster_id` (uuid nullable), `user_id` (fk), `weight` (decimal, default 1.0), `occurred_at` — partitioned by month from day one
+
+  **Status:** 📋 Planned — blocked until M1 is live in production
+
+  ---
+
+  ### M+2 — Signal Harvesting (IH1–IH4)
+
+  **Prerequisite:** M+1 live with `schema_adaptation_signals` accumulating real data.
+
+  - **IH1** — Layout clustering: cluster `baseline_embeddings` vectors (using confirmed field structure, not raw OCR text) to assign `layout_cluster_id` to signals
+  - **IH2** — Background cron (Rule Suggester): queries `schema_adaptation_signals`; if cluster X rejects field Y in ≥5 baselines → writes to `template_change_proposals` with status `proposed`; runs as background job, never on request path
+  - **IH3** — `template_change_proposals` table: `id`, `document_type_id` (fk), `field_key`, `action` (add|remove), `layout_cluster_id`, `signal_count`, `status` (proposed|approved|rejected), `proposed_at`, `reviewed_by`, `reviewed_at`
+  - **IH4** — Admin review UI (`/admin/template-proposals`): diff view per proposal; `[Promote to Template]` updates `document_type_fields`; `[Reject]` closes proposal; human must approve before any template mutation — never auto-promoted
+
+  **Status:** 📋 Planned — blocked until M+1 live; to be fully specced when M+1 is in production
+
+  ---
+
+  ### M+3 — Geometric Memory (IG1–IG2)
+
+  **Prerequisite:** M+2 live. `bounding_box` data confirmed live in `baseline_field_assignments` (verified 2026-02-25 — ML service returns `{x, y, width, height}` and it is persisted to JSONB column).
+
+  - **IG1** — Hybrid vector construction: augment `baseline_embeddings` with geometric features from `bounding_box` data captured via drag-and-drop spatial assignments; transition from semantic-only to semantic+geometric vectors
+  - **IG2** — Spatial anchor feedback: `$(X, Y)` and anchor text from confirmed drag-and-drop assignments feed into `search_query:` prefix for RAG retrieval; layout fingerprint improves "zero-guess" extraction for known vendor layouts
+
+  **Status:** 📋 Planned — blocked until M+2 live; to be fully specced when M+2 is in production
+
+  ---
 
   **Key architectural decisions:**
   - "Financial Triangle" suppression: if subtotal/tax/total is surgically removed, math check returns `BYPASSED` (not `FAILED`) — no retry loop. UI shows "Math validation disabled: [Subtotal] removed."
@@ -3659,12 +3699,64 @@
   **No new migrations for M1:** `document_types`, `document_type_fields`, and `attachmentOcrOutputs.documentTypeId` all exist in DB (built in F1, v8.10).
 
   **Dependencies**
-  - **REQUIRES:** v8.12 complete (self-healing loop established)
+  - **REQUIRES:** v8.12 ✅ complete
   - **BLOCKS:** v8.14 (Embedding Anonymization)
 
   **Execution entry point:** `tasks/plan.md` PART 11a–11e (I1–I5 + M+1/M+2/M+3 specs)
 
-  **Status:** 📋 Planned — begins after v8.12 complete
+  **Status:** 🚧 In Progress — M1 (I1–I5) ✅ completed 2026-02-27. M+1 (IF1–IF5) blocked pending production data accumulation from M1 classifier and full spec. M+2/M+3 blocked pending M+1.
+
+  ---
+
+  ## v8.13 Architectural Backlog — Known Deferred Boundaries
+
+  > These risks are documented, understood, and deliberately deferred. Each is a named work item; none block current development.
+
+  ### P0 — D12 Structured `baseline.confirmed` Event Payload
+
+  **Problem:** Downstream modules need full confirmed baseline data at confirm time without polling extraction endpoints. The existing `baseline.confirm` audit event should be extended into a structured event contract consumable by webhooks/event-bus subscribers.
+
+  **Files:** `apps/api/src/baseline/*` confirm flow emission point; event delivery surface (webhook/event-bus adapter).
+
+  **Payload contract (minimum):**
+  - Envelope: `eventType='baseline.confirmed'`, `eventVersion`, `occurredAt`, `correlationId` (optional), `traceId` (optional)
+  - Identity: `documentId`, `baselineId`, `confirmedAt`, `confirmedBy`
+  - Schema: `schemaVersion` from canonical `field_library`
+  - Data: full canonical `fields[]` payload with `{key, value, confidence, source, provenance}`
+
+  **Rules:** Reuse existing confirm transaction boundary; at-least-once delivery; consumers must be idempotent on `{baselineId, eventVersion}`; existing `baseline.confirm` audit logging remains intact (extended, not replaced).
+
+  **Estimated effort:** 2–4 hours. **Status:** 📋 Planned
+
+  ---
+
+  ### B1 — Per-Page Task Atomicism (OOM / Poison-Pill Documents)
+
+  **Risk:** A single large or corrupt page within a multi-page PDF can OOM the ocr-worker. A bad page kills all segments — no partial results returned.
+  **Deferred fix:** Replace synchronous HTTP OCR chain with a per-page task queue (BullMQ or Celery). Each page is an independent task; failing pages are dead-lettered; surviving pages complete normally. Requires Redis/queue infrastructure and coordinator pattern.
+  **Current mitigation:** `MAX_PDF_PAGES=10`; sequential page loop; page-level exception returns 500 without crashing the process.
+  **Status:** 📋 Deferred — requires queue infrastructure (shared with B2)
+
+  ### B2 — Priority-Based Task Queuing (Bulk Upload Availability)
+
+  **Risk:** Bulk upload of 50+ PDFs saturates ml-service; no priority separation between interactive and batch jobs.
+  **Deferred fix:** Three-tier priority queue on same BullMQ/Celery infrastructure as B1: Priority 1 interactive, Priority 2 bulk, Priority 3 reprocessing.
+  **Dependency:** Shares infrastructure with B1 — implement together.
+  **Status:** 📋 Deferred — requires queue infrastructure (shared with B1)
+
+  ### B3 — Canary Traffic Shifting on Model Hot-Swap
+
+  **Risk:** CUDA kernel JIT compilation on first real inferences after model hot-swap causes latency spikes; warm-up pass covers VRAM but not kernel cold paths on real document shapes.
+  **Deferred fix:** Extend C1 A/B framework to support configurable canary split (e.g. 90% champion / 10% new model) for first N documents post-swap. Auto-rollback if new model p99 latency exceeds 2× champion.
+  **Current mitigation:** Warm-up pass on load; hot-swap only switches pointer after successful warm-up.
+  **Status:** 📋 Deferred — depends on C1 A/B framework
+
+  ### B4 — Locale-Aware Heuristics (Multi-Language)
+
+  **Risk:** DSPP cleaning (S→5, O→0) and reading order sort (left-to-right) are tuned for Latin-script documents. RTL languages (Arabic, Hebrew) will produce incorrect reading order.
+  **Deferred fix:** Detect document language from OCR output metadata; key DSPP substitution tables and zone classifier reading order by detected locale. Aligns with v8.12 Multi-Language milestone scope.
+  **Current mitigation:** DSPP substitutions are universally safe for currency/number fields across Latin-script languages; RTL documents will produce degraded but non-crashing results.
+  **Status:** 📋 Deferred — aligns with v8.12 Multi-Language milestone
 
   ---
 

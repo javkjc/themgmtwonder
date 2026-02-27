@@ -16,6 +16,8 @@ import { BootstrapModule } from './bootstrap/bootstrap.module';
 import { FieldLibraryModule } from './field-library/field-library.module';
 import { BaselineModule } from './baseline/baseline.module';
 import { MlModule } from './ml/ml.module';
+import { SearchModule } from './search/search.module';
+import { DocumentTypesModule } from './document-types/document-types.module';
 
 @Module({
   imports: [
@@ -36,6 +38,8 @@ import { MlModule } from './ml/ml.module';
     FieldLibraryModule,
     BaselineModule,
     MlModule,
+    SearchModule,
+    DocumentTypesModule,
   ],
 })
-export class AppModule {}
+export class AppModule { }

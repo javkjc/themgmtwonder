@@ -2420,6 +2420,7 @@ N7 (rules UI) ──────────────────────
 ## PART 11a — v8.13 M1: Intent Layer (5 Phases)
 
 ### I1 — Document Type Admin API (Complexity: Simple)
+**Status:** ✅ Completed on 2026-02-27
 
 **Problem statement**
 No CRUD API exists for managing `document_types` or `document_type_fields`. Admin users have no way to define which fields belong to which document type.
@@ -2463,6 +2464,7 @@ curl http://localhost:3001/document-types/<id>/fields -H "Cookie: ..."
 ---
 
 ### I2 — Document Type Admin UI (Complexity: Simple)
+**Status:** ✅ Completed on 2026-02-27
 
 **Problem statement**
 No frontend page exists to manage document types or their field templates.
@@ -2484,6 +2486,7 @@ No frontend page exists to manage document types or their field templates.
 ---
 
 ### I3 — Auto-Classification After OCR (Complexity: Medium)
+**Status:** ✅ Completed on 2026-02-27
 
 **Problem statement**
 `attachmentOcrOutputs.documentTypeId` is always null. No mechanism exists to detect the document type from OCR text.
@@ -2523,6 +2526,8 @@ docker exec todo-db psql -U todo -d todo_db -c \
 
 ### I4 — Scoped Field Loading on Review Page (Complexity: Simple)
 
+**Status:** ✅ Completed on 2026-02-27
+
 **Problem statement**
 Review page always fetches all active fields regardless of document type. `documentTypeId` is not exposed in the OCR results response.
 
@@ -2555,6 +2560,7 @@ One conditional render. Transforms "broken AI" into a clear admin setup call-to-
 ---
 
 ### I5 — ML Extraction + Baseline Draft Scoping (Complexity: Simple)
+**Status:** ✅ Completed on 2026-02-27
 
 **Problem statement**
 ML suggestion generation and baseline draft creation both send/populate all active fields regardless of document type.
@@ -2587,61 +2593,9 @@ docker exec todo-db psql -U todo -d todo_db -c \
 
 ---
 
-## PART 11b — v8.13 M+1: Controlled Fluidity (Post-M1)
+## PART 11e — v8.13 Definition of Done (M1)
 
-**Prerequisite:** I1–I5 complete and in production with populated `documentTypeId` on OCR outputs.
-
-**Atomic requirement:** Surgical Removal UI and `math_check_suppressions` ship together. Never split.
-
-### Tasks (to be fully specced when M1 is live):
-- **IF1** — Add-from-Library UI: pull orphan fields from global library into the current baseline's field set
-- **IF2** — Surgical Removal UI: dismiss irrelevant fields; emits `schema_adaptation_signals` event (write path only)
-- **IF3** — `math_check_suppressions` table + reconciliation bypass: if any "Financial Triangle" role (subtotal/tax/total) is suppressed, entire math check returns `BYPASSED` (not `FAILED`); no retry triggered
-- **IF4** — Document Type Badge + Override on review page: visible badge showing detected type; dropdown to correct misclassification; correction emits `schema_adaptation_signals` with `weight: 10.0`
-- **IF5** — `schema_adaptation_signals` table (write path): logs add/remove/override events with `layout_cluster_id` (nullable until M+2 clusters exist), `document_type_id`, `user_id`, `weight`
-
-**New tables (Drizzle migration required):**
-- `math_check_suppressions`: `id`, `baseline_id` (fk), `suppressed_role` (text — e.g. 'subtotal'), `suppressed_by` (fk users), `suppressed_at`, `reason` (text nullable)
-- `schema_adaptation_signals`: `id`, `baseline_id` (fk), `field_key`, `action` (added|removed|accepted|rejected_suggestion|type_override), `document_type_id` (fk), `layout_cluster_id` (uuid nullable), `user_id` (fk), `weight` (decimal, default 1.0), `occurred_at`. Partition by month from day one.
-
----
-
-## PART 11c — v8.13 M+2: Signal Harvesting (Post-M+1)
-
-**Prerequisite:** M+1 live with `schema_adaptation_signals` accumulating real data.
-
-### Tasks (to be fully specced when M+1 is live):
-- **IH1** — Layout clustering: cluster `baseline_embeddings` vectors (using confirmed field structure, not raw OCR text) to assign `layout_cluster_id` to signals
-- **IH2** — Background cron (Rule Suggester): queries `schema_adaptation_signals`; if cluster X rejects field Y in ≥5 baselines → writes to `template_change_proposals` with status `proposed`. Runs as background job, never on request path. O(N log N) operation.
-- **IH3** — `template_change_proposals` table: `id`, `document_type_id` (fk), `field_key`, `action` (add|remove), `layout_cluster_id`, `signal_count`, `status` (proposed|approved|rejected), `proposed_at`, `reviewed_by`, `reviewed_at`
-- **IH4** — Admin review UI (`/admin/template-proposals`): diff view per proposal; `[Promote to Template]` updates `document_type_fields`; `[Reject]` closes proposal. Human must approve before template changes.
-
----
-
-## PART 11d — v8.13 M+3: Geometric Memory (Post-M+2)
-
-**Prerequisite:** M+2 live. `bounding_box` data confirmed live in `baseline_field_assignments` (verified 2026-02-25 — ML service returns `{x, y, width, height}` and it is persisted to JSONB column).
-
-### Tasks (to be fully specced when M+2 is live):
-- **IG1** — Hybrid vector construction: augment `baseline_embeddings` with geometric features from `bounding_box` data captured via drag-and-drop spatial assignments; transition from semantic-only to semantic+geometric vectors
-- **IG2** — Spatial anchor feedback: `$(X, Y)` and anchor text from confirmed drag-and-drop assignments feed into `search_query:` prefix for RAG retrieval; layout fingerprint improves "zero-guess" extraction for known vendor layouts
-
----
-
-## PART 11e — v8.13 Execution Order
-
-**Critical path:**
-```
-I1 (Admin API) → I2 (Admin UI) → I3 (Auto-classify) → I4 (Scoped UI) → I5 (ML scoping)
-       ↓ (M1 complete, production data accumulating)
-IF1–IF5 (M+1 — Controlled Fluidity) [atomic: IF2+IF3 must ship together]
-       ↓
-IH1–IH4 (M+2 — Signal Harvesting)
-       ↓
-IG1–IG2 (M+3 — Geometric Memory)
-```
-
-**Definition of Done (M1 only — I1–I5):**
+**Definition of Done (M1 — I1–I5):**
 - [ ] `GET /document-types` returns configured types
 - [ ] `GET /document-types/:id/fields` returns fields with label + characterType, ordered by sortOrder
 - [ ] Admin UI at `/admin/document-types` allows creating types and managing field templates
@@ -2667,6 +2621,7 @@ IG1–IG2 (M+3 — Geometric Memory)
 ## 16) Semantic Search (P1 — depends on v8.10 baseline_embeddings)
 
 ### S1 — Semantic Search Endpoint + UI (Complexity: Medium)
+**Status:** ✅ Completed on 2026-02-27
 
 **Problem statement**
 Users need to search across all confirmed extraction data using natural language queries. pgvector cosine similarity retrieves semantically relevant baselines using the `nomic-embed-text` model (already running in Ollama from v8.10).
@@ -2732,138 +2687,6 @@ Users need to search across all confirmed extraction data using natural language
 
 ---
 
----
-
-## PART 4 — Data Governance Hardening
-
-**Note:** N1 (Golden Set gate) is superseded by the D5 revision — the offline/Golden Set activation gates were dropped by the SLM+RAG pivot (ADR 2026-02-24). D5 now uses online gate only. N2 (field library similarity check) referenced field-level embeddings in `baseline_embeddings` which no longer exist in the v8.10 schema (the table stores document-level embeddings for RAG, not field-level). Both N1 and N2 are deferred to v8.12 for redesign.
-
----
-
-## 23) Golden Set Infrastructure
-
-### N1 — Golden Set Repository
-**Status:** 🗑️ DEFERRED to v8.12 — Golden Set gate dropped from D5 by SLM+RAG pivot (ADR 2026-02-24). The online acceptance gate (D5) is the sole activation signal. Golden Set may be revisited in v8.12 as a diagnostic tool (not a gate) once the RAG corpus is established.
-
----
-
-## 24) Field Library Integrity
-
-### N2 — Field Library Similarity Check at Creation
-**Status:** 🗑️ DEFERRED to v8.12 — depended on field-level embeddings in `baseline_embeddings` which were not included in the v8.10 schema pivot. Redesign required for nomic-embed-text compatibility.
-
----
-
-## 25) Execution Order (PART 4)
-
-N1 and N2 are deferred. No PART 4 tasks remain for v8.10/v8.11.
-
----
-
-## 26) Part 4 Definition of Done
-
-Deferred — see v8.12 planning.
-
-**Documentation:**
-- Deferral rationale recorded in `tasks/executionnotes.md`.
-
----
-
-## 27) Known Architectural Boundaries — v8.12+ Backlog
-
-> These risks are documented, understood, and deliberately deferred. They require infrastructure additions outside the scope of v8.10/v8.11. Each is a named work item for v8.12 planning.
-
-### B1 — Per-Page Task Atomicism (OOM / Poison-Pill Documents)
-**Risk:** A single large or corrupt page (e.g. 6000×8000px architectural blueprint) within a multi-page PDF can OOM the ocr-worker process. The current `MAX_PDF_PAGES=10` cap and sequential page processing limit blast radius, but a bad page still kills all segments for that document — no partial results are returned.
-**Deferred fix:** Replace synchronous HTTP OCR chain with a per-page task queue (BullMQ or Celery). Each page becomes an independent task. A failing page is dead-lettered; surviving pages complete normally. Partial results are assembled by a coordinator task. Requires: Redis/queue infrastructure, coordinator pattern, dead-letter monitoring.
-**Current mitigation:** `MAX_PDF_PAGES=10`; sequential page loop; page-level exception returns 500 without crashing the process.
-
-### B2 — Priority-Based Task Queuing (Bulk Upload Availability)
-**Risk:** A bulk upload of 50+ PDFs saturates ml-service (GPU/CPU bound) and creates latency for users processing a single urgent document. No priority separation exists between interactive single-document uploads and background batch jobs.
-**Deferred fix:** Three-tier priority queue on the same BullMQ/Celery infrastructure as B1. Priority 1: single-document interactive uploads. Priority 2: bulk/batch uploads. Priority 3: re-processing and fine-tuning evaluations. Workers drain Priority 1 before Priority 2.
-**Dependency:** Shares infrastructure with B1 — implement together.
-
-### B3 — Canary Traffic Shifting on Model Hot-Swap
-**Risk:** After a model hot-swap, CUDA kernel JIT compilation on the first real inferences causes latency spikes. The warm-up pass covers VRAM allocation but not kernel cold paths on real document shapes.
-**Deferred fix:** Extend C1 A/B framework to support a configurable canary split (e.g. 90% champion / 10% new model) for the first N documents post-swap. If new model p99 latency exceeds 2× champion, auto-rollback via `POST /ml/models/activate` with previous version. Requires: per-request latency tracking, rollback trigger logic.
-**Current mitigation:** Warm-up pass on load; hot-swap only switches pointer after successful warm-up.
-
-### B4 — Locale-Aware Heuristics (Multi-Language)
-**Risk:** DSPP cleaning (S→5, O→0) and reading order sort (left-to-right) are tuned for Latin-script, left-to-right documents. RTL languages (Arabic, Hebrew) will produce incorrect reading order. Non-Latin scripts may have different OCR glyph confusion patterns not covered by current substitutions.
-**Deferred fix:** Detect document language from OCR output metadata; key DSPP substitution tables and zone classifier reading order by detected locale. Aligns with v8.12 Multi-Language milestone scope.
-**Current mitigation:** DSPP substitutions are universally safe for currency/number fields across Latin-script languages; RTL documents will produce degraded but non-crashing results.
-
-### B5 — Model Weights Protection (Fine-tuned IP)
-**Status:** 🗑️ DELETED — protected LayoutLMv3 fine-tuned weights, a pipeline permanently dropped by ADR 2026-02-24. Current stack uses Qwen via Ollama with public weights. No proprietary artifacts exist to protect. Do not implement.
-
-### B6 — Dependency Supply Chain Scanning
-**Risk:** `requirements.txt` pulls in hundreds of transitive dependencies (torch, transformers, paddleocr). A compromised sub-dependency could enable RCE via a malicious PDF.
-**Current state:** All direct dependencies in `requirements.txt` are version-pinned (no `>=` ranges — confirmed). Transitive dependencies are not pinned.
-**Deferred fix:** Add Snyk or GitHub Advanced Security to CI pipeline to scan `requirements.txt` daily. Generate a `requirements.lock` with fully resolved transitive dependency hashes. Apply as a CI/CD concern, not a plan.md task.
-
----
-
-## 28) Architecture Alignment Patch — Data Orchestration Baseline
-
-**Assessment Summary**
-
-| Point | Status |
-|---|---|
-| D12 Entity Router | Already present as `baseline.confirm` audit event emission; requires structured downstream payload. |
-| S1 Canonical Interface | Already present via `field_library` canonical schema; requires governance discipline, not new architecture. |
-| F6 Consumed State | Already present via `utilizedAt`; first-write-wins behavior is the idempotency guarantee. |
-| I9 Enrichment Hooks | Interface pattern is valid; concrete enrichment implementations are deferred as premature. |
-
-### P0 — D12 Structured `baseline.confirmed` Event Payload (Single Delivery Task)
-
-**Problem statement**
-Downstream modules need full confirmed baseline data at confirm time without polling extraction endpoints. The existing confirm audit event should be extended into a structured event contract consumable by webhooks/event-bus subscribers.
-
-**Files / Locations**
-- Backend: `apps/api/src/baseline/*` confirm flow emission point (extend existing confirm/audit path).
-- Backend: event delivery surface (`webhook` and/or event bus adapter used by confirm flow).
-- Docs: `tasks/codemapcc.md` (event contract and producer location).
-
-**Payload contract (minimum)**
-- Envelope: `eventType='baseline.confirmed'`, `eventVersion`, `occurredAt`, `correlationId` (optional), `traceId` (optional).
-- Identity: `documentId`, `baselineId`, `confirmedAt`, `confirmedBy`.
-- Schema: `schemaVersion` from canonical `field_library`.
-- Data: full canonical `fields[]` payload with `{key, value, confidence, source, provenance}`.
-
-**Rules**
-1. Reuse existing confirm transaction boundary and emission path; do not introduce polling dependencies.
-2. Event data is derived from canonical persisted baseline assignments at the moment of confirmation.
-3. Delivery is at-least-once; consumers must be idempotent on `{baselineId, eventVersion}`.
-4. No enrichment execution in this task; emit canonical baseline state only.
-
-**Checkpoint — Verification**
-- Confirming a baseline emits one structured `baseline.confirmed` event containing full canonical field payload.
-- A downstream subscriber can process confirmed data without calling extraction read APIs.
-- Existing `baseline.confirm` audit logging remains intact (extended, not replaced).
-
-**Estimated effort:** 2–4 hours  
-**Complexity flag:** Medium
-
-### S1 Governance Rule — Canonical `field_library`
-
-`field_library` is the system-wide canonical interface for extracted fields.
-
-1. Any new field or semantic change requires a versioned schema update and migration note.
-2. Canonical keys are authoritative; downstream modules must not create ad hoc aliases as primary contracts.
-3. Event/API payloads that expose extracted fields must use canonical keys from `field_library`.
-
-### F6 Guarantee — `utilizedAt` Idempotent Consumed State
-
-`utilizedAt` is the consumed-state marker and is first-write-wins.
-
-1. First successful consume sets `utilizedAt`; later consume attempts must not overwrite it.
-2. Non-null `utilizedAt` is authoritative evidence that the baseline has already been consumed.
-3. Consumers should treat repeated consume requests as idempotent no-ops after `utilizedAt` is set.
-
-### I9 Scope Decision — Enrichment Hooks
-
-Define/retain the enrichment hook interface contract only. Defer concrete enrichment providers until after the structured `baseline.confirmed` payload is in production and consumer demand is validated.
-
 ### Execution path
 Remaining Tasks — Execution Path
 PART 1 — v8.9 Remainder
@@ -2920,12 +2743,12 @@ N7	Rule Management UI: /admin/rules (Hard Gate)	✅ Completed 2026-02-27
 
 PART 3 — v8.11 Semantic Search
 ID	Task	Status
-S1	Semantic Search Endpoint + UI	🔳 Pending
+S1	Semantic Search Endpoint + UI	✅ Completed 2026-02-27
 
 PART 11 — v8.13 Intent Layer: Document-Type-Aware Field Scoping
 ID	Task	Status
-I1	Document Type Admin API	🔳 Pending
-I2	Document Type Admin UI	🔳 Pending
-I3	Auto-Classification After OCR	🔳 Pending
-I4	Scoped Field Loading on Review Page	🔳 Pending
-I5	ML Extraction + Baseline Draft Scoping	🔳 Pending
+I1	Document Type Admin API	✅ Completed 2026-02-27
+I2	Document Type Admin UI	✅ Completed 2026-02-27
+I3	Auto-Classification After OCR	✅ Completed 2026-02-27
+I4	Scoped Field Loading on Review Page	✅ Completed 2026-02-27
+I5	ML Extraction + Baseline Draft Scoping	✅ Completed 2026-02-27

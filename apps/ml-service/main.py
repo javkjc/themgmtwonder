@@ -152,6 +152,17 @@ class DetectTablesResponse(BaseModel):
     error: Optional[ErrorPayload] = None
 
 
+class ClassifyDocumentTypeRequest(BaseModel):
+    text: str
+    documentTypeNames: List[str]
+
+
+class ClassifyDocumentTypeResponse(BaseModel):
+    ok: bool
+    matchedName: Optional[str]
+    confidence: float
+
+
 @app.on_event("startup")
 def startup_event() -> None:
     load_model(timeout_seconds=15.0)
@@ -374,6 +385,72 @@ def suggest_fields(payload: SuggestFieldsRequest) -> SuggestFieldsResponse:
         suggestions=suggestions,
         reasoning=reasoning_text,
     )
+
+
+@app.post("/ml/classify-document-type", response_model=ClassifyDocumentTypeResponse)
+def classify_document_type(
+    payload: ClassifyDocumentTypeRequest,
+) -> ClassifyDocumentTypeResponse:
+    try:
+        load_model(timeout_seconds=8.0)
+        if not registry.ready:
+            return ClassifyDocumentTypeResponse(
+                ok=False,
+                matchedName=None,
+                confidence=0.0,
+            )
+
+        doc_type_names = [
+            name.strip() for name in payload.documentTypeNames if isinstance(name, str) and name.strip()
+        ]
+        text = (payload.text or "").strip()[:800]
+        if not doc_type_names or not text:
+            return ClassifyDocumentTypeResponse(ok=True, matchedName=None, confidence=0.0)
+
+        prompt = (
+            "You are a zero-shot document type classifier.\n"
+            "Choose the single best matching document type from the provided candidates.\n"
+            "If none match, return matchedName=null and low confidence.\n\n"
+            f"Candidates: {doc_type_names}\n\n"
+            f"Document text (truncated):\n{text}"
+        )
+        schema = {
+            "type": "object",
+            "properties": {
+                "matchedName": {"type": ["string", "null"]},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            },
+            "required": ["matchedName", "confidence"],
+            "additionalProperties": False,
+        }
+
+        generated = generate_fields(
+            prompt=prompt,
+            json_schema=schema,
+            timeout_seconds=8.0,
+        )
+
+        raw_name = generated.get("matchedName")
+        raw_conf = generated.get("confidence")
+
+        matched_name = raw_name.strip() if isinstance(raw_name, str) and raw_name.strip() else None
+        confidence = float(raw_conf) if isinstance(raw_conf, (float, int, str)) else 0.0
+        confidence = float(np.clip(confidence, 0.0, 1.0))
+
+        if matched_name not in doc_type_names or confidence < 0.6:
+            matched_name = None
+
+        return ClassifyDocumentTypeResponse(
+            ok=True,
+            matchedName=matched_name,
+            confidence=confidence,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logging.error(
+            "ml_classify_document_type_failed",
+            extra={"error": f"{type(exc).__name__}: {exc}"},
+        )
+        return ClassifyDocumentTypeResponse(ok=False, matchedName=None, confidence=0.0)
 
 
 @app.post("/ml/serialize", response_model=SerializeResponse)

@@ -18,6 +18,7 @@ import {
   mlModelVersions,
   extractionModels,
   auditLogs,
+  documentTypeFields,
 } from '../db/schema';
 import { fieldLibrary } from '../field-library/schema';
 import { MlService } from './ml.service';
@@ -196,10 +197,29 @@ export class FieldSuggestionService {
       }
 
       // 4. Load active fields
-      const activeFields = await this.dbs.db
-        .select()
-        .from(fieldLibrary)
-        .where(eq(fieldLibrary.status, 'active'));
+      let activeFields: any[];
+      if (currentOcr.documentTypeId) {
+        const rows = await this.dbs.db
+          .select({ field: fieldLibrary })
+          .from(documentTypeFields)
+          .innerJoin(
+            fieldLibrary,
+            eq(documentTypeFields.fieldKey, fieldLibrary.fieldKey),
+          )
+          .where(
+            and(
+              eq(documentTypeFields.documentTypeId, currentOcr.documentTypeId),
+              eq(fieldLibrary.status, 'active'),
+            ),
+          )
+          .orderBy(documentTypeFields.sortOrder);
+        activeFields = rows.map((r) => r.field);
+      } else {
+        activeFields = await this.dbs.db
+          .select()
+          .from(fieldLibrary)
+          .where(eq(fieldLibrary.status, 'active'));
+      }
 
       if (activeFields.length === 0) {
         this.logger.warn('No active fields in field library');

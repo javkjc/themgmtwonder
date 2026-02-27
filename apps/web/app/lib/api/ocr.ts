@@ -82,6 +82,7 @@ export interface OcrResultsWithCorrectionsResponse {
     status: string;
     createdAt: string;
   } | null;
+  documentTypeId?: string | null;
   utilizationType?: string | null;
   parsedFields: OcrField[];
 }

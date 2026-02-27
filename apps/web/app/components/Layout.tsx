@@ -110,6 +110,13 @@ const IconSun = () => (
   </Icon>
 );
 
+const IconSearch = () => (
+  <Icon>
+    <circle cx="11" cy="11" r="8" />
+    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+  </Icon>
+);
+
 const IconMoon = () => (
   <Icon>
     <path d="M21 14.5A8 8 0 019.5 3a7 7 0 1011.5 11.5z" />
@@ -125,8 +132,10 @@ type LayoutProps = {
   | 'customizations'
   | 'admin'
   | 'adminFields'
+  | 'adminDocumentTypes'
   | 'adminMl'
-  | 'activity';
+  | 'activity'
+  | 'search';
   userEmail?: string;
   userRole?: string;
   isAdmin?: boolean;
@@ -242,6 +251,26 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
               )}
 
               <Link
+                href="/search"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: isCollapsed ? '12px 0' : '12px 20px',
+                  justifyContent: isCollapsed ? 'center' : 'flex-start',
+                  textDecoration: 'none',
+                  color: currentPage === 'search' ? 'var(--sidebar-text)' : 'var(--sidebar-text-muted)',
+                  background: currentPage === 'search' ? 'var(--sidebar-link-active)' : 'transparent',
+                  borderLeft: currentPage === 'search' ? '3px solid var(--sidebar-link-border)' : '3px solid transparent',
+                  transition: 'all 0.2s',
+                }}
+                title="Extraction Search"
+              >
+                <IconSearch />
+                {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>Extraction Search</span>}
+              </Link>
+
+              <Link
                 href="/customizations"
                 style={{
                   display: 'flex',
@@ -320,6 +349,26 @@ export default function Layout({ children, currentPage, userEmail, userRole, isA
               >
                 <IconTag />
                 {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>Fields</span>}
+              </Link>
+
+              <Link
+                href="/admin/document-types"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: isCollapsed ? '12px 0' : '12px 20px',
+                  justifyContent: isCollapsed ? 'center' : 'flex-start',
+                  textDecoration: 'none',
+                  color: currentPage === 'adminDocumentTypes' ? 'var(--sidebar-text)' : 'var(--sidebar-text-muted)',
+                  background: currentPage === 'adminDocumentTypes' ? 'var(--sidebar-link-active)' : 'transparent',
+                  borderLeft: currentPage === 'adminDocumentTypes' ? '3px solid var(--sidebar-link-border)' : '3px solid transparent',
+                  transition: 'all 0.2s',
+                }}
+                title="Document Types"
+              >
+                <IconTag />
+                {!isCollapsed && <span style={{ fontSize: 14, fontWeight: 500 }}>Document Types</span>}
               </Link>
 
               <Link

@@ -1,7 +1,0 @@
-fastapi
-uvicorn
-transformers
-datasets
-torch
-Pillow
-numpy

@@ -12,6 +12,7 @@
   - src/{main.ts,app.module.ts,app.controller.ts,app.service.ts}
   - src/scripts/seed-corpus.ts (idempotent deploy script; reads root seed_corpus/, embeds via Ollama nomic-embed-text, upserts baseline_embeddings with gold_standard=true; run: `docker compose exec api npx ts-node src/scripts/seed-corpus.ts`)
   - src/auth, todos, categories, settings, audit, admin, bootstrap, db, common, users
+  - src/search (SearchModule: SearchController + SearchService; GET /search/extractions with pgvector cosine similarity; audit log search.extractions with SHA-256 query hash)
   - src/attachments (upload/download/delete plus OCR trigger/list/apply via ApplyOcrDto)
   - src/ocr (OcrModule + OcrService that wraps worker calls, derived output storage, ownership checks)
   - drizzle/ (SQL migrations), drizzle.config.ts, api.Dockerfile
@@ -75,6 +76,10 @@
   - Auto-refresh: Loads on mount and refreshes every 15 seconds for admins
   - Default date range: Last 14 days (from today - 14 days to today)
   - Mutations at: loadMetrics() via manual Refresh button or auto-refresh interval
+- ROUTE: /search
+  - Path: apps/web/app/search/page.tsx
+  - Purpose: Semantic search UI — text input + optional documentType filter; result cards show similarity score, confirmedAt, field previews; each card links to /attachments/:attachmentId/review
+  - API client: apps/web/app/lib/api/search.ts (fetchExtractionSearch)
 - ROUTE: /admin/rules
   - Path: apps/web/app/admin/rules/page.tsx
   - Purpose: Admin rule management — lists proposed alias rules grouped by vendor; Approve/Reject buttons call POST /admin/rules/:id/approve|reject; auto-refreshes every 30s; empty state shows "No pending rules. The system is up to date."
@@ -107,9 +112,9 @@
   - Attachments/OCR: attachments panel uploads to POST /attachments/todo/:todoId, downloads via `${API_BASE_URL}/attachments/:id/download`, triggers OCR with POST /attachments/:id/ocr, fetches outputs via GET /attachments/:id/ocr, displays attachment_ocr_outputs text with copy/apply actions; Review OCR link available ONLY when status is confirmed; apply uses POST /attachments/:id/ocr/apply to add remark or append description; status badges now show lifecycle state when extracted text exists and warn for failed processing with available text; no PDF viewer or bounding boxes on task detail page
 - ROUTE: /attachments/[attachmentId]/review
   - Path: apps/web/app/attachments/[attachmentId]/review/page.tsx
-  - Hook: apps/web/app/attachments/[attachmentId]/review/hooks/useReviewPageData.ts — data-fetching hook for the review page; loads `me`, `ocrData`, `baseline`, `libraryFields`, and `tableSuggestions`; handles auth check, baseline creation, and OCR result fetching
+  - Hook: apps/web/app/attachments/[attachmentId]/review/hooks/useReviewPageData.ts — data-fetching hook for the review page; loads `me`, `ocrData`, `baseline`, `libraryFields`, and `tableSuggestions`; branches on documentTypeId to call /document-types/<id>/fields vs /fields?status=active; handles auth check, baseline creation, and OCR result fetching
   - Purpose: Visual OCR evidence review (attachment viewer + parsed field list + correction/history modals).
-  - Uses: PdfDocumentViewer, VerificationPanel (apps/web/app/components/ocr/VerificationPanel.tsx), JumpBar (apps/web/app/components/ocr/JumpBar.tsx), ExtractedTextPool (apps/web/app/components/ocr/ExtractedTextPool.tsx for truncated confidence badges and hover highlight), FieldAssignmentPanel (apps/web/app/components/FieldAssignmentPanel.tsx renders baseline assignment inputs with validation status and read-only reason banners), TableCreationModal (apps/web/app/components/tables/TableCreationModal.tsx for table structure detection and creation), TableEditorPanel (apps/web/app/components/tables/TableEditorPanel.tsx for inline cell editing, mapping, validation), TableConfirmationModal (apps/web/app/components/tables/TableConfirmationModal.tsx confirm/read-only lock), TableListPanel (apps/web/app/components/tables/TableListPanel.tsx for list + switching), ValidationConfirmationModal (apps/web/app/components/ValidationConfirmationModal.tsx prompts user to confirm invalid values with optional suggested corrections), OcrFieldList, OcrFieldEditModal, OcrCorrectionHistoryModal, CorrectionReasonModal, NotificationToast, lib/api/ocr.ts helpers (fetchAttachmentOcrResults, createOcrCorrection, fetchOcrCorrectionHistory), lib/api/baselines.ts (upsertAssignment, deleteAssignment, fetchBaselineForAttachment, markBaselineReviewed, confirmBaseline), lib/api/tables.ts (createTable, fetchTablesForBaseline, fetchTable, updateCell, deleteRow, assignColumn, confirmTable), API_BASE_URL for downloads and document playback.
+  - Uses: PdfDocumentViewer, VerificationPanel (apps/web/app/components/ocr/VerificationPanel.tsx), JumpBar (apps/web/app/components/ocr/JumpBar.tsx), ExtractedTextPool (apps/web/app/components/ocr/ExtractedTextPool.tsx for truncated confidence badges and hover highlight), FieldAssignmentPanel (apps/web/app/components/FieldAssignmentPanel.tsx renders baseline assignment inputs with validation status, read-only reason banners, and global conditional info banner), TableCreationModal (apps/web/app/components/tables/TableCreationModal.tsx for table structure detection and creation), TableEditorPanel (apps/web/app/components/tables/TableEditorPanel.tsx for inline cell editing, mapping, validation), TableConfirmationModal (apps/web/app/components/tables/TableConfirmationModal.tsx confirm/read-only lock), TableListPanel (apps/web/app/components/tables/TableListPanel.tsx for list + switching), ValidationConfirmationModal (apps/web/app/components/ValidationConfirmationModal.tsx prompts user to confirm invalid values with optional suggested corrections), OcrFieldList, OcrFieldEditModal, OcrCorrectionHistoryModal, CorrectionReasonModal, NotificationToast, lib/api/ocr.ts helpers (fetchAttachmentOcrResults, createOcrCorrection, fetchOcrCorrectionHistory), lib/api/baselines.ts (upsertAssignment, deleteAssignment, fetchBaselineForAttachment, markBaselineReviewed, confirmBaseline), lib/api/tables.ts (createTable, fetchTablesForBaseline, fetchTable, updateCell, deleteRow, assignColumn, confirmTable), API_BASE_URL for downloads and document playback.
   - Mutations at: POST /ocr-results/:ocrResultId/corrections via lib/api/ocr.ts; POST /baselines/:baselineId/assign for field assignments with validation (requires confirmInvalid flag for invalid values); Task detail page links to this route when attachment OCR status is confirmed.
   - Suggestion outcome tracking (v8.9 C2): review-page assignment handlers send consistent metadata so accept keeps `suggestionAccepted=true`, suggestion modify/clear set `suggestionAccepted=false` with preserved `modelVersionId`, and manual no-suggestion edits clear both to NULL.
 - ROUTE: /admin/fields
@@ -119,6 +124,11 @@
   - API client: apps/web/app/lib/api/fields.ts (listFields, getField, createField, updateField, hideField, unhideField, archiveField)
   - Access: Admin-only (redirects non-admin to home)
   - Mutations at: handleCreateField, handleUpdateField, handleHideField, handleUnhideField, handleArchiveField
+- ROUTE: /admin/document-types
+  - Path: apps/web/app/admin/document-types/page.tsx
+  - Purpose: Admin document type/template management (left panel type list + right panel scoped field template editor)
+  - API client: apps/web/app/lib/api/document-types.ts (list/create/update/delete types + list/add/update/remove template fields)
+  - Access: Admin-only (redirects non-admin to home)
 - ROUTE: /settings
   - Path: apps/web/app/settings (folder empty)
   - Purpose: Settings are served via /customizations route; this folder has no active page
@@ -134,9 +144,11 @@
   - Field assignment panel: apps/web/app/components/FieldAssignmentPanel.tsx renders active field library fields with type-specific inputs (text/number/decimal/date/currency), validation status indicators, user-friendly labels, example tooltips, drag-drop zones, and read-only mode for confirmed/utilized baselines; defaults to Top-N (20) suggested fields plus assigned fields view with a toggle to show all.
   - Validation modals: apps/web/app/components/ValidationConfirmationModal.tsx (invalid value confirmation with "Save As-Is" / "Use Suggestion" / "Cancel" actions), apps/web/app/components/CorrectionReasonModal.tsx (requires 10+ char reason for overwrite/delete on reviewed baselines).
   - Admin API client: apps/web/app/lib/api/admin.ts (fetchMlMetrics, fetchMlPerformance, activateMlModel -> POST /admin/ml/models/activate).
+  - Document Types API client: apps/web/app/lib/api/document-types.ts (frontend wrapper for existing /document-types and /document-types/:id/fields endpoints).
   - Baseline API client: apps/web/app/lib/api/baselines.ts (fetchBaselineForAttachment, upsertAssignment with confirmInvalid flag, deleteAssignment, markBaselineReviewed, confirmBaseline, generateSuggestions).
   - Suggestions UI: apps/web/app/components/suggestions/SuggestionTrigger.tsx (trigger ML field suggestions with tooltip), apps/web/app/components/suggestions/SuggestedFieldInput.tsx (visualizing field suggestions with confidence badges), apps/web/app/components/suggestions/SuggestionActionModal.tsx (modal for accepting/modifying/clearing ML suggestions), apps/web/app/components/suggestions/TableSuggestionBannerList.tsx (table suggestion banner list), apps/web/app/components/suggestions/TableSuggestionBanner.tsx (table suggestion banner item), apps/web/app/components/suggestions/TableSuggestionPreviewModal.tsx (preview modal for suggested tables).
   - Table API client: apps/web/app/lib/api/tables.ts (createTable, fetchTablesForBaseline, fetchTable, updateCell, deleteRow, assignColumn, confirmTable).
+  - I2 scope note: No new DB tables or backend API endpoints were added in this task.
 
 ## 3) Backend Map (NestJS)
 - Service: ML Service (FastAPI)
@@ -169,6 +181,10 @@
       - Heuristics: row grouping, column alignment, spacing consistency; threshold bumped to 0.60 for precision
       - Filtering: API filters new detections overlapping ignored suggestions by >50% IoU for "ignore-forever" behavior
       - Audit: logs `ignoredOverlapFiltered` count in `ml.table.detect` details
+    - POST /ml/classify-document-type
+      - Request: { text: string (first 800 chars of OCR text), documentTypeNames: string[] }
+      - Response: { ok: boolean, matchedName: string | null, confidence: number }
+      - Zero-shot Qwen 1.5B prompt; confidence threshold 0.6; returns matchedName: null below threshold or on error; logs ml_classify_document_type_failed on exception
   - Utilities:
     - apps/ml-service/table_detect.py - Rule-based table detection heuristics
     - apps/ml-service/model.py - Ollama Qwen inference client (`/api/generate`), num_ctx: 8192, and `model_not_ready` handling
@@ -275,6 +291,30 @@
   - Imports: DbModule, AuditModule, CommonModule, BaselineModule
   - Controllers: FieldSuggestionController, TableSuggestionController, MlMetricsController, MlTrainingDataController, MlModelsController, MlTrainingJobsController, MlPerformanceController, AliasRulesController
   - Providers: MlService, FieldSuggestionService, TableSuggestionService, FieldAssignmentValidatorService, MlMetricsService, MlTrainingDataService, MlModelsService, MlTrainingJobsService, MlTrainingAutomationService, MathReconciliationService, MlPerformanceService, MlRetryWorkerService, AliasEngineService, AliasRulesService
+- Module: SearchModule
+  - Path: apps/api/src/search/search.module.ts
+  - Controller: SearchController (apps/api/src/search/search.controller.ts)
+    - Base route: search (JwtAuthGuard)
+    - Endpoints:
+      - GET /search/extractions?q=&documentType=&dateFrom=&dateTo=&limit= → searchExtractions() → SearchService.searchExtractions() + audit search.extractions (SHA-256 query hash, not raw query)
+  - Service: SearchService (apps/api/src/search/search.service.ts)
+    - Embeds q via Ollama nomic-embed-text (search_query: prefix), pgvector cosine distance on baseline_embeddings, optional filters by document_type_id/date, returns [{baselineId, attachmentId, similarity, confirmedAt, documentTypeId, fieldPreview}], limit capped at 100
+- Module: DocumentTypesModule
+  - Path: apps/api/src/document-types/document-types.module.ts
+  - Controller: DocumentTypesController (apps/api/src/document-types/document-types.controller.ts)
+    - Base route: document-types (JwtAuthGuard on all; AdminGuard on mutations)
+    - Endpoints:
+      - GET /document-types → listDocumentTypes() [any auth]
+      - POST /document-types → createDocumentType() [admin]
+      - PATCH /document-types/:id → updateDocumentType() [admin]
+      - DELETE /document-types/:id → deleteDocumentType() [admin]; 404 if not found
+      - GET /document-types/:id/fields → getDocumentTypeFields() [any auth]; JOINs document_type_fields with field_library; returns [{fieldKey, label, characterType, required, zoneHint, sortOrder}] ORDER BY sortOrder ASC
+      - POST /document-types/:id/fields → addFieldToDocumentType() [admin]
+      - PATCH /document-types/:id/fields/:fieldKey → updateDocumentTypeField() [admin]
+      - DELETE /document-types/:id/fields/:fieldKey → removeFieldFromDocumentType() [admin]
+  - Service: DocumentTypesService (apps/api/src/document-types/document-types.service.ts)
+  - Service: DocumentClassifierService (apps/api/src/document-types/document-classifier.service.ts) — HTTP client for POST /ml/classify-document-type; 8s AbortController timeout; returns {ok, matchedName, confidence}; never throws
+  - DTOs: apps/api/src/document-types/dto/{create-document-type.dto.ts, update-document-type.dto.ts, add-document-type-field.dto.ts, update-document-type-field.dto.ts}
 - Controller: AliasRulesController
   - Path: apps/api/src/ml/alias-rules.controller.ts
   - Base route: admin/rules (admin-only: JwtAuthGuard + CsrfGuard + AdminGuard)
@@ -421,6 +461,7 @@
     - normalizeForPageConflictComparison(value): lowercases and strips whitespace for case-insensitive cross-page value comparison
   - Rate limit: 10 requests per hour per user (counts audit_logs with action='ml.suggest.generate')
   - Suggestion logic: Only creates assignments for unassigned fields or fields without manual values (suggestionConfidence null)
+  - I5 scoping: fields query branches on `currentOcr.documentTypeId` — if set, JOINs `document_type_fields` with `field_library` (ORDER BY sortOrder); else falls back to global `field_library WHERE status='active'`; `documentTypeFields` imported from `apps/api/src/db/schema.ts`
   - I5 policy note: Strategy B (confidence winner on disagreement) and Strategy C (frequency vote) are not implemented in v8.10 and are future configurable policies
   - Model routing (v8.9 C1): Reads `ML_MODEL_AB_TEST` (default false), resolves active model A (`isActive=true`), resolves candidate model B (same `modelName`, most recent `isActive=false` by `trainedAt`), deterministically selects by baseline-id parity, and passes selected `modelVersionId` + `filePath` to ML service
   - Confidence tier thresholds: missing `ML_TIER_AUTOCONFIRM` or `ML_TIER_VERIFY` env vars log warnings and default to `0.90` and `0.70`
@@ -462,12 +503,12 @@
   - Derived data helpers:
     - `OcrParsingService` (`apps/api/src/ocr/ocr-parsing.service.ts`) parses `attachment_ocr_outputs.extractedText` and persists structured `ocr_results`, but will only run when `attachment_ocr_outputs.status === 'confirmed'` to keep derived data tied to confirmed OCR.
     - `OcrCorrectionsService` (`apps/api/src/ocr/ocr-corrections.service.ts`) loads the parent `attachment_ocr_outputs` row via `ocr_results.attachmentOcrOutputId`, enforces ownership, and rejects corrections until that parent record is confirmed.
-    - `OcrService.getOcrResultsWithCorrections` (`apps/api/src/ocr/ocr.service.ts`) calls `getCurrentConfirmedOcr(attachmentId)` so the aggregation returns raw/parsed data and corrections only for the confirmed OCR output; missing confirmation yields `rawOcr: null` and empty `parsedFields`.
+    - `OcrService.getOcrResultsWithCorrections` (`apps/api/src/ocr/ocr.service.ts`) calls `getCurrentConfirmedOcr(attachmentId)` so the aggregation returns raw/parsed data and corrections only for the confirmed OCR output; missing confirmation yields `rawOcr: null` and empty `parsedFields`. Note: documentTypeId is now included in the GET /attachments/:id/ocr/results response.
   - Added markOcrUtilized service method to persist `utilizedAt`/`utilizationType`/`utilizationMetadata` on confirmed outputs while emitting `OCR_UTILIZED_*` audit events for Categories A/B/C utilization.
   - Added archiveOcrResult for Option-C archiving so confirmed `data_export` outputs owned by the requester are marked `status='archived'`, timestamped, and fire `OCR_ARCHIVED` while remaining hidden from current confirmed reads.
 - Service: OcrQueueService
   - Path: apps/api/src/ocr/ocr-queue.service.ts
-  - Responsibilities: in-memory polling queue for OCR jobs (`OnModuleInit`/`OnModuleDestroy`); dispatches queued jobs to OcrService at 1500ms intervals; enforces MAX_ACTIVE_PER_USER=3 concurrency limit; reads from `ocr_jobs` table; disabled via `OCR_QUEUE_ENABLED=false`
+  - Responsibilities: in-memory polling queue for OCR jobs (`OnModuleInit`/`OnModuleDestroy`); dispatches queued jobs to OcrService at 1500ms intervals; enforces MAX_ACTIVE_PER_USER=3 concurrency limit; reads from `ocr_jobs` table; disabled via `OCR_QUEUE_ENABLED=false`; fires async `classifyDocumentType()` via `DocumentClassifierService` after `createDerivedOutput()` succeeds (fire-and-forget, never throws)
 - Controller: OcrController
   - Path: apps/api/src/ocr/ocr.controller.ts
   - Base route: none (methods declare their own `/ocr`, `/attachments`, `/ocr-results` paths)
@@ -539,7 +580,7 @@
   - Path: apps/api/src/baseline/baseline-management.service.ts
   - Lifecycle: draft â†’ reviewed â†’ confirmed â†’ archived (strict state machine)
   - Methods:
-    - createDraftBaseline(attachmentId, userId): Creates baseline with status='draft', auto-populates segments from OCR, pre-fills assignments from parsed fields
+    - createDraftBaseline(attachmentId, userId): Creates baseline with status='draft', auto-populates segments from OCR, pre-fills assignments from parsed fields scoped by document type — if `currentOcr.documentTypeId` is set, JOINs `document_type_fields` with `field_library` to build `validKeys`; else falls back to global `field_library WHERE status='active'`
     - markReviewed(baselineId, userId): Transitions draft â†’ reviewed (still editable)
     - confirmBaseline(baselineId, userId): Transactional confirm (reviewed â†’ confirmed) + auto-archives previous confirmed baseline atomically; blocked if any draft tables exist; triggers non-blocking RagEmbeddingService.embedOnConfirm() after commit and then calls `OcrService.markOcrUtilized(..., 'authoritative_record', ...)` in try/catch (confirmed OCR first, fallback to current OCR) so lock failures never block confirmation
     - markBaselineUtilized(baselineId, type, metadata): First-write-wins utilization tracking (record_created/workflow_committed/data_exported)
@@ -626,26 +667,7 @@ Overlap logic:
 - [VERIFIED] D1: Admin Metrics API
 - [VERIFIED] D2: Admin Metrics UI
 
-## 6) L1 Training-Worker Container
-- Container: `training-worker` (docker-compose service)
-  - Build: `apps/training-worker/training-worker.Dockerfile`
-  - Network: `backend` only
-  - Port: internal `7000` via `expose` (no host port mapping)
-  - Model volume: `ml_models` mounted at `/app/models`
-  - Source mount: `./apps/training-worker:/app`
-- Files:
-  - `apps/training-worker/main.py` - FastAPI app and async training dispatcher
-  - `apps/training-worker/finetune.py` - L1 LayoutLMv3 fine-tune stub that writes checkpoint artifacts
-  - `apps/training-worker/generate_synthetic.py` - L1 synthetic generator stub
-  - `apps/training-worker/requirements.txt` - runtime deps (`fastapi`, `uvicorn`, `transformers`, `datasets`, `torch`, `Pillow`, `numpy`)
-  - `apps/training-worker/training-worker.Dockerfile` - Python 3.11 container startup on port 7000
-- Endpoints:
-  - `GET /health` -> `{ "status": "ok" }`
-  - `POST /train`
-    - Request body: `{jobId, exportPath, syntheticPath?, syntheticRatio?, candidateVersion, epochs?, batchSize?, learningRate?}`
-    - Behavior: spawns background thread, runs `finetune.py` logic, writes checkpoint to `/app/models/<candidateVersion>/`, then calls API callback `/admin/ml/training-jobs/:id/complete` or `/admin/ml/training-jobs/:id/fail`
-
-## 7) G1 Preprocessor Container
+## 6) G1 Preprocessor Container
 - Container: `preprocessor` (docker-compose service)
   - Build: `apps/preprocessor/preprocessor.Dockerfile`
   - Network: `backend` only

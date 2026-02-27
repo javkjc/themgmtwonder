@@ -65,8 +65,14 @@ export function useReviewPageData(attachmentId: string | undefined) {
     try {
       const data = await fetchAttachmentOcrResults(attachmentId);
       setOcrData(data);
-      const fields = await apiFetchJson('/fields?status=active');
-      setLibraryFields(fields as any[]);
+      const documentTypeId = data.documentTypeId;
+      const fields = documentTypeId
+        ? await apiFetchJson(`/document-types/${documentTypeId}/fields`)
+        : await apiFetchJson('/fields?status=active');  // fallback unchanged
+
+      const fieldsArray = fields as any[];
+      (fieldsArray as any).documentTypeId = documentTypeId || null;
+      setLibraryFields(fieldsArray);
     } catch (err: unknown) {
       setError((err as Error)?.message || 'Failed to load extraction review data');
     } finally {

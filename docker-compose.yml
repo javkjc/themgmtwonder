@@ -74,20 +74,6 @@ services:
     entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 5 && ollama pull qwen2.5:1.5b && ollama pull nomic-embed-text && wait"]
     restart: unless-stopped
 
-  training-worker:
-    build:
-      context: ./apps/training-worker
-      dockerfile: training-worker.Dockerfile
-    container_name: todo-training-worker
-    networks:
-      - backend
-    expose:
-      - 7000
-    environment:
-      API_CALLBACK_BASE_URL: http://api:3000/admin/ml/training-jobs
-    volumes:
-      - ./apps/training-worker:/app
-      - ml_models:/app/models
   web:
     build:
       context: ./apps/web

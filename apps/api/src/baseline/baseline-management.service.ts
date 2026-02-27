@@ -12,6 +12,7 @@ import {
   extractionBaselines,
   ocrResults,
   baselineTables,
+  documentTypeFields,
 } from '../db/schema';
 import { fieldLibrary } from '../field-library/schema';
 import { eq, and, desc } from 'drizzle-orm';
@@ -130,10 +131,29 @@ export class BaselineManagementService {
         .where(eq(ocrResults.attachmentOcrOutputId, currentOcr.id));
 
       if (results.length > 0) {
-        const activeLibraryFields = await this.dbs.db
-          .select()
-          .from(fieldLibrary)
-          .where(eq(fieldLibrary.status, 'active'));
+        let activeLibraryFields: any[];
+        if (currentOcr.documentTypeId) {
+          const rows = await this.dbs.db
+            .select({ field: fieldLibrary })
+            .from(documentTypeFields)
+            .innerJoin(
+              fieldLibrary,
+              eq(documentTypeFields.fieldKey, fieldLibrary.fieldKey),
+            )
+            .where(
+              and(
+                eq(documentTypeFields.documentTypeId, currentOcr.documentTypeId),
+                eq(fieldLibrary.status, 'active'),
+              ),
+            )
+            .orderBy(documentTypeFields.sortOrder);
+          activeLibraryFields = rows.map((r) => r.field);
+        } else {
+          activeLibraryFields = await this.dbs.db
+            .select()
+            .from(fieldLibrary)
+            .where(eq(fieldLibrary.status, 'active'));
+        }
 
         const validKeys = new Set(activeLibraryFields.map((f) => f.fieldKey));
 

@@ -5,15 +5,23 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import * as path from 'path';
 import { DbService } from '../db/db.service';
-import { attachments, extractionBaselines, ocrJobs, todos } from '../db/schema';
+import {
+  attachmentOcrOutputs,
+  attachments,
+  documentTypes,
+  extractionBaselines,
+  ocrJobs,
+  todos,
+} from '../db/schema';
 import { AuditService } from '../audit/audit.service';
 import { OcrService } from './ocr.service';
 import { ModuleRef } from '@nestjs/core';
 import { fieldLibrary } from '../field-library/schema';
 import { FieldSuggestionService } from '../ml/field-suggestion.service';
+import { DocumentClassifierService } from '../document-types/document-classifier.service';
 
 type OcrJobStatus = 'queued' | 'processing' | 'completed' | 'failed';
 
@@ -32,6 +40,7 @@ export class OcrQueueService implements OnModuleInit, OnModuleDestroy {
     private readonly ocrService: OcrService,
     private readonly auditService: AuditService,
     private readonly moduleRef: ModuleRef,
+    private readonly documentClassifierService: DocumentClassifierService,
   ) { }
 
   async onModuleInit() {
@@ -335,6 +344,7 @@ export class OcrQueueService implements OnModuleInit, OnModuleDestroy {
           mimeType: attachment.mimeType,
         },
       });
+      void this.classifyDocumentType(record.id, workerResult.text);
 
       await this.dbs.db
         .update(extractionBaselines)
@@ -463,5 +473,44 @@ export class OcrQueueService implements OnModuleInit, OnModuleDestroy {
         error: error.slice(0, 500),
       })
       .where(eq(ocrJobs.id, jobId));
+  }
+
+  private async classifyDocumentType(ocrOutputId: string, text: string) {
+    try {
+      const availableTypes = await this.dbs.db
+        .select({
+          id: documentTypes.id,
+          name: documentTypes.name,
+        })
+        .from(documentTypes)
+        .orderBy(asc(documentTypes.createdAt));
+
+      if (availableTypes.length === 0) {
+        return;
+      }
+
+      const result = await this.documentClassifierService.classifyDocumentType(
+        text,
+        availableTypes.map((type) => type.name),
+      );
+
+      if (!result.ok || !result.matchedName) {
+        return;
+      }
+
+      const matchedType = availableTypes.find(
+        (type) => type.name === result.matchedName,
+      );
+      if (!matchedType) {
+        return;
+      }
+
+      await this.dbs.db
+        .update(attachmentOcrOutputs)
+        .set({ documentTypeId: matchedType.id })
+        .where(eq(attachmentOcrOutputs.id, ocrOutputId));
+    } catch (err) {
+      this.logger.error('Document type classification failed', err as Error);
+    }
   }
 }

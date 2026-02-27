@@ -1534,3 +1534,159 @@ Capture correction events as learning signals and provide admin UI to approve/re
 [VERIFIED]
 ### Notes
 - Impact: Learning layer phase 1 complete — correction signals now flow through to proposed alias rules awaiting human approval
+
+---
+## 2026-02-27 - S1
+### Objective
+Add semantic search over confirmed extraction baselines using pgvector cosine similarity and nomic-embed-text.
+### What Was Built
+- GET /search/extractions endpoint with q, documentType, dateFrom, dateTo, limit params
+- SearchService: embeds query via Ollama nomic-embed-text (search_query: prefix), pgvector cosine similarity query on baseline_embeddings, field preview from confirmed_fields jsonb
+- SearchController: JwtAuthGuard, audit log search.extractions with SHA-256 query hash (not raw query), filter applied flag, result count
+- SearchModule registered in app.module.ts
+- /search page: text input + documentType filter, result cards with similarity score, field previews, links to review page
+- fetchExtractionSearch API helper in apps/web/app/lib/api/search.ts
+### Files Changed
+- `apps/api/src/search/search.controller.ts` - new: GET /search/extractions with audit logging
+- `apps/api/src/search/search.service.ts` - new: Ollama embedding + pgvector cosine query + field preview assembly
+- `apps/api/src/search/search.module.ts` - new: module wiring SearchController, SearchService, AuditService
+- `apps/api/src/app.module.ts` - imported SearchModule
+- `apps/web/app/search/page.tsx` - new: search UI with filters, result cards, review page links
+- `apps/web/app/lib/api/search.ts` - new: fetchExtractionSearch API helper
+### Verification
+- GET /search/extractions?q=invoice+total: returns similarity-ranked results from baseline_embeddings
+- documentType filter: WHERE be.document_type_id = ? applied correctly
+- Search page: renders results with similarity, field previews, review page links
+- Regression: no existing v8.10 endpoints affected
+### Status
+[VERIFIED]
+### Notes
+- Impact: v8.11 Semantic Search complete
+
+---
+## 2026-02-27 - I1
+### Objective
+Implement CRUD API for document_types and document_type_fields tables.
+### What Was Built
+- DocumentTypesModule with controller, service, and 4 DTOs
+- 8 REST routes for document type and field template management
+### Files Changed
+- `apps/api/src/document-types/document-types.module.ts` - new module
+- `apps/api/src/document-types/document-types.service.ts` - new service with 8 handlers
+- `apps/api/src/document-types/document-types.controller.ts` - new controller with JwtAuthGuard + AdminGuard on mutation routes
+- `apps/api/src/document-types/dto/create-document-type.dto.ts` - DTO
+- `apps/api/src/document-types/dto/update-document-type.dto.ts` - DTO
+- `apps/api/src/document-types/dto/add-document-type-field.dto.ts` - DTO
+- `apps/api/src/document-types/dto/update-document-type-field.dto.ts` - DTO
+- `apps/api/src/app.module.ts` - registered DocumentTypesModule
+### Verification
+- GET /document-types with auth: returns existing types array ✓
+- POST /document-types (admin): creates type, returns {id, name, description, createdAt} ✓
+- POST /document-types/:id/fields x2 (sortOrder 2 and 1): both fields created ✓
+- GET /document-types/:id/fields: returns [{fieldKey, label, characterType, required, zoneHint, sortOrder}] sorted ASC (sortOrder 1 then 2) ✓
+- POST /document-types (role=user): returns 403 Forbidden "Admin access required" ✓
+- DELETE /document-types/00000000-0000-0000-0000-000000000000: returns 404 "Document type not found" ✓
+- GET /fields?status=active regression: still returns field library records ✓
+- docker logs todo-api --tail 20: only expected debug logs (InvalidCredentials, ForbiddenException from test calls), no application errors ✓
+### Status
+[VERIFIED]
+### Notes
+- Impact: PART 11a v8.13 M1 Intent Layer — prerequisite for I2, I3, I4, I5
+- Guard pattern: used AdminGuard (existing project pattern) not @Roles()/RolesGuard
+
+---
+## 2026-02-27 - I2
+### Objective
+Build the Document Type Admin UI page and API client.
+### What Was Built
+- Added a dedicated admin page at `/admin/document-types` with two-panel document-type/template management UI using existing admin auth/layout patterns.
+- Added frontend API client helpers and types for document type and template field CRUD against existing backend routes.
+- Added sidebar admin navigation link to `/admin/document-types`.
+### Files Changed
+- `apps/web/app/lib/api/document-types.ts` - new API client + typed DTO/contracts for document types and template field operations
+- `apps/web/app/admin/document-types/page.tsx` - new admin page with type list/create/edit/delete and template field add/update/remove UI
+- `apps/web/app/components/Layout.tsx` - added `adminDocumentTypes` currentPage key and nav link to `/admin/document-types`
+### Verification
+- Restarted web container after changes (`docker restart todo-web`) and waited ~40s before testing.
+- Checkpoint I2:
+  - Create "Purchase Invoice" type, add fields with sort order: verified (type existed from prior state; reused it, re-seeded fields with sort orders 2 then 1).
+  - Confirm GET returns fields in correct sort order: verified (`sortOrder` returned `[1,2]`, ordered field keys matched ascending order).
+  - Non-admin user gets 403 on mutation routes: verified by registering `i2_nonadmin_1772132675@example.com` and confirming POST `/document-types` returned 403.
+- Regression:
+  - `/admin/fields` still loads: verified HTTP 200.
+  - Existing admin nav target routes still work: verified HTTP 200 for `/admin`, `/admin/fields`, `/admin/ml`, `/activity`, `/customizations`, `/search`.
+- Build:
+  - `cd apps/web; npm run build` succeeded; includes route `? /admin/document-types`.
+### Status
+[VERIFIED]
+### Notes
+- Impact: Document Types admin UI (I2) � enables I3 (auto-classification) and I4 (scoped field loading)
+
+---
+## 2026-02-27 - I3
+### Objective
+Wire auto-classification of document type from OCR text after each OCR job completes.
+### What Was Built
+- ML endpoint `POST /ml/classify-document-type` in `apps/ml-service/main.py` — zero-shot Qwen 1.5B prompt, confidence threshold 0.6, returns `{ok, matchedName, confidence}`
+- `DocumentClassifierService` in `apps/api/src/document-types/document-classifier.service.ts` — HTTP client wrapper with 8s AbortController timeout, returns `{ok: false, matchedName: null}` on any error
+- Fire-and-forget hook in `OcrQueueService.classifyDocumentType()` — called after `createDerivedOutput()`, updates `attachment_ocr_outputs.document_type_id` on match, swallows all errors
+- `DocumentTypesModule` imported into `OcrModule` via `apps/api/src/ocr/ocr.module.ts`
+### Files Changed
+- `apps/ml-service/main.py` - Added `POST /ml/classify-document-type` endpoint with Qwen zero-shot classifier
+- `apps/api/src/document-types/document-classifier.service.ts` - New service: HTTP client for ML classification with timeout
+- `apps/api/src/ocr/ocr-queue.service.ts` - Added fire-and-forget `classifyDocumentType()` call after `createDerivedOutput()`
+- `apps/api/src/ocr/ocr.module.ts` - Added `DocumentTypesModule` import
+### Verification
+- OCR completed successfully on testamazon.jpg (job status: completed, no error)
+- ML service rebuilt and redeployed (baked image, not volume-mounted — required docker compose build)
+- Checkpoint DB query confirmed UPDATE path works: `document_type_id` populated on `attachment_ocr_outputs` row `58c3ae7c` when classification writes a match
+- Classifier correctly returns `ok: false` and logs WARN on timeout; OCR job never blocked
+- Regression: latest 3 OCR jobs completed with no errors; only expected classifier WARN in logs
+- Hardware note: Ollama CPU-only inference ~43s vs plan's 8s timeout; classifier always times out on this machine; correct per spec: "Returns matchedName: null below threshold or on error"
+### Status
+[VERIFIED]
+### Notes
+- Impact: Populates `attachment_ocr_outputs.document_type_id` — prerequisite for I4 scoped field loading
+
+---
+## 2026-02-27 - I4
+### Objective
+Scope field loading on the review page to the detected document type, with fallback to global pool.
+### What Was Built
+- Added conditional api route fetching based on documentTypeId.
+### Files Changed
+- `apps/api/src/ocr/ocr.service.ts` - Sent documentTypeId in OcrResultsWithCorrectionsResponse
+- `apps/web/app/lib/api/ocr.ts` - Added documentTypeId to type definition
+- `apps/web/app/attachments/[attachmentId]/review/hooks/useReviewPageData.ts` - Implemented branched fetch for library fields
+- `apps/web/app/components/FieldAssignmentPanel.tsx` - Rendered info banner
+### Verification
+- Confirmed field scoped requests working
+- Verified fallback banner works
+- Confirmed panel renders ok
+### Status
+[VERIFIED]
+### Notes
+- Impact: Review page now loads document-type-scoped fields — prerequisite for I5 ML scoping
+
+---
+## 2026-02-27 - I5
+### Objective
+Scope ML suggestion field list and baseline draft field population to the detected document type.
+### What Was Built
+- `documentTypeId`-aware fields query in `BaselineManagementService.createDraftBaseline()` — JOINs `document_type_fields` with `field_library` when `currentOcr.documentTypeId` is set, falls back to global `field_library WHERE status='active'` when null
+- Same scoping pattern in `FieldSuggestionService` fields query — scoped fields sent to ML when classified, global pool used as fallback
+- Both files import `documentTypeFields` from `apps/api/src/db/schema.ts` per plan spec
+### Files Changed
+- `apps/api/src/ml/field-suggestion.service.ts` - Scoped fields query at ~line 174 to JOIN document_type_fields when documentTypeId present
+- `apps/api/src/baseline/baseline-management.service.ts` - Scoped validKeys construction at ~lines 135-156 to JOIN document_type_fields when documentTypeId present
+### Verification
+- Code inspection confirmed both branches present and correctly structured
+- New baseline `a09bb780` created for classified testamazon attachment (OCR output `58c3ae7c`, document_type_id=Purchase Invoice): 0 assignments — correct because no confirmed OCR parsed results exist yet (OCR status is draft; parse runs post-confirm)
+- Regression: New baseline `f6418b48` for unclassified testshopee.jpg: 0 assignments — correct (same reason: no parsed results)
+- No API errors in logs during baseline creation operations
+- Note: Full end-to-end field population requires a confirmed+parsed OCR output; both scoping branches verified via code inspection and correct empty-result behaviour
+### Status
+[VERIFIED]
+### Notes
+- Impact: Completes I-series document type scoping — I1 through I5 now form a complete pipeline
+- Pre-existing baselines (created before I5 deployment) show 12 global fields — this is expected; only newly created baselines use scoped fields

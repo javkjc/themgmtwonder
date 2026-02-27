@@ -148,6 +148,7 @@ export interface OcrResultsWithCorrectionsResponse {
       createdAt: Date;
     }>;
   }>;
+  documentTypeId?: string | null;
   utilizationType?: string | null;
 }
 
@@ -158,7 +159,7 @@ export class OcrService {
     private readonly auditService: AuditService,
     private readonly ocrParsingService: OcrParsingService,
     private readonly ocrCorrectionsService: OcrCorrectionsService,
-  ) {}
+  ) { }
 
   async createDerivedOutput({
     userId,
@@ -184,7 +185,7 @@ export class OcrService {
     const extractionPath = toOptionalString(workerMeta?.extractionPath);
     const preprocessingApplied =
       workerMeta &&
-      Object.prototype.hasOwnProperty.call(workerMeta, 'preprocessingApplied')
+        Object.prototype.hasOwnProperty.call(workerMeta, 'preprocessingApplied')
         ? workerMeta.preprocessingApplied
         : null;
     const processingDurationMs = toOptionalInteger(workerMeta?.durationMs);
@@ -527,19 +528,19 @@ export class OcrService {
     const existingSegments =
       editedExtractedText === undefined
         ? (
-            await this.dbs.db
-              .select()
-              .from(extractedTextSegments)
-              .where(eq(extractedTextSegments.attachmentOcrOutputId, ocrId))
-          ).map((segment) => ({
-            text: segment.text,
-            confidence:
-              segment.confidence === null || segment.confidence === undefined
-                ? null
-                : Number(segment.confidence),
-            boundingBox: segment.boundingBox as BoundingBox | null,
-            pageNumber: segment.pageNumber ?? 1,
-          }))
+          await this.dbs.db
+            .select()
+            .from(extractedTextSegments)
+            .where(eq(extractedTextSegments.attachmentOcrOutputId, ocrId))
+        ).map((segment) => ({
+          text: segment.text,
+          confidence:
+            segment.confidence === null || segment.confidence === undefined
+              ? null
+              : Number(segment.confidence),
+          boundingBox: segment.boundingBox as BoundingBox | null,
+          pageNumber: segment.pageNumber ?? 1,
+        }))
         : [];
 
     const [confirmedOcr] = await this.dbs.db
@@ -796,7 +797,7 @@ export class OcrService {
     if (ocr.utilizationType !== 'data_export') {
       throw new BadRequestException(
         `Can only archive OCR with Category C utilization (data_export). ` +
-          `Current utilization: ${ocr.utilizationType ?? 'none'}.`,
+        `Current utilization: ${ocr.utilizationType ?? 'none'}.`,
       );
     }
 
@@ -902,12 +903,13 @@ export class OcrService {
       },
       rawOcr: rawOcrOutput
         ? {
-            id: rawOcrOutput.id,
-            extractedText: rawOcrOutput.extractedText || '',
-            status: rawOcrOutput.status,
-            createdAt: rawOcrOutput.createdAt,
-          }
+          id: rawOcrOutput.id,
+          extractedText: rawOcrOutput.extractedText || '',
+          status: rawOcrOutput.status,
+          createdAt: rawOcrOutput.createdAt,
+        }
         : null,
+      documentTypeId: rawOcrOutput && 'documentTypeId' in rawOcrOutput ? (rawOcrOutput as any).documentTypeId : null,
       utilizationType: rawOcrOutput?.utilizationType || null,
       parsedFields,
     };

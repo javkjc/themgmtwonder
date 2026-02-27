@@ -241,12 +241,12 @@ export default function FieldAssignmentPanel({
         } else if (type === 'clear') {
           if (onDelete) {
             const existing = assignmentMap[fieldKey];
-              await onDelete(fieldKey, {
-                reason,
-                suggestionRejected: true,
-                suggestionConfidence: existing?.suggestionConfidence || undefined,
-                modelVersionId: existing?.modelVersionId || undefined,
-              });
+            await onDelete(fieldKey, {
+              reason,
+              suggestionRejected: true,
+              suggestionConfidence: existing?.suggestionConfidence || undefined,
+              modelVersionId: existing?.modelVersionId || undefined,
+            });
           }
         }
       } catch {
@@ -314,6 +314,26 @@ export default function FieldAssignmentPanel({
         >
           <span style={{ fontSize: 16 }}>🔒</span>
           {readOnlyReason}
+        </div>
+      )}
+
+      {'documentTypeId' in fields && (fields as any).documentTypeId === null && (
+        <div
+          style={{
+            padding: '12px 16px',
+            borderRadius: 12,
+            background: 'var(--surface-secondary)',
+            border: '1px solid var(--border)',
+            color: 'var(--text-secondary)',
+            fontSize: 13,
+            fontWeight: 500,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <span style={{ fontSize: 16 }}>ℹ️</span>
+          No document type detected. Showing all available fields. Set up document type templates in Admin → Document Types to enable auto-scoping.
         </div>
       )}
 
