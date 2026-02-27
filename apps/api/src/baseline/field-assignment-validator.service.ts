@@ -50,10 +50,7 @@ export class FieldAssignmentValidatorService {
         this.logger.warn(
           `Validation attempt for unknown character type: ${characterType}`,
         );
-        return {
-          valid: false,
-          error: `Unknown character type: ${characterType}`,
-        };
+        return { valid: true };
     }
   }
 
@@ -147,8 +144,13 @@ export class FieldAssignmentValidatorService {
     const isoRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (isoRegex.test(trimmed)) {
       const date = new Date(trimmed);
-      if (!isNaN(date.getTime()) && date.toISOString().startsWith(trimmed)) {
-        return { valid: true };
+      if (!isNaN(date.getTime())) {
+        const y = date.getFullYear().toString();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        if (`${y}-${m}-${d}` === trimmed) {
+          return { valid: true };
+        }
       }
     }
 
@@ -290,32 +292,51 @@ export class FieldAssignmentValidatorService {
   }
 
   private validateCurrency(value: string): ValidationResult {
-    // Currency field follows ISO 4217 standard: exactly 3 uppercase letters
-    // Examples: USD, EUR, GBP, JPY, CNY
     const trimmed = value.trim();
     const iso4217Regex = /^[A-Z]{3}$/;
+    const uppercased = trimmed.toUpperCase();
 
-    // Check if it matches ISO 4217 format
-    if (!iso4217Regex.test(trimmed)) {
-      const uppercased = trimmed.toUpperCase();
-
-      // If uppercasing and trimming would make it valid, suggest that
-      if (iso4217Regex.test(uppercased)) {
-        return {
-          valid: true,
-          suggestedCorrection: uppercased,
-        };
-      }
-
-      // Otherwise, provide general guidance
+    // Compatibility mode: allow ISO 4217 code-style currency fields.
+    if (iso4217Regex.test(uppercased)) {
       return {
-        valid: false,
-        error:
-          'Currency code must be exactly 3 uppercase letters (e.g., USD, EUR, GBP).',
+        valid: true,
+        suggestedCorrection: trimmed === uppercased ? undefined : uppercased,
       };
     }
 
-    return { valid: true };
+    // Monetary amount mode: parse values like "$1,234.56", "1234.5", "1.200,50".
+    const firstToken = trimmed.match(/[+\-]?[$€£¥]?\s*[\d,]+(?:[.,]\d+)?/);
+    const sanitized = firstToken
+      ? firstToken[0].replace(/[$€£¥,\s]/g, '').trim()
+      : trimmed.replace(/[$€£¥,\s]/g, '').trim();
+    const parsed = parseFloat(sanitized);
+
+    if (isNaN(parsed)) {
+      return {
+        valid: false,
+        error:
+          'Invalid currency amount. Expected a monetary value like 1234.56.',
+      };
+    }
+
+    if (parsed < 0) {
+      return {
+        valid: false,
+        error: 'Value must be 0 or greater. Negative amounts are not allowed.',
+        suggestedCorrection: '0.00',
+      };
+    }
+
+    const fixed = parsed.toFixed(2);
+    const isNormalizedInput =
+      sanitized === fixed &&
+      !trimmed.includes(',') &&
+      !/[$€£¥]/.test(trimmed);
+
+    return {
+      valid: true,
+      suggestedCorrection: isNormalizedInput ? undefined : fixed,
+    };
   }
 
   private validateEmail(value: string): ValidationResult {

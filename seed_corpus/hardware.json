@@ -1,0 +1,13 @@
+{
+  "documentType": "Invoice",
+  "serializedText": "HARDWARE  WH0LESALE  INVOICE\nS|N  H0CK  HARDWARE  PTE  LTD\nBlk  3015  Ubi  Rd  1  #01-228\nSingapore  408704\nUEN:  198703210N   GST Reg:  M2-0043210-0\nTel:  6|23  4567\n\nT0:\nBright  Bui|d  Contractors  Pte  Ltd\n10  Buroh  St  #02-11\nSingapore  627564\n\nInvoice  N0:  SHH-260205-1198\nDate:  05 Feb 26\nPO:  BB-PO-7781\n\nDescr|ption                         Qty     Unit$       Amount$\n-----------------------------------------------------------------\nPVC  Conduit  20mm  (3m)            100     2.40        240.00\nCopper  Wire  2.5mm  (100m  roll)     5     98.00       490.00\nLED  Down|ight  12W                 30     12.00       360.00\nCement  50kg                         3     50.00       150.00\n                                                     Subt0ta|  1240.00\nGST  9%                                               111.60\nT0TA|                                              1351.60\n\nTerms:  Cash  on  delivery\nPage 1  of 1   Scan Date: 2026 / 02 / 06\n",
+  "confirmedFields": {
+    "vendor_name": "Sin Hock Hardware Pte Ltd",
+    "uen": "198703210N",
+    "invoice_date": "2026-02-05",
+    "gst_amount": "111.60",
+    "invoice_total": "1351.60"
+  },
+  "isSynthetic": true,
+  "goldStandard": true
+}

@@ -62,7 +62,6 @@ export class RagRetrievalService {
 
   private async embedQuery(prompt: string): Promise<number[]> {
     const prefixedPrompt = 'search_query: ' + prompt;
-    this.logger.log(`[TEMP-VERIFY] embedQuery prompt prefix: "${prefixedPrompt.substring(0, 40)}..."`);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
 

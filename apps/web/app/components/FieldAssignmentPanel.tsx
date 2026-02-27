@@ -387,7 +387,7 @@ export default function FieldAssignmentPanel({
 
         return (
           <div
-            key={field.id}
+            key={field.fieldKey ?? field.id}
             onDragOver={handleDragOver}
             onDrop={(event) => handleDrop(event, field.fieldKey)}
             style={{

@@ -1,0 +1,13 @@
+{
+  "documentType": "Invoice",
+  "serializedText": "SINGTEL  TELEC0MMUNICATI0NS  PTE  LTD\nC0MPANY  TAX  INVOICE\n31  Exeter  Rd  #01-00\nComcentre  Singapore  239732\nUEN:  199201624D   GST Reg No:  M2-0001234-5\n\nB||| To:\nApex  Trad|ng  Pte  Ltd\n18  Tai  Seng  St  #05-12\nSingapore  534117\n\n|NV0ICE  N0:  ST-INV-260212-0831\n|NV0ICE  DATE:  12  Feb  26\nAccount:  8O1234567\n\nDescription                         Qty    Unit Price     Amount\n-----------------------------------------------------------------\nM0bile  P|an  (Business  5G)         1      68.00          68.00\nID0D  Roaming  Add-0n                1      30.00          30.00\n                                                   Subtota|  98.00\nGST  (9%)                                          8.82\nT0TA|  AM0UNT                                     106.82\n\nPayment  due:  26/02/26\nPage  1  0f  1   Scan Date:  2026  02  13\n*** Thank  you ***\n",
+  "confirmedFields": {
+    "vendor_name": "Singtel Telecommunications Pte Ltd",
+    "uen": "199201624D",
+    "invoice_date": "2026-02-12",
+    "gst_amount": "8.82",
+    "invoice_total": "106.82"
+  },
+  "isSynthetic": true,
+  "goldStandard": true
+}

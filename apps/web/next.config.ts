@@ -7,6 +7,15 @@ const nextConfig: NextConfig = {
     // so it uses the local package-lock and dependencies (e.g. @tanstack/react-table).
     root: path.join(__dirname),
   },
+  async redirects() {
+    return [
+      {
+        source: '/settings',
+        destination: '/customizations',
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

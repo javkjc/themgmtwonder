@@ -1620,7 +1620,7 @@ Build the Document Type Admin UI page and API client.
 ### Status
 [VERIFIED]
 ### Notes
-- Impact: Document Types admin UI (I2) � enables I3 (auto-classification) and I4 (scoped field loading)
+- Impact: Document Types admin UI (I2) � enables I3 (auto-classification) and I4 (scoped field loading)
 
 ---
 ## 2026-02-27 - I3
@@ -1690,3 +1690,183 @@ Scope ML suggestion field list and baseline draft field population to the detect
 ### Notes
 - Impact: Completes I-series document type scoping — I1 through I5 now form a complete pipeline
 - Pre-existing baselines (created before I5 deployment) show 12 global fields — this is expected; only newly created baselines use scoped fields
+
+---
+## 2026-02-27 - Phase 0
+### Objective
+Read-only ML Intelligence Audit: measure RAG corpus health before any remediation sprint.
+### What Was Built
+- No code changes. Four DB queries executed.
+### Files Changed
+- None (read-only audit)
+### Verification
+Query 1 � Confirmed baselines: 0
+Query 2 � Non-gold embeddings: 0
+Query 3 � Confirmed-but-not-embedded gap: 0
+Query 4 � Gold standard seed count: 1
+Decision: Theoretical / proceed Sprint 1A
+### Status
+[VERIFIED]
+### Notes
+- Phase 0 gate is now recorded; next sprint is determined by Decision Gate outcome above.
+
+---
+
+## 2026-02-27 - Sprint 1A
+
+### Objective
+Fix five logic/stability bugs: dead route redirect, validator default case, UTC date shift, math retry timeout, prefetch deduplication.
+
+### What Was Built
+- FX-1: Permanent 308 redirect /settings → /customizations in next.config.ts
+- FX-2: Validator unknown-type default case changed from { valid: false } to { valid: true }; spec updated to match
+- FX-3: validateDate UTC shift fixed using getFullYear/getMonth/getDate instead of toISOString()
+- FX-4: Math retry polling: UI_TIMEOUT frontend-only status + pollTrigger counter + 30s timeout + clearTimeout cleanup + Check Status recovery banner
+- FX-5: Prefetch deduplication via useRef<Set<string>>; ocrData moved to ref to prevent re-trigger on baseline reload
+
+### Files Changed
+- `apps/web/next.config.ts` - added redirects() with 308 /settings → /customizations
+- `apps/api/src/baseline/field-assignment-validator.service.ts` - FX-2 default case + FX-3 validateDate local-part comparison
+- `apps/api/src/baseline/field-assignment-validator.service.spec.ts` - updated unknown-type test expectation to match FX-2
+- `apps/web/app/attachments/[attachmentId]/review/page.tsx` - FX-4 UI_TIMEOUT status union + pollTrigger state + timeout/cleanup changes + recovery banner
+- `apps/web/app/attachments/[attachmentId]/review/hooks/useReviewPageData.ts` - FX-5 Set dedup + ocrDataRef to prevent ocrData reference churn re-triggering prefetch
+
+### Verification
+- FX-1: curl -I http://localhost:3001/settings → 308 Permanent Redirect to /customizations — PASS
+- FX-2: 59/59 tests pass; validate('new_unknown_type','somevalue') → { valid: true } — PASS
+- FX-3: validate('date','2024-08-01') → { valid: true }; validate('date','2024-13-01') → { valid: false } — PASS
+- FX-4: Code implemented; browser verification NEEDS-MANUAL-TESTING (requires baseline with RECONCILIATION_FAILED state; 0 confirmed baselines in current DB)
+- FX-5: Network tab shows 1 POST prefetch on page load (OPTIONS preflight + POST = 1 actual call) — PASS; reload/navigation checks NEEDS-MANUAL-TESTING
+
+### Status
+[NEEDS-TESTING] — FX-1/2/3 VERIFIED; FX-4 needs math retry failure state to test; FX-5 check 1 PASS, checks 2-3 pending
+
+### Notes
+- FX-4 UI_TIMEOUT is frontend-only — not added to any backend type or API contract
+- FX-5 root cause: ocrData in dependency array caused re-trigger on every fetchOcrAndFields call; fixed by moving to ref
+- Hardware note: FX-4 UI_TIMEOUT introduced specifically for i5-7300U where math jobs legitimately exceed 30s
+
+---
+
+## 2026-02-27 - Sprint 2
+
+### Objective
+Close confirmed-baseline suggestion security gap, fix non-deterministic rate limiter, remove debug logs.
+
+### What Was Built
+- FX-6: Added `confirmed` status guard in generateSuggestions() after existing archived/utilized guards
+- FX-7: Replaced SELECT * rate limit query with two-query approach (COUNT only + ORDER BY ASC LIMIT 1 on overflow)
+- FX-8: Already implemented as fire-and-forget prior to this sprint — no change required
+- FX-9: Deleted [TEMP-VERIFY] logger.log from rag-retrieval.service.ts line 65; deleted console.log('[ChangeLog][Field]') from useFieldAssignments.ts line 51
+
+### Files Changed
+- `apps/api/src/ml/field-suggestion.service.ts` - FX-6 confirmed guard + FX-7 two-query enforceRateLimit + sql import added
+- `apps/api/src/ml/rag-retrieval.service.ts` - FX-9 removed [TEMP-VERIFY] logger.log
+- `apps/web/app/attachments/[attachmentId]/review/hooks/useFieldAssignments.ts` - FX-9 removed console.log('[ChangeLog][Field]')
+
+### Verification
+- FX-6: Guard code confirmed at line 155–159; runtime test NEEDS-MANUAL-TESTING (0 confirmed baselines in DB)
+- FX-7: Two-query pattern confirmed in code; COUNT-only path verified by clean API startup; rate-limit overflow NEEDS-MANUAL-TESTING
+- FX-8: Pre-existing fire-and-forget at baseline-management.service.ts:409 — no action taken
+- FX-9 API: grep [TEMP-VERIFY] on docker logs → empty — PASS
+- FX-9 Web: browser console check NEEDS-MANUAL-TESTING
+
+### Status
+[NEEDS-TESTING] — FX-7/8/9-api code verified; FX-6/FX-7-overflow/FX-9-web need manual confirmation
+
+### Notes
+- FX-8 was already done — fire-and-forget pattern was in place before Sprint 2
+- sql tag import was missing from field-suggestion.service.ts; added to drizzle-orm import line
+
+---
+
+## 2026-02-27 - FX-1B-PRE
+
+### Objective
+Read-only schema investigation to determine required-field gating strategy for Sprint 1B (FX-10).
+
+### What Was Built
+- No code written. Investigation only.
+
+### Files Changed
+- `apps/api/src/field-library/schema.ts` - READ ONLY — confirmed `required` boolean column is absent
+- `apps/api/src/baseline/baseline-management.service.ts` - READ ONLY — confirmed `markReviewed()` and `confirmBaseline()` do not enforce field completeness
+
+### Verification
+- `field-library/schema.ts` columns: id, fieldKey, label, characterType, characterLimit, version, status, createdBy, createdAt, updatedAt. No `required` column. CONFIRMED.
+- `markReviewed()` (line 213): checks only `status === 'draft'`. No field completeness enforcement. CONFIRMED.
+- `confirmBaseline()` (line 282): checks only `status === 'reviewed'`. No field completeness enforcement. CONFIRMED.
+- Decision tree row 3 applies: `required` absent AND backend does not enforce → STOP condition triggered.
+
+### Status
+[VERIFIED] — investigation complete; FX-10 is blocked pending schema migration decision
+
+### Notes
+- STOP condition triggered per fixme.md FX-1B-PRE: "No required column AND no backend enforcement — do not remove frontend check."
+- FX-10 cannot be executed until `required` is added to the `field_library` schema via a separate migration task.
+- New tracked gap TG-8 filed in fixme.md: add `required boolean` column to `field_library` table.
+
+---
+
+## 2026-02-27 - Sprint 3
+
+### Objective
+Fix silent confirm-redirect stranding (FX-11) and eliminate N×3 DB queries in getPerformance() (FX-12).
+
+### What Was Built
+- FX-11: Added null-guard on `targetTaskId` in `handleConfirmBaseline` success path; added error toast for no-task-linked case; added `setConfirmingBaseline(true)` during redirect window to keep button label visible
+- FX-12: Replaced `Promise.all` calling async `getGateStatus()` per model record with synchronous `.map()` calling new private `computeGateStatus()` using the pre-built `statsByVersionId` map; async `getGateStatus()` preserved unchanged for activation path
+
+### Files Changed
+- `apps/web/app/attachments/[attachmentId]/review/hooks/useBaselineActions.ts` - FX-11: null-guard on targetTaskId + error toast + setConfirmingBaseline(true) in redirect branch
+- `apps/api/src/ml/ml-performance.service.ts` - FX-12: added private `computeGateStatus()` method; replaced `Promise.all` with synchronous `.map()`
+
+### Verification
+- API starts clean: NestApplication successfully started — PASS
+- Web starts clean: Ready in 5.8s — PASS
+- FX-11 confirm with ?taskId: NEEDS-MANUAL-TESTING (requires confirmed baseline)
+- FX-11 confirm without ?taskId: NEEDS-MANUAL-TESTING
+- FX-11 button shows "Confirming..." during redirect window: NEEDS-MANUAL-TESTING
+- FX-12 GET /admin/ml/performance correct shape: NEEDS-MANUAL-TESTING (no model versions in DB)
+- FX-12 no SELECT queries inside model loop: confirmed by code review — computeGateStatus() is synchronous, reads only in-memory statsByVersionId map
+- FX-12 POST /admin/ml/models/activate still calls DB-backed getGateStatus(): confirmed unchanged
+
+### Status
+[NEEDS-TESTING] — both changes compile and containers start clean; functional paths require manual testing
+
+### Notes
+- FX-11: `finally { setConfirmingBaseline(false) }` clears the flag after ~800ms — redirect fires before cleanup is visible; behavior is correct
+- FX-12: async `getGateStatus()` preserved intact; only the call site in `getPerformance()` changed from Promise.all to synchronous map
+
+---
+
+## 2026-02-27 - Standalone (FX-13)
+
+### Objective
+Add POST /admin/ml/automation/reset-training-state to unstick frozen D3 automation queue after D4 executor was dropped (ADR 2026-02-24).
+
+### What Was Built
+- `resetTrainingState()` method in ml-training-jobs.service.ts — cancels all queued/running jobs, advances lastSuccessAssignedAt via ensureStateRow() + UPDATE
+- `POST /admin/ml/automation/reset-training-state` route in ml-training-jobs.controller.ts — admin-only via class-level @UseGuards(JwtAuthGuard, CsrfGuard, AdminGuard)
+- Ghost feature startup warning in ml-training-automation.service.ts onModuleInit() — fires only when ML_TRAINING_ASSISTED=true
+
+### Files Changed
+- `apps/api/src/ml/ml-training-jobs.service.ts` - added `resetTrainingState()` method
+- `apps/api/src/ml/ml-training-jobs.controller.ts` - added `POST automation/reset-training-state` route with audit log
+- `apps/api/src/ml/ml-training-automation.service.ts` - added ghost feature warning in onModuleInit() after early-return block
+
+### Verification
+- Route mapped at startup: `Mapped {/admin/ml/automation/reset-training-state, POST}` — PASS
+- API starts clean, 0 errors — PASS
+- STOP condition resolution: fixme.md spec used plain UPDATE; actual service uses ensureStateRow() + UPDATE pattern (same as markSuccess/updateAttempt) — plain UPDATE is safe after ensureStateRow(); no separate upsert needed
+- DB insert stuck job + endpoint call + cancel check: NEEDS-MANUAL-TESTING
+- ml_training_state.last_success_assigned_at advances: NEEDS-MANUAL-TESTING
+- Audit log ml.training.state.reset entry: NEEDS-MANUAL-TESTING
+- Non-admin 403: NEEDS-MANUAL-TESTING
+
+### Status
+[NEEDS-TESTING] — route maps and API starts clean; functional verification requires manual testing
+
+### Notes
+- Audit log uses `userId: req.user.userId` pattern (matches existing controller) not `actorId/actorType` (fixme.md spec used a different controller's pattern)
+- mlTrainingState singleton: no seed migration exists; ensureStateRow() (existing helper) called before UPDATE to guarantee row exists

@@ -1,0 +1,13 @@
+{
+  "documentType": "Invoice",
+  "serializedText": "Grab  F0R  BUSINESS\nGRAB  TAX  INVOICE  (STATEMENT)\nGrabtaxi  H0ldings  Pte  Ltd\n3  Media  C|ose  #01-03\nSingapore  138498\nUEN:  201427085E   GST Reg No:  M2-0012345-6\n\nB|||ed  To:\nZenith  FinTech  Pte  Ltd\n71  Robinson  Rd  #14-01\nSingapore  068895\n\nStatement / Invoice No:  GFB-INV-260220-441\nInvoice  Date:  20  Feb  26\nPeri0d:  01  Feb  26  -  15  Feb  26\n\nTrip  Date     Description                           Qty   Unit    Amount\n---------------------------------------------------------------------------\n01/02/26      GrabCar  (CBD -> Changi)                1    38.50   38.50\n05/02/26      GrabCar  (Tuas -> Jur0ng)               1    42.20   42.20\n09/02/26      GrabCar  (Bugis -> One-North)           1    28.10   28.10\n12/02/26      GrabCar  (Paya Lebar -> Marina Bay)     1    47.50   47.50\n\n                                              Subt0ta|      156.30\nGST  (9%)                                                  14.07\nT0TA|  AM0UNT                                              170.37\n\nNote:  Amounts  in  SGD.\nPage  1  of  1   Scan Date:  2026-02-21\n",
+  "confirmedFields": {
+    "vendor_name": "Grabtaxi Holdings Pte Ltd",
+    "uen": "201427085E",
+    "invoice_date": "2026-02-20",
+    "gst_amount": "14.07",
+    "invoice_total": "170.37"
+  },
+  "isSynthetic": true,
+  "goldStandard": true
+}

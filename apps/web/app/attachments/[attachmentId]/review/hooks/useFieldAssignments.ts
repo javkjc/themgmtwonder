@@ -48,7 +48,6 @@ export function useFieldAssignments({
 
   const addFieldChangeLogEntry = useCallback((entry: { label: string; detail?: string; target?: { fieldKey: string } }) => {
     const record = { id: `${Date.now()}-${Math.random()}`, timestamp: Date.now(), ...entry };
-    console.log('[ChangeLog][Field]', record);
     setFieldChangeLog((prev) => [record, ...prev]);
   }, []);
 
@@ -122,17 +121,18 @@ export function useFieldAssignments({
     }
   }, [addNotification, baseline, loadBaseline, fieldLabelMap, addFieldChangeLogEntry]);
 
-  const handleAccept = useCallback(async (fieldKey: string) => {
+  const handleAccept = useCallback(async (fieldKey: string, fallbackValue?: string) => {
     if (!baseline) return;
     const existing = baseline.assignments?.find(a => a.fieldKey === fieldKey);
-    if (!existing || existing.assignedValue === null) return;
+    const valueToSave = existing?.assignedValue ?? fallbackValue ?? null;
+    if (valueToSave === null) return;
     try {
       await upsertAssignment(baseline.id, {
         fieldKey,
-        assignedValue: existing.assignedValue,
-        sourceSegmentId: existing.sourceSegmentId || undefined,
+        assignedValue: valueToSave,
+        sourceSegmentId: existing?.sourceSegmentId || undefined,
         suggestionAccepted: true,
-        modelVersionId: existing.modelVersionId ?? undefined,
+        modelVersionId: existing?.modelVersionId ?? undefined,
       });
       await loadBaseline();
       addNotification(notifySuccess('Suggestion accepted', `${fieldLabelMap[fieldKey] || fieldKey} verified`));

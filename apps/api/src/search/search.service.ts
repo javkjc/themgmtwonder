@@ -10,6 +10,7 @@ export class SearchService {
     constructor(private readonly dbs: DbService) { }
 
     async searchExtractions(
+        userId: string,
         q: string,
         documentTypeId?: string,
         dateFrom?: Date,
@@ -49,8 +50,11 @@ export class SearchService {
         be.document_type_id as "documentTypeId",
         be.confirmed_fields as "confirmedFields"
       FROM baseline_embeddings be
-      LEFT JOIN extraction_baselines eb ON eb.id = be.baseline_id
-      WHERE ${whereSql}
+      INNER JOIN extraction_baselines eb ON eb.id = be.baseline_id
+      INNER JOIN attachments a ON a.id = eb.attachment_id
+      INNER JOIN todos t ON t.id = a.todo_id
+      WHERE t.user_id = ${userId}::uuid
+        AND ${whereSql}
       ORDER BY be.embedding <=> ${vectorLiteral}::vector
       LIMIT ${maxLimit}
     `);

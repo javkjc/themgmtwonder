@@ -3,6 +3,7 @@ import {
   IsEnum,
   IsOptional,
   IsInt,
+  IsBoolean,
   Min,
   MaxLength,
 } from 'class-validator';
@@ -22,4 +23,8 @@ export class UpdateFieldDto {
   @IsInt()
   @Min(1)
   characterLimit?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  required?: boolean;
 }

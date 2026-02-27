@@ -8,11 +8,12 @@ import {
   Request,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/auth.guard';
+import { CsrfGuard } from '../common/csrf';
 import { TableSuggestionService } from './table-suggestion.service';
 import { TableManagementService } from '../baseline/table-management.service';
 
 @Controller()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, CsrfGuard)
 export class TableSuggestionController {
   constructor(
     private readonly tableSuggestionService: TableSuggestionService,

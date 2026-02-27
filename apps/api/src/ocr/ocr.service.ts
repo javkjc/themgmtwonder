@@ -195,8 +195,8 @@ export class OcrService {
       .set({ isCurrent: false })
       .where(eq(attachmentOcrOutputs.attachmentId, attachmentId));
 
-    // Delete tables and reset all non-archived baselines when new OCR is created
-    // Tables are tied to specific OCR extractions and must be recreated for new data
+    // Delete tables and reset only editable baselines when new OCR is created.
+    // Confirmed/utilized baselines are authoritative and must remain immutable.
     const existingBaselines = await this.dbs.db
       .select()
       .from(extractionBaselines)
@@ -208,29 +208,33 @@ export class OcrService {
       );
 
     if (existingBaselines.length > 0) {
-      const baselineIds = existingBaselines.map((b) => b.id);
+      const resettableBaselines = existingBaselines.filter(
+        (baseline) =>
+          (baseline.status === 'draft' || baseline.status === 'reviewed') &&
+          !baseline.utilizedAt,
+      );
+      const protectedBaselines = existingBaselines.filter(
+        (baseline) => !resettableBaselines.some((item) => item.id === baseline.id),
+      );
 
-      // Delete all tables from all baselines for this attachment
+      // Delete all tables only from resettable baselines for this attachment
       // CASCADE delete will automatically remove cells and column mappings
-      for (const baselineId of baselineIds) {
+      for (const baseline of resettableBaselines) {
         await this.dbs.db
           .delete(baselineTables)
-          .where(eq(baselineTables.baselineId, baselineId));
+          .where(eq(baselineTables.baselineId, baseline.id));
       }
 
-      // Reset all baselines to draft status
-      await this.dbs.db
-        .update(extractionBaselines)
-        .set({ status: 'draft' })
-        .where(
-          and(
-            eq(extractionBaselines.attachmentId, attachmentId),
-            ne(extractionBaselines.status, 'archived'),
-          ),
-        );
+      // Reset only editable baselines to draft status
+      for (const baseline of resettableBaselines) {
+        await this.dbs.db
+          .update(extractionBaselines)
+          .set({ status: 'draft' })
+          .where(eq(extractionBaselines.id, baseline.id));
+      }
 
       // Log baseline resets
-      for (const baseline of existingBaselines) {
+      for (const baseline of resettableBaselines) {
         await this.auditService.log({
           action: 'baseline.reset_to_draft' as AuditAction,
           actorType: 'system',
@@ -242,6 +246,23 @@ export class OcrService {
             reason: 'New OCR extraction created',
             previousStatus: baseline.status,
             tablesDeleted: true,
+          },
+        });
+      }
+
+      // Log immutable baselines that were intentionally skipped.
+      for (const baseline of protectedBaselines) {
+        await this.auditService.log({
+          action: 'security.policy_violation' as AuditAction,
+          actorType: 'system',
+          module: 'baseline' as any,
+          resourceType: 'baseline',
+          resourceId: baseline.id,
+          details: {
+            attachmentId,
+            attemptedAction: 'baseline.reset_to_draft',
+            reason: baseline.utilizedAt ? 'immutable_utilized' : 'immutable_status',
+            status: baseline.status,
           },
         });
       }

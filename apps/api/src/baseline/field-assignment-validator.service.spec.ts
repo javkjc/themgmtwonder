@@ -37,11 +37,10 @@ describe('FieldAssignmentValidatorService', () => {
       });
     });
 
-    it('should return error for unknown character type', () => {
+    it('should return valid for unknown character type (permissive default)', () => {
       const result = service.validate('unknown_type', 'test');
 
-      expect(result.valid).toBe(false);
-      expect(result.error).toContain('Unknown character type');
+      expect(result.valid).toBe(true);
     });
   });
 
@@ -233,17 +232,33 @@ describe('FieldAssignmentValidatorService', () => {
       expect(result.suggestedCorrection).toBe('USD');
     });
 
-    it('should reject currency codes that are not 3 letters', () => {
-      expect(service.validate('currency', 'US').valid).toBe(false);
-      expect(service.validate('currency', 'USDA').valid).toBe(false);
-      expect(service.validate('currency', '123').valid).toBe(false);
+    it('should accept monetary amounts and suggest normalized format', () => {
+      const result = service.validate('currency', '$1,234.56');
+
+      expect(result.valid).toBe(true);
+      expect(result.suggestedCorrection).toBe('1234.56');
     });
 
-    it('should provide helpful error message for invalid format', () => {
+    it('should auto-normalize amount precision to 2 decimals', () => {
+      const result = service.validate('currency', '241.5');
+
+      expect(result.valid).toBe(true);
+      expect(result.suggestedCorrection).toBe('241.50');
+    });
+
+    it('should reject negative currency amounts', () => {
+      const result = service.validate('currency', '-10.25');
+
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('0 or greater');
+      expect(result.suggestedCorrection).toBe('0.00');
+    });
+
+    it('should reject non-currency text', () => {
       const result = service.validate('currency', 'US');
 
       expect(result.valid).toBe(false);
-      expect(result.error).toContain('exactly 3 uppercase letters');
+      expect(result.error).toContain('Invalid currency amount');
     });
   });
 

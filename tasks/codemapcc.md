@@ -342,7 +342,7 @@
 - Service: MlTrainingJobsService
   - Path: apps/api/src/ml/ml-training-jobs.service.ts
   - Purpose: CRUD for `ml_training_jobs` and singleton `ml_training_state`
-  - Methods: listJobs(), hasActiveJob(), enqueueVolumeJob(), completeJob(), failJob(), ensureStateRow()
+  - Methods: listJobs(), hasActiveJob(), enqueueVolumeJob(), completeJob(), failJob(), ensureStateRow(), resetTrainingState()
 - Controller: MlTrainingJobsController
   - Path: apps/api/src/ml/ml-training-jobs.controller.ts
   - Base route: /admin/ml
@@ -351,7 +351,8 @@
     - GET /admin/ml/training-jobs → MlTrainingJobsService.listJobs()
     - POST /admin/ml/training-jobs/:id/complete → MlTrainingJobsService.completeJob()
     - POST /admin/ml/training-jobs/:id/fail → MlTrainingJobsService.failJob()
-  - Guards/errors: JwtAuthGuard + CsrfGuard + AdminGuard
+    - POST /admin/ml/automation/reset-training-state → MlTrainingJobsService.resetTrainingState() — cancels all queued/running jobs, advances lastSuccessAssignedAt; unsticks frozen D3 automation queue; audit logs ml.training.state.reset
+  - Guards/errors: JwtAuthGuard + CsrfGuard + AdminGuard (class-level, applies to all routes)
 - Service: MlService
   - Path: apps/api/src/ml/ml.service.ts
   - Purpose: HTTP client wrapper for ML service with timeouts, error handling, and graceful degradation

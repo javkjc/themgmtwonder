@@ -159,5 +159,31 @@ export class MlTrainingJobsService {
 
     await this.updateAttempt(job.windowEnd);
   }
+
+  async resetTrainingState(): Promise<{
+    cancelledJobCount: number;
+    newLastSuccessAt: Date;
+  }> {
+    // 1. Cancel all stuck queued/running jobs
+    const cancelled = await this.dbs.db
+      .update(mlTrainingJobs)
+      .set({ status: 'cancelled', finishedAt: new Date() })
+      .where(inArray(mlTrainingJobs.status, ['queued', 'running']))
+      .returning({ id: mlTrainingJobs.id });
+
+    // 2. Advance lastSuccessAssignedAt to now
+    // ensureStateRow() guarantees the singleton row exists before updating
+    await this.ensureStateRow();
+    const newLastSuccessAt = new Date();
+    await this.dbs.db
+      .update(mlTrainingState)
+      .set({
+        lastSuccessAssignedAt: newLastSuccessAt,
+        lastAttemptAt: newLastSuccessAt,
+      })
+      .where(eq(mlTrainingState.id, 1));
+
+    return { cancelledJobCount: cancelled.length, newLastSuccessAt };
+  }
 }
 

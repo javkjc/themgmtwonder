@@ -7,7 +7,7 @@
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { and, desc, eq, gte } from 'drizzle-orm';
+import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import {
   extractionBaselines,
@@ -150,6 +150,12 @@ export class FieldSuggestionService {
       if (context.utilizationType || context.utilizedAt) {
         throw new BadRequestException(
           'Cannot generate suggestions for utilized baseline',
+        );
+      }
+
+      if (context.status === 'confirmed') {
+        throw new BadRequestException(
+          'Cannot generate suggestions for a confirmed baseline',
         );
       }
 
@@ -810,32 +816,47 @@ export class FieldSuggestionService {
   private async enforceRateLimit(userId: string): Promise<void> {
     const oneHourAgo = new Date(Date.now() - this.RATE_LIMIT_WINDOW_MS);
 
-    const recentLogs = await this.dbs.db
-      .select()
-      .from(auditLogs)
-      .where(
-        and(
-          eq(auditLogs.userId, userId),
-          eq(auditLogs.action, 'ml.suggest.generate'),
-          gte(auditLogs.createdAt, oneHourAgo),
-        ),
-      );
+    // Query 1: COUNT only — no JSONB payload fetched
+    const countResult = await this.dbs.db.execute(sql`
+      SELECT COUNT(*)::int AS count
+      FROM audit_logs
+      WHERE user_id = ${userId}
+        AND action = 'ml.suggest.generate'
+        AND created_at >= ${oneHourAgo}
+    `);
+    const countRow = (countResult.rows?.[0] ?? null) as
+      | { count?: number | string }
+      | null;
+    const count = Number(countRow?.count ?? 0) || 0;
 
-    if (recentLogs.length >= this.MAX_REQUESTS_PER_HOUR) {
-      const oldestLog = recentLogs[0];
-      const retryAfterMs =
-        this.RATE_LIMIT_WINDOW_MS -
-        (Date.now() - oldestLog.createdAt.getTime());
-      const retryMinutes = Math.ceil(retryAfterMs / 60000);
+    if (count < this.MAX_REQUESTS_PER_HOUR) return;
 
-      throw new HttpException(
-        {
-          message: 'Rate limit exceeded. Please try again later.',
-          retryAfterMinutes: retryMinutes,
-        },
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
+    // Query 2: Only reached if limit exceeded
+    const oldestResult = await this.dbs.db.execute(sql`
+      SELECT created_at
+      FROM audit_logs
+      WHERE user_id = ${userId}
+        AND action = 'ml.suggest.generate'
+        AND created_at >= ${oneHourAgo}
+      ORDER BY created_at ASC
+      LIMIT 1
+    `);
+    const oldestRow = (oldestResult.rows?.[0] ?? null) as
+      | { created_at?: Date }
+      | null;
+    const oldestCreatedAt = oldestRow?.created_at;
+    const retryAfterMs = oldestCreatedAt
+      ? this.RATE_LIMIT_WINDOW_MS - (Date.now() - oldestCreatedAt.getTime())
+      : this.RATE_LIMIT_WINDOW_MS;
+    const retryMinutes = Math.ceil(retryAfterMs / 60000);
+
+    throw new HttpException(
+      {
+        message: 'Rate limit exceeded. Please try again later.',
+        retryAfterMinutes: retryMinutes,
+      },
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
   }
 
   private isAbTestEnabled(): boolean {
@@ -1202,4 +1223,3 @@ export class FieldSuggestionService {
     return newModel;
   }
 }
-

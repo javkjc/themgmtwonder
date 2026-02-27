@@ -3,6 +3,7 @@ import {
   IsEnum,
   IsOptional,
   IsInt,
+  IsBoolean,
   Min,
   MaxLength,
   Matches,
@@ -42,4 +43,8 @@ export class CreateFieldDto {
   @IsInt()
   @Min(1)
   characterLimit?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  required?: boolean;
 }

@@ -1,5 +1,5 @@
 {
-  "documentType": "invoice_test",
+  "documentType": "Invoice",
   "serializedText": "[ZONE: header]\nInvoice Number: INV-2026-0042\nInvoice Date: 2026-01-15\nPurchase Order: PO-77821\n\n[ZONE: addresses]\nVendor: Northwind Office Supply Co.\nVendor Address: 221 Harbor Street, Seattle, WA 98101\nBill To: Cedar Point Design LLC\nBill To Address: 99 Willow Ave, Portland, OR 97205\n\n[ZONE: line_items]\nItem: Ergonomic Chair Mat | Qty: 2 | Unit Price: 185.00 | Line Total: 370.00\nItem: Adjustable Monitor Arm | Qty: 3 | Unit Price: 149.00 | Line Total: 447.00\nItem: Cable Organizer Kit | Qty: 4 | Unit Price: 28.00 | Line Total: 112.00\n\n[ZONE: footer]\nSubtotal: 929.00\nTax: 83.61\nTotal: 1012.61\nCurrency: USD\nDue Date: 2026-02-14",
   "confirmedFields": {
     "invoice_number": "INV-2026-0042",

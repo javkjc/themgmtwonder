@@ -129,30 +129,28 @@ export class MlPerformanceService {
       .from(mlModelVersions)
       .orderBy(desc(mlModelVersions.trainedAt));
 
-    const models = await Promise.all(
-      modelRecords.map(async (record) => {
-        const stats = statsByVersionId.get(record.id) ?? {
-          suggestions: 0,
-          accepted: 0,
-        };
-        const acceptanceRate =
-          stats.suggestions > 0
-            ? Number((stats.accepted / stats.suggestions).toFixed(4))
-            : 0;
+    const models = modelRecords.map((record) => {
+      const stats = statsByVersionId.get(record.id) ?? {
+        suggestions: 0,
+        accepted: 0,
+      };
+      const acceptanceRate =
+        stats.suggestions > 0
+          ? Number((stats.accepted / stats.suggestions).toFixed(4))
+          : 0;
 
-        return {
-          id: record.id,
-          modelName: record.modelName,
-          version: record.version,
-          trainedAt: record.trainedAt,
-          isActive: record.isActive,
-          suggestions: stats.suggestions,
-          accepted: stats.accepted,
-          acceptanceRate,
-          gateStatus: await this.getGateStatus(record.id),
-        } satisfies MlPerformanceModel;
-      }),
-    );
+      return {
+        id: record.id,
+        modelName: record.modelName,
+        version: record.version,
+        trainedAt: record.trainedAt,
+        isActive: record.isActive,
+        suggestions: stats.suggestions,
+        accepted: stats.accepted,
+        acceptanceRate,
+        gateStatus: this.computeGateStatus(record.id, activeRecord?.id ?? null, statsByVersionId),
+      } satisfies MlPerformanceModel;
+    });
 
     const activeModel =
       (activeRecord ? models.find((model) => model.id === activeRecord.id) : null) ??
@@ -193,6 +191,30 @@ export class MlPerformanceService {
       trend,
       confidenceHistogram,
       ...(recommendation ? { recommendation } : {}),
+    };
+  }
+
+  private computeGateStatus(
+    candidateId: string,
+    activeId: string | null,
+    statsByVersionId: Map<string, { suggestions: number; accepted: number }>,
+  ): MlGateStatus {
+    if (!activeId) {
+      return { onlineGateMet: false, onlineDelta: 0, onlineSuggestionCount: 0 };
+    }
+    const candidateStats = statsByVersionId.get(candidateId) ?? { suggestions: 0, accepted: 0 };
+    const activeStats = statsByVersionId.get(activeId) ?? { suggestions: 0, accepted: 0 };
+    const candidateAcceptance =
+      candidateStats.suggestions > 0 ? candidateStats.accepted / candidateStats.suggestions : 0;
+    const activeAcceptance =
+      activeStats.suggestions > 0 ? activeStats.accepted / activeStats.suggestions : 0;
+    const onlineDelta = Number((candidateAcceptance - activeAcceptance).toFixed(4));
+    return {
+      onlineGateMet:
+        onlineDelta >= ONLINE_GATE_DELTA_THRESHOLD &&
+        candidateStats.suggestions >= ONLINE_GATE_SUGGESTION_THRESHOLD,
+      onlineDelta,
+      onlineSuggestionCount: candidateStats.suggestions,
     };
   }
 

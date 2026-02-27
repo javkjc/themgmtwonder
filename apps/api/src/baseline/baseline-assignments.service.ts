@@ -762,7 +762,35 @@ export class BaselineAssignmentsService {
       baselineId,
     );
 
+    if (context.status === 'confirmed') {
+      await this.auditService.log({
+        userId,
+        action: 'security.policy_violation' as any,
+        module: 'baseline',
+        resourceType: 'baseline',
+        resourceId: baselineId,
+        details: {
+          reason: 'immutable_confirmed',
+          status: context.status,
+          attemptedAction: 'baseline.assignment.modify',
+        },
+      });
+      throw new ForbiddenException('Baseline is immutable in confirmed status');
+    }
+
     if (context.status === 'archived') {
+      await this.auditService.log({
+        userId,
+        action: 'security.policy_violation' as any,
+        module: 'baseline',
+        resourceType: 'baseline',
+        resourceId: baselineId,
+        details: {
+          reason: 'immutable_archived',
+          status: context.status,
+          attemptedAction: 'baseline.assignment.modify',
+        },
+      });
       throw new BadRequestException('Cannot modify an archived baseline');
     }
 
@@ -776,6 +804,18 @@ export class BaselineAssignmentsService {
         details: {
           reason: 'utilized',
           utilizationType: context.utilizationType,
+        },
+      });
+      await this.auditService.log({
+        userId,
+        action: 'security.policy_violation' as any,
+        module: 'baseline',
+        resourceType: 'baseline',
+        resourceId: baselineId,
+        details: {
+          reason: 'immutable_utilized',
+          utilizationType: context.utilizationType,
+          attemptedAction: 'baseline.assignment.modify',
         },
       });
       throw new ForbiddenException(

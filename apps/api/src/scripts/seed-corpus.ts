@@ -23,8 +23,13 @@ function assertEnv(name: string): string {
   return value;
 }
 
-function repoRootFromScriptDir(): string {
-  return path.resolve(__dirname, '../../../../');
+function resolveSeedDir(): string {
+  if (process.env.SEED_CORPUS_DIR) {
+    return process.env.SEED_CORPUS_DIR;
+  }
+  // When run via ts-node inside the container, __dirname is /app/src/scripts.
+  // The seed_corpus volume is mounted at /seed_corpus.
+  return '/seed_corpus';
 }
 
 async function readSeedFiles(seedDir: string): Promise<Array<{ fileName: string; seed: SeedFile }>> {
@@ -185,8 +190,7 @@ async function upsertSyntheticSeed(
 
 async function main(): Promise<void> {
   const databaseUrl = assertEnv('DATABASE_URL');
-  const repoRoot = repoRootFromScriptDir();
-  const seedDir = path.join(repoRoot, 'seed_corpus');
+  const seedDir = resolveSeedDir();
   const seedRecords = await readSeedFiles(seedDir);
 
   const pool = new Pool({ connectionString: databaseUrl });

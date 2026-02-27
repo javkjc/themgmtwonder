@@ -69,6 +69,7 @@ export class FieldLibraryService {
         label: dto.label,
         characterType: dto.characterType,
         characterLimit: dto.characterLimit,
+        required: dto.required ?? false,
         createdBy: adminUserId,
       })
       .returning();
@@ -103,6 +104,7 @@ export class FieldLibraryService {
     const updates: Partial<typeof fieldLibrary.$inferInsert> = {
       label: dto.label ?? field.label,
       updatedAt: new Date(),
+      ...(dto.required !== undefined && { required: dto.required }),
     };
 
     // If type changes, handle version and characterLimit

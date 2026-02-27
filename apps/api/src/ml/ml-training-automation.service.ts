@@ -38,6 +38,14 @@ export class MlTrainingAutomationService implements OnModuleInit, OnModuleDestro
       return;
     }
 
+    // Ghost Feature Warning: D4 executor was dropped (ADR 2026-02-24).
+    // Jobs will be enqueued but never processed until D4 is built.
+    this.logger.warn(
+      'ML_TRAINING_ASSISTED is enabled but no training executor is configured. ' +
+      'Jobs will be enqueued but never processed. ' +
+      'Use POST /ml/automation/reset-training-state to clear accumulated jobs.',
+    );
+
     const intervalMs = this.getPollIntervalMs();
     this.logger.log(`ML training automation polling every ${intervalMs} ms.`);
 

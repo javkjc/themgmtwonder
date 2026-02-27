@@ -8,10 +8,11 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/auth.guard';
+import { CsrfGuard } from '../common/csrf';
 import { FieldSuggestionService } from './field-suggestion.service';
 
 @Controller()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, CsrfGuard)
 export class FieldSuggestionController {
   constructor(
     private readonly fieldSuggestionService: FieldSuggestionService,

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { apiFetchJson, isUnauthorized } from '../../lib/api';
-import { fetchMlMetrics, MlMetrics } from '../../lib/api/admin';
+import { fetchMlMetrics, MlMetrics, RagSyncResult, syncMissingEmbeddings } from '../../lib/api/admin';
 import type { Me } from '../../types';
 import Layout from '../../components/Layout';
 import ForcePasswordChange from '../../components/ForcePasswordChange';
@@ -23,6 +23,10 @@ export default function MlMetricsPage() {
     const [me, setMe] = useState<Me | null>(null);
     const [loading, setLoading] = useState(true);
     const [authError, setAuthError] = useState<string | null>(null);
+
+    // RAG sync state
+    const [ragSyncing, setRagSyncing] = useState(false);
+    const [ragSyncResult, setRagSyncResult] = useState<RagSyncResult | null>(null);
 
     // Metrics state
     const [metrics, setMetrics] = useState<MlMetrics | null>(null);
@@ -63,6 +67,21 @@ export default function MlMetricsPage() {
             setLoadingMetrics(false);
         }
     }, [startDate, endDate, showToast]);
+
+    const handleSyncRagMemory = useCallback(async () => {
+        if (ragSyncing) return;
+        setRagSyncing(true);
+        setRagSyncResult(null);
+        try {
+            const result = await syncMissingEmbeddings();
+            setRagSyncResult(result);
+            showToast(`RAG sync complete. Found ${result.found}, synced ${result.synced}, failed ${result.failed}.`, 'success');
+        } catch (e: any) {
+            showToast(e?.message || 'Failed to sync RAG memory', 'error');
+        } finally {
+            setRagSyncing(false);
+        }
+    }, [ragSyncing, showToast]);
 
     // Redirect unauthenticated/non-admin users after auth resolves
     useEffect(() => {
@@ -165,6 +184,25 @@ export default function MlMetricsPage() {
                         >
                             Open Performance UI
                         </Link>
+                        <button
+                            onClick={handleSyncRagMemory}
+                            disabled={ragSyncing}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                padding: '10px 14px',
+                                background: 'var(--surface)',
+                                border: '1px solid var(--border)',
+                                borderRadius: 8,
+                                color: 'var(--text-primary)',
+                                fontSize: 14,
+                                fontWeight: 600,
+                                cursor: ragSyncing ? 'not-allowed' : 'pointer',
+                                opacity: ragSyncing ? 0.7 : 1,
+                            }}
+                        >
+                            {ragSyncing ? 'Syncing RAG Memory...' : 'Sync RAG Memory'}
+                        </button>
                         <Link
                             href="/admin/rules"
                             style={{
@@ -184,6 +222,11 @@ export default function MlMetricsPage() {
                         </Link>
                     </div>
                 </div>
+                {ragSyncResult && (
+                    <div style={{ marginTop: 8, fontSize: 13, color: 'var(--text-muted)' }}>
+                        Last sync result: found {ragSyncResult.found}, synced {ragSyncResult.synced}, failed {ragSyncResult.failed}
+                    </div>
+                )}
             </div>
 
             {/* Filters */}

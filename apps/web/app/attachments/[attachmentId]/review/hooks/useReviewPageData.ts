@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { apiFetchJson, isUnauthorized } from '@/app/lib/api';
 import {
@@ -28,6 +28,7 @@ export function useReviewPageData(attachmentId: string | undefined) {
   const [baselineError, setBaselineError] = useState<string | null>(null);
   const [libraryFields, setLibraryFields] = useState<any[]>([]);
   const [tableSuggestions, setTableSuggestions] = useState<TableSuggestion[]>([]);
+  const prefetchFiredRef = useRef<Set<string>>(new Set());
 
   // Auth check
   useEffect(() => {
@@ -108,16 +109,20 @@ export function useReviewPageData(attachmentId: string | undefined) {
     loadBaseline();
   }, [authLoading, loadBaseline, me]);
 
-  // Fire prefetch when baseline and OCR data are both ready
+  // Fire prefetch when baseline and OCR data are both ready.
+  // ocrData presence is checked but NOT in the dependency array — including it
+  // causes re-fires whenever fetchOcrAndFields refreshes the ocrData reference.
+  // The Set guards against duplicate fires for the same baseline.id.
+  const ocrDataRef = useRef(ocrData);
+  ocrDataRef.current = ocrData;
   useEffect(() => {
-    if (baseline?.id && ocrData) {
-      apiFetchJson(`/baselines/${baseline.id}/suggestions/prefetch`, {
-        method: 'POST',
-      }).catch(() => {
-        // Ignore failures completely
-      });
-    }
-  }, [baseline?.id, ocrData]);
+    if (!baseline?.id || !ocrDataRef.current) return;
+    if (prefetchFiredRef.current.has(baseline.id)) return;
+    prefetchFiredRef.current.add(baseline.id);
+    apiFetchJson(`/baselines/${baseline.id}/suggestions/prefetch`, {
+      method: 'POST',
+    }).catch(() => {});
+  }, [baseline?.id]);
 
   // Load table suggestions
   const loadSuggestions = useCallback(async () => {

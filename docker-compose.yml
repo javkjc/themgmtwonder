@@ -33,6 +33,7 @@ services:
     volumes:
       - ./apps/api:/app
       - /app/node_modules
+      - ./seed_corpus:/seed_corpus:ro
     ports:
       - "${API_PORT}:${API_PORT}"
     command: ["npm", "run", "start:dev"]

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service';
 import { DbService } from '../db/db.service';
 import {
@@ -31,6 +31,40 @@ export class RagEmbeddingService {
     private readonly dbs: DbService,
     private readonly auditService: AuditService,
   ) { }
+
+  async syncMissingEmbeddings(): Promise<{
+    found: number;
+    synced: number;
+    failed: number;
+  }> {
+    const result = await this.dbs.db.execute(sql`
+      SELECT eb.id
+      FROM extraction_baselines eb
+      WHERE eb.status = 'confirmed'
+      AND NOT EXISTS (
+        SELECT 1 FROM baseline_embeddings be
+        WHERE be.baseline_id = eb.id
+      )
+      LIMIT 50
+    `);
+
+    const missing = result.rows as { id: string }[];
+    let synced = 0;
+    let failed = 0;
+
+    // Sequential for...of — NOT Promise.all.
+    // Concurrent embedding on an i5-7300U causes Ollama OOM.
+    for (const row of missing) {
+      try {
+        await this.embedOnConfirm(row.id);
+        synced++;
+      } catch {
+        failed++;
+      }
+    }
+
+    return { found: missing.length, synced, failed };
+  }
 
   async embedOnConfirm(baselineId: string): Promise<void> {
     const [baseline] = await this.dbs.db

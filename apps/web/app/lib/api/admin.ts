@@ -15,6 +15,12 @@ export interface MlMetrics {
     }>;
 }
 
+export interface RagSyncResult {
+    found: number;
+    synced: number;
+    failed: number;
+}
+
 export async function fetchMlMetrics(startDate?: string, endDate?: string): Promise<MlMetrics> {
     const params = new URLSearchParams();
     if (startDate) params.append('startDate', startDate);
@@ -22,6 +28,13 @@ export async function fetchMlMetrics(startDate?: string, endDate?: string): Prom
 
     const query = params.toString() ? `?${params.toString()}` : '';
     return apiFetchJson(`/admin/ml/metrics${query}`);
+}
+
+export async function syncMissingEmbeddings(): Promise<RagSyncResult> {
+    return apiFetchJson('/admin/ml/rag/sync-missing-embeddings', {
+        method: 'POST',
+        body: JSON.stringify({}),
+    });
 }
 
 export interface MlPerformanceGateStatus {

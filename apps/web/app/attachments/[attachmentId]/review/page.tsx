@@ -75,7 +75,7 @@ type ReviewManifest = {
 };
 
 type RetryStatusPayload = {
-  status: 'none' | 'PENDING' | 'RUNNING' | 'COMPLETED' | 'RECONCILIATION_FAILED';
+  status: 'none' | 'PENDING' | 'RUNNING' | 'COMPLETED' | 'RECONCILIATION_FAILED' | 'UI_TIMEOUT';
   finalValues?: Record<string, string> | null;
   failingFieldKeys?: string[];
   errorCode?: 'RECONCILIATION_FAILED' | null;
@@ -136,6 +136,7 @@ export default function AttachmentOcrReviewPage() {
   const [mathRetryJobId, setMathRetryJobId] = useState<string | null>(null);
   const [mathRetryStatus, setMathRetryStatus] = useState<RetryStatusPayload['status'] | null>(null);
   const [mathRetryFailingFieldKeys, setMathRetryFailingFieldKeys] = useState<string[]>([]);
+  const [pollTrigger, setPollTrigger] = useState(0);
 
   // ---------- Field assignments ----------
   const fields = useFieldAssignments({
@@ -527,7 +528,64 @@ export default function AttachmentOcrReviewPage() {
 
   const spatialOrderedFields = useMemo(() => {
     const manifestFields = reviewManifest?.fields ?? [];
-    return [...manifestFields].sort((a, b) => {
+    const manifestByKey = new Map(
+      manifestFields.map((field) => [field.fieldKey, field] as const),
+    );
+    const assignments = (baseline?.assignments ?? []) as Array<any>;
+    const assignmentByKey = new Map(
+      assignments.map((assignment) => [assignment.fieldKey, assignment] as const),
+    );
+
+    const deriveTier = (
+      confidenceScore: number | null,
+    ): AssignmentTier | null => {
+      if (confidenceScore === null || Number.isNaN(confidenceScore)) return null;
+      if (confidenceScore >= 0.9) return 'auto_confirm';
+      if (confidenceScore >= 0.7) return 'verify';
+      return 'flag';
+    };
+
+    const merged = libraryFields.map((libraryField: any) => {
+      const fieldKey = libraryField.fieldKey as string;
+      const manifestField = manifestByKey.get(fieldKey);
+      const assignment = assignmentByKey.get(fieldKey);
+
+      if (manifestField) {
+        return {
+          ...manifestField,
+          suggestedValue:
+            assignment?.assignedValue ?? manifestField.suggestedValue ?? null,
+          suggestionAccepted:
+            assignment?.suggestionAccepted ?? manifestField.suggestionAccepted ?? null,
+        };
+      }
+
+      const confidenceScore =
+        typeof assignment?.confidenceScore === 'number'
+          ? assignment.confidenceScore
+          : null;
+
+      return {
+        fieldKey,
+        suggestedValue: assignment?.assignedValue ?? null,
+        confidenceScore,
+        tier: (assignment?.tier ?? deriveTier(confidenceScore)) as AssignmentTier | null,
+        zone: assignment?.zone ?? null,
+        boundingBox: assignment?.boundingBox ?? null,
+        pageNumber: 1,
+        extractionMethod: assignment?.extractionMethod ?? null,
+        suggestionAccepted: assignment?.suggestionAccepted ?? null,
+      } as VerificationField;
+    });
+
+    // Preserve any manifest-only fields not present in the current library list.
+    for (const manifestField of manifestFields) {
+      if (!merged.some((field) => field.fieldKey === manifestField.fieldKey)) {
+        merged.push(manifestField);
+      }
+    }
+
+    return merged.sort((a, b) => {
       if (a.boundingBox && b.boundingBox) {
         if (a.pageNumber !== b.pageNumber) return a.pageNumber - b.pageNumber;
         return a.boundingBox.y - b.boundingBox.y;
@@ -536,7 +594,7 @@ export default function AttachmentOcrReviewPage() {
       if (!a.boundingBox && b.boundingBox) return 1;
       return a.fieldKey.localeCompare(b.fieldKey);
     });
-  }, [reviewManifest?.fields]);
+  }, [baseline?.assignments, libraryFields, reviewManifest?.fields]);
 
   const fieldsWithBoundingBox = useMemo(
     () => spatialOrderedFields.filter((field) => field.boundingBox !== null),
@@ -548,7 +606,15 @@ export default function AttachmentOcrReviewPage() {
     [spatialOrderedFields],
   );
 
-  const hasSpatialData = fieldsWithBoundingBox.length > 0;
+  // Latch: once spatial data is detected, stay in verification layout for the session.
+  // Prevents the layout from switching mid-session when the manifest reloads after suggestions.
+  const [hasSpatialDataLatch, setHasSpatialDataLatch] = useState(false);
+  const hasSpatialData = hasSpatialDataLatch || fieldsWithBoundingBox.length > 0;
+  useEffect(() => {
+    if (fieldsWithBoundingBox.length > 0 && !hasSpatialDataLatch) {
+      setHasSpatialDataLatch(true);
+    }
+  }, [fieldsWithBoundingBox.length, hasSpatialDataLatch]);
 
   const activeVerificationField = useMemo(
     () =>
@@ -654,12 +720,19 @@ export default function AttachmentOcrReviewPage() {
     const timer = setInterval(() => {
       void pollRetryStatus();
     }, 3000);
+    const timeoutId = setTimeout(() => {
+      stopped = true;
+      // Do NOT clear mathRetryJobId — preserve it for manual re-poll
+      setMathRetryStatus('UI_TIMEOUT');
+      setMathRetryFailingFieldKeys([]);
+    }, 30_000);
 
     return () => {
       active = false;
       clearInterval(timer);
+      clearTimeout(timeoutId);
     };
-  }, [attachmentId, mathRetryJobId, setBaseline]);
+  }, [attachmentId, mathRetryJobId, pollTrigger, setBaseline]);
 
   const handleVerificationSave = useCallback(async (fieldKey: string, value: string) => {
     await handleTrackedAssignmentUpdate(fieldKey, value);
@@ -712,7 +785,9 @@ export default function AttachmentOcrReviewPage() {
   }, [baseline?.assignments, handleTrackedAssignmentDelete]);
 
   const handleVerificationAccept = useCallback(async (fieldKey: string) => {
-    await fields.handleAccept(fieldKey);
+    const manifestField = reviewManifest?.fields.find(f => f.fieldKey === fieldKey);
+    const fallbackValue = manifestField?.suggestedValue ?? undefined;
+    await fields.handleAccept(fieldKey, fallbackValue);
     setReviewManifest((prev) => {
       if (!prev) return prev;
       return {
@@ -724,7 +799,7 @@ export default function AttachmentOcrReviewPage() {
         ),
       };
     });
-  }, [fields]);
+  }, [fields, reviewManifest?.fields]);
 
   // ---------- Guards ----------
   if (authLoading) return null;
@@ -919,65 +994,90 @@ export default function AttachmentOcrReviewPage() {
   const renderVerificationLayout = () => (
     <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', minHeight: 'calc(100vh - 280px)' }}>
       <div style={{ flex: '0 0 50%', minWidth: 0 }}>
-        <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12, background: 'var(--surface)' }}>
-          <div style={{ marginBottom: 10, color: 'var(--text-secondary)', fontSize: 13, fontWeight: 700 }}>
-            1. Document Preview
+        <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12, background: 'var(--surface)', height: '100%', display: 'flex', flexDirection: 'column' }}>
+          {/* Tab toggle */}
+          <div style={{ display: 'flex', gap: 4, marginBottom: 10, borderBottom: '1px solid #e5e7eb', paddingBottom: 8 }}>
+            <button
+              type="button"
+              onClick={() => setActiveTab('document')}
+              style={{ background: 'none', border: 'none', borderBottom: activeTab === 'document' ? '2px solid #E11D48' : '2px solid transparent', color: activeTab === 'document' ? '#E11D48' : '#737373', fontWeight: activeTab === 'document' ? 700 : 500, cursor: 'pointer', fontSize: 13, padding: '0 4px 6px' }}
+            >
+              Document
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('text')}
+              style={{ background: 'none', border: 'none', borderBottom: activeTab === 'text' ? '2px solid #E11D48' : '2px solid transparent', color: activeTab === 'text' ? '#E11D48' : '#737373', fontWeight: activeTab === 'text' ? 700 : 500, cursor: 'pointer', fontSize: 13, padding: '0 4px 6px' }}
+            >
+              Extracted Text
+            </button>
           </div>
-          <div style={{ position: 'relative' }}>
-            <PdfDocumentViewer
-              title={ocrData?.attachment?.filename || 'Attachment'}
-              documentUrl={documentUrl}
-              mimeType={ocrData?.attachment?.mimeType ?? null}
-              fileName={ocrData?.attachment?.filename ?? null}
-              highlightedField={
-                activeVerificationField
-                  ? {
-                    pageNumber: activeVerificationField.pageNumber,
-                    boundingBox: activeVerificationField.boundingBox as any,
-                  }
-                  : null
-              }
-              forcePage={activeVerificationField?.pageNumber ?? null}
-              onPageChange={setCurrentPdfPage}
-              onDocumentError={setDocumentError}
-            />
-            {fieldsWithBoundingBox
-              .filter((field) => field.pageNumber === currentPdfPage && field.boundingBox)
-              .map((field) => (
-                <button
-                  key={`region-${field.fieldKey}`}
-                  type="button"
-                  title={field.fieldKey}
-                  onMouseEnter={() => triggerFieldPulse(field.fieldKey)}
-                  onClick={() => triggerFieldPulse(field.fieldKey)}
-                  style={{
-                    position: 'absolute',
-                    left: `${(field.boundingBox!.x ?? 0) * 100}%`,
-                    top: `${(field.boundingBox!.y ?? 0) * 100}%`,
-                    width: `${(field.boundingBox!.width ?? 0) * 100}%`,
-                    height: `${(field.boundingBox!.height ?? 0) * 100}%`,
-                    border:
-                      activeVerificationFieldKey === field.fieldKey
-                        ? '2px solid rgba(59,130,246,0.7)'
-                        : mathRetryFailureSet.has(field.fieldKey)
-                          ? '2px solid rgba(220,38,38,0.7)'
-                        : '1px solid rgba(59,130,246,0.25)',
-                    background:
-                      activeVerificationFieldKey === field.fieldKey
-                        ? 'rgba(59,130,246,0.12)'
-                        : mathRetryFailureSet.has(field.fieldKey)
-                          ? 'rgba(220,38,38,0.12)'
-                        : 'transparent',
-                    borderRadius: 4,
-                    cursor: 'pointer',
-                    padding: 0,
-                  }}
+          {activeTab === 'document' ? (
+            <>
+              <div style={{ position: 'relative', flex: 1 }}>
+                <PdfDocumentViewer
+                  title={ocrData?.attachment?.filename || 'Attachment'}
+                  documentUrl={documentUrl}
+                  mimeType={ocrData?.attachment?.mimeType ?? null}
+                  fileName={ocrData?.attachment?.filename ?? null}
+                  highlightedField={null}
+                  forcePage={activeVerificationField?.pageNumber ?? null}
+                  onPageChange={setCurrentPdfPage}
+                  onDocumentError={setDocumentError}
                 />
-              ))}
-          </div>
-          {documentError && (
-            <div style={{ marginTop: 8, padding: 10, borderRadius: 10, background: '#fee2e2', color: '#b91c1c', fontSize: 13 }}>
-              {documentError}. <a href={documentUrl} target="_blank" rel="noreferrer" style={{ color: '#991b1b' }}>Download file</a>
+                {fieldsWithBoundingBox
+                  .filter((field) => field.pageNumber === currentPdfPage && field.boundingBox)
+                  .map((field) => (
+                    <button
+                      key={`region-${field.fieldKey}`}
+                      type="button"
+                      title={field.fieldKey}
+                      onMouseEnter={() => triggerFieldPulse(field.fieldKey)}
+                      onClick={() => triggerFieldPulse(field.fieldKey)}
+                      style={{
+                        position: 'absolute',
+                        left: `${(field.boundingBox!.x ?? 0) * 100}%`,
+                        top: `${(field.boundingBox!.y ?? 0) * 100}%`,
+                        width: `${(field.boundingBox!.width ?? 0) * 100}%`,
+                        height: `${(field.boundingBox!.height ?? 0) * 100}%`,
+                        border:
+                          activeVerificationFieldKey === field.fieldKey
+                            ? '2px solid rgba(59,130,246,0.7)'
+                            : mathRetryFailureSet.has(field.fieldKey)
+                              ? '2px solid rgba(220,38,38,0.7)'
+                            : '1px solid rgba(59,130,246,0.25)',
+                        background:
+                          activeVerificationFieldKey === field.fieldKey
+                            ? 'rgba(59,130,246,0.12)'
+                            : mathRetryFailureSet.has(field.fieldKey)
+                              ? 'rgba(220,38,38,0.12)'
+                            : 'transparent',
+                        borderRadius: 4,
+                        cursor: 'pointer',
+                        padding: 0,
+                      }}
+                    />
+                  ))}
+              </div>
+              {documentError && (
+                <div style={{ marginTop: 8, padding: 10, borderRadius: 10, background: '#fee2e2', color: '#b91c1c', fontSize: 13 }}>
+                  {documentError}. <a href={documentUrl} target="_blank" rel="noreferrer" style={{ color: '#991b1b' }}>Download file</a>
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{baseline?.segments?.length || 0} segments — drag to assign</span>
+              </div>
+              <ExtractedTextPool
+                segments={baseline?.segments || []}
+                onHighlight={setHighlightedSegment}
+                onDragStart={(e: React.DragEvent, s: any) => { e.dataTransfer.setData('application/json', JSON.stringify(s)); }}
+                selectedIds={tables.selectedSegmentIds}
+                onToggleSelection={tables.handleToggleSegmentSelection}
+                onSelectAll={tables.handleSelectAllSegments}
+              />
             </div>
           )}
         </div>
@@ -1100,6 +1200,21 @@ export default function AttachmentOcrReviewPage() {
             Math reconciliation failed - manual review required
             {mathRetryFailingFieldKeys.length > 0 ? ` (${mathRetryFailingFieldKeys.join(', ')})` : ''}.
           </span>
+        </div>
+      )}
+      {mathRetryStatus === 'UI_TIMEOUT' && (
+        <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 16 }}>!</span>
+          <span>Still processing - this may take longer on this device.</span>
+          <button
+            onClick={() => {
+              setMathRetryStatus('PENDING');
+              setPollTrigger((prev) => prev + 1);
+            }}
+            style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #fca5a5', background: '#fff', color: '#991b1b', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+          >
+            Check Status
+          </button>
         </div>
       )}
       <div style={{ marginBottom: 24, padding: '12px 16px', borderRadius: 12, background: 'var(--surface-secondary)', border: '1px solid var(--border)', color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5 }}>

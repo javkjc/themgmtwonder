@@ -452,6 +452,165 @@ List tasks with weak evidence: [task IDs or "All tasks have strong evidence"]
 **Output**: Structured report with evidence citations
 **Audience**: Project owner needs clear go/no-go decision
 
+# for working fixme.md task by task ********************************
+
+Generate execution prompt for the specified task from tasks/fixme.md.
+Output must be anti-hallucination: explicit sources, no assumptions, verification-heavy.
+
+**USAGE:** Replace [SPRINT] and [TASK_ID] with the target (e.g., "Sprint 1A" and "FX-3").
+For Phase 0: set [SPRINT] = "Phase 0" and [TASK_ID] = "Phase 0 Audit".
+
+READ IN ORDER:
+1. tasks/fixme.md → find the specified [SPRINT] → [TASK_ID] section
+   Extract VERBATIM: Problem statement, File path + line numbers, Before/After code, Verification checklist, STOP conditions
+2. tasks/session-state.md → last completed task, current blockers
+3. tasks/lessons.md → find 2-3 patterns matching this task's files/scope
+4. tasks/codemapcc.md → verify every file path from step 1 exists here
+5. tasks/prompt_guidelines.md → Non-Negotiable Rules and STOP Event Categories
+
+IMPLEMENTATION ORDER CHECK: Read fixme.md "Implementation Order" section.
+If a prior sprint is marked ⬜ that must precede this one → output ONLY:
+"STOP: Implementation order violation — [quote the dependency line]"
+
+Phase 0 gate check (for any Sprint 1A or later): Read fixme.md Phase 0 Decision Gate.
+If Phase 0 results are not recorded in the Decision Gate table → output ONLY:
+"STOP: Phase 0 results missing — run Phase 0 queries before executing any sprint."
+
+---
+
+OUTPUT STRUCTURE:
+
+## Context
+- Project: [from tasks/session-state.md — one line]
+- Authority: tasks/fixme.md governs this task. tasks/plan.md governs mainline work.
+- [Only if task depends on prior fixme sprint]: "[Prior sprint] verified complete per fixme.md status"
+
+## Scope Lock
+Target: [SPRINT] → [TASK_ID]
+CONSTRAINT: Work ONLY on files listed in this task's "File:" field in fixme.md.
+Do NOT touch adjacent tasks, future sprints, or tasks/plan.md.
+**Exception:** The post-completion writes below are mandatory governance writes and are NOT subject to this constraint — execute them after all verification passes.
+
+## Prerequisite Read
+Before writing any code, read and report findings from these files:
+- [list any "STOP condition" reads specified in the fixme.md task — e.g., schema.ts, service.ts]
+- If the task has no prerequisite reads → state: "No prerequisite reads required for this task."
+
+If any prerequisite read reveals a condition that matches a fixme.md STOP condition → output ONLY:
+"STOP — [STOP condition text from fixme.md]: [what you found]"
+
+## Task
+**[TASK_ID] — [Task Name from fixme.md]**
+
+**Problem** (copy verbatim from fixme.md):
+[problem statement]
+
+**File:** [path]:[line numbers from fixme.md]
+
+**Before** (copy verbatim — do not paraphrase):
+```
+[before code block from fixme.md]
+```
+
+**After** (copy verbatim — do not paraphrase):
+```
+[after code block from fixme.md]
+```
+
+If the task has no before/after (e.g., new endpoint, new method) — copy the implementation spec verbatim from fixme.md instead.
+
+## Files
+Modify ONLY (each path verified in tasks/codemapcc.md):
+- [path from fixme.md task]
+
+If any path from fixme.md task is absent from codemapcc.md → output ONLY:
+"STOP: Path missing from codemapcc.md — [path]. Do not proceed until codemap is updated."
+
+For new files/endpoints (ML-1, ML-2, FX-13): codemapcc.md will not have the path yet — this is expected. Note it and proceed. Add to codemapcc.md in After Completion.
+
+## Rules
+1. Minimal changes: edit only the lines specified in the Before/After blocks
+2. No new dependencies unless explicitly listed in this fixme.md task
+3. No assumptions: if fixme.md is unclear → STOP, quote the unclear section, ask
+4. Hardware constraint: Never use Promise.all for Ollama/embedding calls — sequential for...of only
+5. [Only if lessons.md has relevant patterns for this task's files]:
+   - DON'T: [pattern from lessons.md]
+
+## Verification
+**Credentials:** a@a.com / 12341234
+
+**Checklist** (copy verbatim from fixme.md task Verification section — do not summarize):
+- [ ] [item 1]
+- [ ] [item 2]
+
+**DB checks** (copy verbatim if present in fixme.md task):
+```sql
+[query]
+```
+Expected: [from fixme.md]
+
+**Container restart required:**
+- API changes → `docker restart todo-api` then wait ~40s → `docker logs todo-api --tail 5`
+- Web changes → `docker restart todo-web`
+
+## After Completion — Required Writes
+
+**tasks/executionnotes.md** (APPEND at bottom only — never modify existing):
+```
+---
+## [DATE] - [TASK_ID]
+### Objective
+[one sentence — what was fixed]
+### What Was Built
+- [deliverable]
+### Files Changed
+- `path/to/file.ts` - [description of the specific change]
+### Verification
+[results of each checklist item — PASS/FAIL with evidence]
+### Status
+[VERIFIED] or [UNVERIFIED] or [NEEDS-TESTING]
+### Notes
+- Fixes: [problem statement summary]
+- Hardware note (if applicable): [any i5-7300U-specific behavior observed]
+```
+
+**tasks/fixme.md:**
+- Change the sprint status emoji from ⬜ to ✅ for this task only
+- Do NOT modify any other task status in the file
+- Do NOT change sprint-level status unless ALL tasks in the sprint are verified
+
+**tasks/codemapcc.md** (update if ANY of the following changed):
+- New file created → add path + one-line purpose in appropriate section
+- New API endpoint added → add to endpoint list with method, path, purpose
+- New DB table or column added → add to Data Model section
+- New service, controller, component, or module added → add to appropriate section
+- Existing entry now inaccurate → correct it
+- Do NOT rewrite sections not touched by this task
+
+**tasks/session-state.md** (at session end — rewrite entirely):
+- Current fixme task done: [TASK_ID]
+- Next fixme task: [next unchecked task in the sprint, or next sprint per Implementation Order]
+- Blockers: [any STOP conditions encountered]
+- Open questions: [anything deferred]
+
+## Stop Conditions
+STOP immediately if:
+- Any fixme.md STOP condition for this task is triggered — quote it exactly
+- Prerequisite read reveals schema mismatch or missing column → do not proceed past prerequisite step
+- File in ## Files not found on disk
+- Implementation Order violated (prior sprint not ✅)
+- Phase 0 results not recorded (for Sprint 1A and later)
+- All verification checklist items pass → report: "Task [TASK_ID] complete, all checklist items verified"
+
+## ANTI-HALLUCINATION RULES
+- Copy don't paraphrase: before/after code blocks, verification checklist, file paths
+- Verify existence: check codemapcc.md before listing any file path (except new files)
+- No assumptions: if fixme.md doesn't specify → STOP and quote what is missing
+- No code until prerequisite reads are done and STOP conditions are cleared
+- Do not compress or abbreviate the verification checklist
+
+---
+
 # for generating task from plan.md 1 each time ********************************
 
 Generate execution prompt for next task from tasks/plan.md.

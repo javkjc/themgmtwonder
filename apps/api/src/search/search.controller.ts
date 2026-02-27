@@ -28,13 +28,20 @@ export class SearchController {
         const dTo = dateTo ? new Date(dateTo) : undefined;
         const limitNum = limit ? parseInt(limit, 10) : 20;
 
-        const response = await this.searchService.searchExtractions(q, documentType, dFrom, dTo, limitNum);
+        const response = await this.searchService.searchExtractions(
+            req.user.userId,
+            q,
+            documentType,
+            dFrom,
+            dTo,
+            limitNum,
+        );
 
         const queryHash = createHash('sha256').update(q).digest('hex');
         const filterApplied = !!(documentType || dateFrom || dateTo);
 
         await this.auditService.log({
-            userId: req.user?.id,
+            userId: req.user?.userId,
             action: 'search.extractions',
             resourceType: 'search',
             details: {

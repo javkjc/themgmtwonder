@@ -1,0 +1,13 @@
+{
+  "documentType": "Invoice",
+  "serializedText": "SP  SERV|CES  LTD\nTAX  INVOICE\n2  Kallang  Sector  Singapore  349277\nUEN:  200800225W   GST Reg No:  M2-0022500-8\n\nCust0mer:\nNorth  Bridge  0ffice  Pte  Ltd\n1  North  Bridge  Rd  #10-01\nSingapore  179094\n\nInvoice  No:  SPS-INV-260214-3007\nInvoice  Date:  14  Feb  26\nAccount:  00|889921\n\nCharges  Summary\nDescription                           Qty    Unit Price     Amount\n-------------------------------------------------------------------\nE|ectricity  Charges  (Jan 2026)      1      198.75         198.75\nAdm|n  Service  Fee                  1      12.00          12.00\n                                                     Subt0ta|  210.75\nGST (9%)                              18.97\nT0TA|  PAYABLE                                     229.72\n\nPay by GIRO / AXS.\nPage  1  of  1   Scan Date:  2026-02-15\n",
+  "confirmedFields": {
+    "vendor_name": "SP Services Ltd",
+    "uen": "200800225W",
+    "invoice_date": "2026-02-14",
+    "gst_amount": "18.97",
+    "invoice_total": "229.72"
+  },
+  "isSynthetic": true,
+  "goldStandard": true
+}

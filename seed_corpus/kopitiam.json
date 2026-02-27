@@ -1,0 +1,13 @@
+{
+  "documentType": "Invoice",
+  "serializedText": "K0P|T|AM  F&B  PTE  LTD\nTAX  INVOICE / RECEIPT\nOutlet:  Suntec  City  #B1-12\n3  Temasek  Blvd  Singapore  038983\nUEN:  201912345K   GST Reg:  M2-0098765-1\n\nReceipt  No:  SCB1-002981\nDate/Time:  25 Feb 26   13:14\nCashier:  A|i\n\nItem                         Qty     Price      Amount\n------------------------------------------------------\nChicken  R|ce  Set            1      7.50       7.50\nIce  Lemon  Tea               2      2.80       5.60\nService  Charge               1      3.40       3.40\nNasi  Lemak  (Add egg)        2      14.50      29.00\n                                     Subt0ta|   45.50\nGST  9%                                   4.10\nT0TA|                                      49.60\n\nPaid  by:  VISA\nAppr0val:  0K\nPage  1  of  1   Scan Date:  2026\n",
+  "confirmedFields": {
+    "vendor_name": "Kopitiam F&B Pte Ltd",
+    "uen": "201912345K",
+    "invoice_date": "2026-02-25",
+    "gst_amount": "4.10",
+    "invoice_total": "49.60"
+  },
+  "isSynthetic": true,
+  "goldStandard": true
+}

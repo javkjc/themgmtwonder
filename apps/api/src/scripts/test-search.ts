@@ -8,7 +8,15 @@ async function bootstrap() {
 
     console.log('Testing semantic search query: "invoice total"');
     try {
-        const results = await searchService.searchExtractions('invoice total', undefined, undefined, undefined, 5);
+        // Provide a test user scope for tenant-isolated semantic search.
+        const results = await searchService.searchExtractions(
+            '00000000-0000-0000-0000-000000000000',
+            'invoice total',
+            undefined,
+            undefined,
+            undefined,
+            5,
+        );
         console.log(`Found ${results.results.length} results.`);
         console.log(JSON.stringify(results.results, null, 2));
     } catch (error) {

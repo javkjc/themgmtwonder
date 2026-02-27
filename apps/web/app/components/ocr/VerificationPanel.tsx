@@ -49,6 +49,8 @@ const tierStyles: Record<Tier, { border: string; icon: string; iconColor: string
   flag: { border: '#dc2626', icon: 'F', iconColor: '#991b1b' },
 };
 
+const acceptedStyle = { border: '#16a34a', icon: '✓', iconColor: '#166534' };
+
 export default function VerificationPanel({
   fieldsWithBox,
   fieldsWithoutBox,
@@ -78,6 +80,17 @@ export default function VerificationPanel({
     () => [...fieldsWithBox, ...fieldsWithoutBox],
     [fieldsWithBox, fieldsWithoutBox],
   );
+
+  const visibleTierCounts = useMemo(() => {
+    const counts = { flag: 0, verify: 0, auto_confirm: 0 };
+    for (const field of allFields) {
+      if (field.suggestionAccepted) continue;
+      if (field.tier === 'flag') counts.flag += 1;
+      if (field.tier === 'verify') counts.verify += 1;
+      if (field.tier === 'auto_confirm') counts.auto_confirm += 1;
+    }
+    return counts;
+  }, [allFields]);
 
   useEffect(() => {
     const nextValues: Record<string, string> = {};
@@ -181,7 +194,12 @@ export default function VerificationPanel({
 
   const renderCard = (field: VerificationField) => {
     const tier = field.tier;
-    const tierStyle = tier ? tierStyles[tier] : null;
+    const tierStyle = field.suggestionAccepted
+      ? acceptedStyle
+      : tier
+        ? tierStyles[tier]
+        : null;
+    const isAccepted = field.suggestionAccepted === true;
     const isActive = activeFieldKey === field.fieldKey;
     const isPulse = pulseFieldKey === field.fieldKey;
     const label = fieldLabelMap[field.fieldKey] || field.fieldKey;
@@ -205,14 +223,21 @@ export default function VerificationPanel({
         onMouseEnter={() => onHoverField(field)}
         onMouseLeave={() => onHoverField(null)}
         style={{
-          border: isActive ? '1px solid #3b82f6' : '1px solid var(--border)',
+          borderStyle: 'solid',
+          borderTopWidth: 1,
+          borderRightWidth: 1,
+          borderBottomWidth: 3,
+          borderLeftWidth: 1,
+          borderTopColor: isActive ? '#3b82f6' : 'var(--border)',
+          borderRightColor: isActive ? '#3b82f6' : 'var(--border)',
+          borderLeftColor: isActive ? '#3b82f6' : 'var(--border)',
+          borderBottomColor: tierStyle?.border ?? '#d1d5db',
           borderRadius: 8,
           background: '#ffffff',
           padding: 12,
           marginBottom: 10,
           boxShadow: isPulse ? '0 0 0 2px rgba(59,130,246,0.25)' : 'none',
           transition: 'box-shadow 0.2s ease',
-          borderBottom: `3px solid ${tierStyle?.border ?? '#d1d5db'}`,
           position: 'relative',
         }}
       >
@@ -292,19 +317,20 @@ export default function VerificationPanel({
           </button>
           <button
             type="button"
-            disabled={!canMutateFields}
+            disabled={!canMutateFields || isAccepted}
             onClick={() => onAccept(field.fieldKey)}
             style={{
               padding: '6px 8px',
               fontSize: 11,
               borderRadius: 6,
-              border: '1px solid #86efac',
-              background: '#dcfce7',
+              border: isAccepted ? '1px solid #86efac' : '1px solid #86efac',
+              background: isAccepted ? '#ecfdf3' : '#dcfce7',
               color: '#166534',
-              cursor: canMutateFields ? 'pointer' : 'not-allowed',
+              cursor: canMutateFields && !isAccepted ? 'pointer' : 'not-allowed',
+              opacity: isAccepted ? 0.8 : 1,
             }}
           >
-            Accept
+            {isAccepted ? 'Accepted' : 'Accept'}
           </button>
         </div>
         {contextRows.length > 0 && (
@@ -345,9 +371,9 @@ export default function VerificationPanel({
         }}
       >
         <div style={{ display: 'flex', gap: 10, fontSize: 12, color: '#374151', fontWeight: 700 }}>
-          <span>Flag: {tierCounts.flag}</span>
-          <span>Verify: {tierCounts.verify}</span>
-          <span>Auto: {tierCounts.auto_confirm}</span>
+          <span>Flag: {visibleTierCounts.flag}</span>
+          <span>Verify: {visibleTierCounts.verify}</span>
+          <span>Auto: {visibleTierCounts.auto_confirm}</span>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {actionsSlot}

@@ -57,6 +57,7 @@ export function useBaselineActions({
     ) || [];
 
     const emptyRequiredFields = libraryFields.filter((field: any) => {
+      if (!field.required) return false;
       const assignment = baseline.assignments?.find(a => a.fieldKey === field.fieldKey);
       return !assignment || !assignment.assignedValue;
     });
@@ -69,7 +70,7 @@ export function useBaselineActions({
 
     if (emptyRequiredFields.length > 0) {
       const fieldNames = emptyRequiredFields.map((f: any) => f.label || f.fieldKey).join(', ');
-      addNotification(notifyError('Cannot mark as reviewed', `Please assign values to all fields. Missing: ${fieldNames}`));
+      addNotification(notifyError('Cannot mark as reviewed', `Please assign values to required fields. Missing: ${fieldNames}`));
       return;
     }
 
@@ -102,6 +103,7 @@ export function useBaselineActions({
     ) || [];
 
     const emptyRequiredFields = libraryFields.filter((field: any) => {
+      if (!field.required) return false;
       const assignment = baseline.assignments?.find(a => a.fieldKey === field.fieldKey);
       return !assignment || !assignment.assignedValue;
     });
@@ -115,7 +117,7 @@ export function useBaselineActions({
 
     if (emptyRequiredFields.length > 0) {
       const fieldNames = emptyRequiredFields.map((f: any) => f.label || f.fieldKey).join(', ');
-      addNotification(notifyError('Cannot confirm baseline', `Please assign values to all fields. Missing: ${fieldNames}`));
+      addNotification(notifyError('Cannot confirm baseline', `Please assign values to required fields. Missing: ${fieldNames}`));
       setIsConfirmModalOpen(false);
       return;
     }
@@ -128,9 +130,15 @@ export function useBaselineActions({
       setIsConfirmModalOpen(false);
       addNotification(notifySuccess('Baseline confirmed', 'Baseline locked and ready for use.'));
       if (targetTaskId) {
+        setConfirmingBaseline(true); // keeps "Confirming..." label visible during redirect window
         setTimeout(() => {
           window.location.href = `/task/${targetTaskId}`;
         }, 800);
+      } else {
+        addNotification(notifyError(
+          'No task linked',
+          'Baseline confirmed. Return to the task list to continue.',
+        ));
       }
     } catch (err: unknown) {
       const message = (err as Error)?.message || 'Unable to confirm baseline';

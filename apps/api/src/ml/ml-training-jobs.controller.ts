@@ -14,6 +14,7 @@ import { JwtAuthGuard, AdminGuard } from '../auth/auth.guard';
 import { CsrfGuard } from '../common/csrf';
 import { AuditService } from '../audit/audit.service';
 import { MlTrainingJobsService } from './ml-training-jobs.service';
+import { RagEmbeddingService } from './rag-embedding.service';
 
 class CompleteTrainingJobDto {
   @IsOptional()
@@ -41,6 +42,7 @@ export class MlTrainingJobsController {
   constructor(
     private readonly trainingJobs: MlTrainingJobsService,
     private readonly audit: AuditService,
+    private readonly ragEmbedding: RagEmbeddingService,
   ) {}
 
   @Get('training-jobs')
@@ -97,6 +99,46 @@ export class MlTrainingJobsController {
     });
 
     return { ok: true, id, status: 'failed' };
+  }
+
+  @Post('automation/reset-training-state')
+  async resetTrainingState(@Req() req: any) {
+    const { cancelledJobCount, newLastSuccessAt } =
+      await this.trainingJobs.resetTrainingState();
+
+    await this.audit.log({
+      userId: req.user.userId,
+      action: 'ml.training.state.reset' as any,
+      module: 'ml',
+      resourceType: 'ml-training-state',
+      details: {
+        cancelledJobCount,
+        newLastSuccessAt: newLastSuccessAt.toISOString(),
+        reason: 'manual_admin_reset',
+      },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    return { cancelledJobCount, newLastSuccessAt };
+  }
+
+  @Post('rag/sync-missing-embeddings')
+  async syncMissingEmbeddings(@Req() req: any) {
+    const { found, synced, failed } =
+      await this.ragEmbedding.syncMissingEmbeddings();
+
+    await this.audit.log({
+      userId: req.user.userId,
+      action: 'rag.sync.manual' as any,
+      module: 'ml',
+      resourceType: 'baseline-embeddings',
+      details: { found, synced, failed },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    return { found, synced, failed };
   }
 }
 

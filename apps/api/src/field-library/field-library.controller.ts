@@ -11,12 +11,13 @@ import {
   Req,
 } from '@nestjs/common';
 import { JwtAuthGuard, AdminGuard } from '../auth/auth.guard';
+import { CsrfGuard } from '../common/csrf';
 import { FieldLibraryService } from './field-library.service';
 import { CreateFieldDto } from './dto/create-field.dto';
 import { UpdateFieldDto } from './dto/update-field.dto';
 
 @Controller('fields')
-@UseGuards(JwtAuthGuard, AdminGuard)
+@UseGuards(JwtAuthGuard, CsrfGuard, AdminGuard)
 export class FieldLibraryController {
   constructor(private readonly fieldLibraryService: FieldLibraryService) {}
 

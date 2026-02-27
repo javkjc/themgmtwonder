@@ -3,6 +3,7 @@ import {
   uuid,
   varchar,
   integer,
+  boolean,
   timestamp,
   pgEnum,
   index,
@@ -36,6 +37,7 @@ export const fieldLibrary = pgTable(
     characterLimit: integer('character_limit'), // nullable, only for varchar
     version: integer('version').notNull().default(1),
     status: fieldStatusEnum('status').notNull().default('active'),
+    required: boolean('required').notNull().default(false),
     createdBy: uuid('created_by')
       .references(() => users.id)
       .notNull(),
