@@ -56,12 +56,44 @@ Tests use a shared authentication state:
 
 ## Test Coverage
 
-The test suite covers features from v1 to v8.1:
+### `features_v1_to_v8_1.spec.ts` (5 tests)
 - **v1**: Task lifecycle (create, edit, pin, remarks)
 - **v2**: Calendar view accessibility
-- **v3-v8.1**: OCR review flow with field validation
+- **v3-v8.1**: OCR review flow with field validation (confirmed fixture, VerificationPanel layout)
 - **v4**: Parent/child task linking
-- **v5-v7**: Workflow menu access
+- **v5-v7**: Workflow menu access (skipped gracefully if Workflows nav link absent)
+
+### `full_e2e_suite.spec.ts` (comprehensive, ~57 tests)
+- **Auth** — login form, register toggle, wrong credentials, successful login
+- **Dashboard / Task CRUD** — create, edit, pin/unpin, done/undone, delete, bulk delete
+- **Task Detail** — remarks, attachment upload/delete (PNG buffer + native dialog accept), parent-child linking
+- **Scheduling** — schedule modal open/cancel/confirm, calendar widget
+- **OCR Review** — fixture attachment field value, page structure
+- **Activity Log** — page load, filter buttons, refresh
+- **Admin / User Management** — search, You badge, self-demotion guard, reset password flow
+- **Admin / Field Library** — page load, status filter, create field modal, create field e2e
+- **Admin / Document Types** — page load, create type, field template panel
+- **Admin / ML Metrics** — page load, date filters, Refresh, Sync RAG Memory, invalid date validation
+- **Navigation** — sidebar links to Tasks, Calendar, Activity, Admin
+- **Auth Guards** — unauthenticated redirects for /, /admin, /activity
+- **Logout** — logout button returns to login page
+- **Settings** — profile page loads, change-password button present
+- **Toast Notifications** — success toast on task creation
+
+### `review_page_e2e.spec.ts` (~40 tests across 4 suites)
+Uses two fixture modes:
+- **Confirmed fixture** (`e7a531b5…`) — has spatial/bounding-box data → renders `VerificationPanel` layout
+- **Mutable fixture** (created fresh per suite via `gotoMutableReviewPage`) — no spatial data → renders `renderPanel3()` layout with Fields/Tables tabs
+
+**Suite A — Page Structure**: heading, sidebar, image panel, Back to Task button
+**Suite B — Field Verification**: field cards visible, total field value (`$241.50`), tier summary (`Flag: N`), `Confirm All High-Confidence` button
+**Suite C — VerificationPanel**: tier summary, confirm button, field input cards
+**Suite D — Table Management** (mutable, `[mutable]` tag):
+- Edit a table cell value saves via API and updates DOM
+- Delete a table row decrements row count
+- Selecting a column field mapping persists and updates header
+- "Find" button highlights the target row without errors
+- Mark as Reviewed then Confirm Baseline sets confirmed/read-only state
 
 ## Troubleshooting
 

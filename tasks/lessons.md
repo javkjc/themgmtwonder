@@ -83,3 +83,9 @@ This file captures patterns that caused issues and rules to prevent repeating mi
 - **Root Cause**: `FieldAssignmentPanel.tsx` imports `Assignment` from `@/app/types`, not `@/app/lib/api/baselines.ts`. `normalizedValue` was only added to `baselines.ts` — the types file was missed, so TypeScript silently dropped the field.
 - **Rule**: When adding a new field to an API response type, check ALL type definition files that model the same shape. In this project `Assignment` is defined independently in both `apps/web/app/types.ts` and `apps/web/app/lib/api/baselines.ts` — both must be updated together.
 - **Related Feature**: v8.10 normalizedValue display
+
+### 2026-03-01 - Retrieve Text Re-run Baseline Reset Behavior
+- **Problem**: OCR re-run effects on baseline states were not explicitly documented and could be misinterpreted during review workflow testing.
+- **Root Cause**: Baseline status transitions after "Retrieve Text" were inferred ad hoc instead of captured as a stable rule.
+- **Rule**: Document and assume this behavior unless product logic changes: re-running OCR resets `draft` and `reviewed` baselines back to `draft`, but leaves `confirmed` baselines unchanged.
+- **Related Feature**: OCR review / baseline lifecycle
