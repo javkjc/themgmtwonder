@@ -20,6 +20,9 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Claude Code local config
+.claude/
+
 # Playwright
 /auth/
 /.auth/

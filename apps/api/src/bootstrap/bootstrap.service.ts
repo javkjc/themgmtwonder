@@ -101,7 +101,6 @@ export class BootstrapService implements OnModuleInit {
     });
 
     this.logger.log(`Created admin user: ${adminEmail}`);
-    this.logger.log(`Default password: ${adminPassword}`);
-    this.logger.log('IMPORTANT: Change the admin password immediately!');
+    this.logger.log('IMPORTANT: Change the admin password immediately after first login!');
   }
 }
