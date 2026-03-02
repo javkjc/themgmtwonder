@@ -12,6 +12,7 @@ import { AuditService, type AuditAction } from '../audit/audit.service';
 import {
   attachmentOcrOutputs,
   attachments,
+  documentTypes,
   extractedTextSegments,
   extractionBaselines,
   ocrResults,
@@ -149,6 +150,7 @@ export interface OcrResultsWithCorrectionsResponse {
     }>;
   }>;
   documentTypeId?: string | null;
+  documentTypeName?: string | null;
   utilizationType?: string | null;
 }
 
@@ -931,6 +933,12 @@ export class OcrService {
         }
         : null,
       documentTypeId: rawOcrOutput && 'documentTypeId' in rawOcrOutput ? (rawOcrOutput as any).documentTypeId : null,
+      documentTypeName: await (async () => {
+        const dtId = rawOcrOutput && 'documentTypeId' in rawOcrOutput ? (rawOcrOutput as any).documentTypeId : null;
+        if (!dtId) return null;
+        const [dt] = await this.dbs.db.select({ name: documentTypes.name }).from(documentTypes).where(eq(documentTypes.id, dtId)).limit(1);
+        return dt?.name ?? null;
+      })(),
       utilizationType: rawOcrOutput?.utilizationType || null,
       parsedFields,
     };

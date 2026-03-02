@@ -70,6 +70,7 @@ export class FieldLibraryService {
         characterType: dto.characterType,
         characterLimit: dto.characterLimit,
         required: dto.required ?? false,
+        extractionHint: dto.extractionHint ?? null,
         createdBy: adminUserId,
       })
       .returning();
@@ -105,6 +106,7 @@ export class FieldLibraryService {
       label: dto.label ?? field.label,
       updatedAt: new Date(),
       ...(dto.required !== undefined && { required: dto.required }),
+      ...(dto.extractionHint !== undefined && { extractionHint: dto.extractionHint ?? null }),
     };
 
     // If type changes, handle version and characterLimit

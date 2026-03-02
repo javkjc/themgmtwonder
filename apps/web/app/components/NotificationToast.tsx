@@ -134,7 +134,7 @@ export default function NotificationToast({
         </div>
       ))}
 
-      <style jsx>{`
+      <style key="notification-toast-styles">{`
         @keyframes slideIn {
           from {
             transform: translateX(400px);

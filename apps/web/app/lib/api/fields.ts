@@ -9,6 +9,7 @@ export type Field = {
     label: string;
     characterType: FieldCharacterType;
     characterLimit: number | null;
+    extractionHint: string | null;
     version: number;
     status: FieldStatus;
     createdBy: string;
@@ -21,12 +22,14 @@ export type CreateFieldDto = {
     label: string;
     characterType: FieldCharacterType;
     characterLimit?: number;
+    extractionHint?: string | null;
 };
 
 export type UpdateFieldDto = {
     label?: string;
     characterType?: FieldCharacterType;
     characterLimit?: number;
+    extractionHint?: string | null;
 };
 
 /**

@@ -98,6 +98,19 @@ export class OcrController {
   }
 
   /**
+   * Re-run document type classification for an attachment using its current OCR text.
+   * Safe to call at any time — only updates documentTypeId on the OCR output.
+   */
+  @Post('attachments/:attachmentId/reclassify')
+  async reclassifyAttachment(
+    @Req() req: { user: { userId: string } },
+    @Param('attachmentId') attachmentId: string,
+  ) {
+    await this.ocrService.verifyUserOwnsAttachment(req.user.userId, attachmentId);
+    return this.ocrQueueService.reclassifyAttachment(attachmentId);
+  }
+
+  /**
    * Trigger parsing of the confirmed OCR output for an attachment and return the parsed field IDs.
    */
   @Post('attachments/:attachmentId/ocr/parse')

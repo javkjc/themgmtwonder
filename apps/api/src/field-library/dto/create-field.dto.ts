@@ -9,6 +9,7 @@ import {
   Matches,
 } from 'class-validator';
 
+
 export enum FieldCharacterType {
   VARCHAR = 'varchar',
   INT = 'int',
@@ -47,4 +48,9 @@ export class CreateFieldDto {
   @IsOptional()
   @IsBoolean()
   required?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  extractionHint?: string | null;
 }

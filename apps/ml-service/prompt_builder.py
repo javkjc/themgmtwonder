@@ -184,10 +184,13 @@ def build_nullable_json_schema(fields: List[Dict[str, str]]) -> Dict[str, Any]:
     for field in fields:
         key = field["fieldKey"]
         required.append(key)
+        base_description = f"{field.get('label', key)} ({field.get('fieldType', 'text')})"
+        hint = field.get("extractionHint") or ""
+        description = f"{base_description}. {hint.strip()}" if hint.strip() else base_description
         properties[key] = {
             "type": ["string", "null"],
             "default": None,
-            "description": f"{field.get('label', key)} ({field.get('fieldType', 'text')})",
+            "description": description,
         }
 
     return {

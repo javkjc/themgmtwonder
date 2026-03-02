@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import NotificationToast, { type Notification } from '@/app/components/NotificationToast';
 import OcrCorrectionHistoryModal from '@/app/components/ocr/OcrCorrectionHistoryModal';
@@ -11,6 +11,7 @@ import Layout from '@/app/components/Layout';
 import BaselineStatusBadge from '@/app/components/baseline/BaselineStatusBadge';
 import { API_BASE_URL, apiFetchJson } from '@/app/lib/api';
 import type { AssignPayload, DeleteAssignmentPayload, Segment } from '@/app/lib/api/baselines';
+import { reclassifyAttachment } from '@/app/lib/api/baselines';
 import ExtractedTextPool from '@/app/components/ocr/ExtractedTextPool';
 import FieldAssignmentPanel from '@/app/components/FieldAssignmentPanel';
 import SuggestionTrigger from '@/app/components/suggestions/SuggestionTrigger';
@@ -21,8 +22,7 @@ import TableCreationModal from '@/app/components/tables/TableCreationModal';
 import TableEditorPanel from '@/app/components/tables/TableEditorPanel';
 import TableSuggestionPreviewModal from '@/app/components/suggestions/TableSuggestionPreviewModal';
 import TableListPanel from '@/app/components/tables/TableListPanel';
-import VerificationPanel, { type VerificationField } from '@/app/components/ocr/VerificationPanel';
-import JumpBar from '@/app/components/ocr/JumpBar';
+import { type VerificationField } from '@/app/components/ocr/VerificationPanel';
 
 import { useReviewPageData } from './hooks/useReviewPageData';
 import { useFieldAssignments } from './hooks/useFieldAssignments';
@@ -137,6 +137,35 @@ export default function AttachmentOcrReviewPage() {
   const [mathRetryStatus, setMathRetryStatus] = useState<RetryStatusPayload['status'] | null>(null);
   const [mathRetryFailingFieldKeys, setMathRetryFailingFieldKeys] = useState<string[]>([]);
   const [pollTrigger, setPollTrigger] = useState(0);
+  const [reclassifying, setReclassifying] = useState(false);
+  const [dismissedFieldKeys, setDismissedFieldKeys] = useState<Set<string>>(new Set());
+
+  // Load dismissed fields from localStorage when baseline loads
+  useEffect(() => {
+    if (!baseline?.id) return;
+    const stored = localStorage.getItem(`dismissed-fields:${baseline.id}`);
+    if (stored) {
+      try { setDismissedFieldKeys(new Set(JSON.parse(stored))); } catch { /* ignore */ }
+    }
+  }, [baseline?.id]);
+
+  const handleDismissField = useCallback((fieldKey: string) => {
+    setDismissedFieldKeys(prev => {
+      const next = new Set(prev);
+      next.add(fieldKey);
+      if (baseline?.id) localStorage.setItem(`dismissed-fields:${baseline.id}`, JSON.stringify([...next]));
+      return next;
+    });
+  }, [baseline?.id]);
+
+  const handleRestoreField = useCallback((fieldKey: string) => {
+    setDismissedFieldKeys(prev => {
+      const next = new Set(prev);
+      next.delete(fieldKey);
+      if (baseline?.id) localStorage.setItem(`dismissed-fields:${baseline.id}`, JSON.stringify([...next]));
+      return next;
+    });
+  }, [baseline?.id]);
 
   // ---------- Field assignments ----------
   const fields = useFieldAssignments({
@@ -376,6 +405,33 @@ export default function AttachmentOcrReviewPage() {
     [autoConfirmFields],
   );
 
+  const handleReclassify = useCallback(async () => {
+    if (!attachmentId || reclassifying) return;
+    setReclassifying(true);
+    try {
+      const result = await reclassifyAttachment(attachmentId);
+      if (result.documentTypeId) {
+        addNotification({
+          type: 'success',
+          message: `Classified as "${result.documentTypeName}" (${Math.round(result.confidence * 100)}% confidence). Reloading fields...`,
+          ttl: DEFAULT_NOTIFICATION_TTL,
+        });
+        // Reload OCR data + fields so the new documentTypeId takes effect
+        await fetchOcrAndFields();
+      } else {
+        addNotification({
+          type: 'warning',
+          message: 'Could not classify this document. Try assigning a document type manually.',
+          ttl: DEFAULT_NOTIFICATION_TTL,
+        });
+      }
+    } catch (e: any) {
+      addNotification({ type: 'error', message: e?.message || 'Classification failed', ttl: DEFAULT_NOTIFICATION_TTL });
+    } finally {
+      setReclassifying(false);
+    }
+  }, [attachmentId, reclassifying, addNotification, fetchOcrAndFields]);
+
   const handleBulkConfirmSuggestions = useCallback(async () => {
     if (!baseline?.id || !canMutateFields || bulkConfirming) return;
     setBulkConfirming(true);
@@ -605,16 +661,6 @@ export default function AttachmentOcrReviewPage() {
     () => spatialOrderedFields.filter((field) => field.boundingBox === null),
     [spatialOrderedFields],
   );
-
-  // Latch: once spatial data is detected, stay in verification layout for the session.
-  // Prevents the layout from switching mid-session when the manifest reloads after suggestions.
-  const [hasSpatialDataLatch, setHasSpatialDataLatch] = useState(false);
-  const hasSpatialData = hasSpatialDataLatch || fieldsWithBoundingBox.length > 0;
-  useEffect(() => {
-    if (fieldsWithBoundingBox.length > 0 && !hasSpatialDataLatch) {
-      setHasSpatialDataLatch(true);
-    }
-  }, [fieldsWithBoundingBox.length, hasSpatialDataLatch]);
 
   const activeVerificationField = useMemo(
     () =>
@@ -876,36 +922,28 @@ export default function AttachmentOcrReviewPage() {
         {tables.sidebarTab === 'fields' ? (
           <>
             <div style={{ flex: 1, overflowY: 'auto', maxHeight: isMobile ? 'auto' : 'calc(100vh - 350px)', paddingRight: 4 }}>
-              {assignmentTierRows.length > 0 && (
-                <div style={{ marginBottom: 10, border: '1px solid var(--border)', borderRadius: 8, padding: 8, background: 'var(--surface)' }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6 }}>
-                    Confidence Tiers
+              {(() => {
+                const assignments = baseline?.assignments || [];
+                const generatedCount = assignments.filter(a => a.assignedValue && a.suggestionConfidence !== null && a.suggestionConfidence !== undefined).length;
+                const manualCount = assignments.filter(a => a.assignedValue && (a.suggestionConfidence === null || a.suggestionConfidence === undefined)).length;
+                const flagCount = assignments.filter(a => a.tier === 'flag').length;
+                if (assignments.length === 0) return null;
+                return (
+                  <div style={{ marginBottom: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 999, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8' }}>
+                      Generated: {generatedCount}
+                    </span>
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 999, background: '#f5f5f5', border: '1px solid #d4d4d4', color: '#525252' }}>
+                      Manual: {manualCount}
+                    </span>
+                    {flagCount > 0 && (
+                      <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 999, background: '#fee2e2', border: '1px solid #fca5a5', color: '#991b1b' }}>
+                        Flag: {flagCount}
+                      </span>
+                    )}
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 130, overflowY: 'auto' }}>
-                    {assignmentTierRows.map((item) => (
-                      <div key={item.fieldKey} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-                        <span style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {item.label}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 700,
-                            padding: '2px 7px',
-                            borderRadius: 999,
-                            border: `1px solid ${tierBadgeStyles[item.tier].border}`,
-                            background: tierBadgeStyles[item.tier].bg,
-                            color: tierBadgeStyles[item.tier].color,
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {tierBadgeStyles[item.tier].label} {Math.round(item.confidenceScore * 100)}%
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                );
+              })()}
               <FieldAssignmentPanel
                 fields={libraryFields}
                 assignments={baseline?.assignments || []}
@@ -918,6 +956,10 @@ export default function AttachmentOcrReviewPage() {
                 resetLocalField={fields.resetLocalField}
                 highlightFieldKey={fields.highlightFieldKey}
                 segments={baseline?.segments || []}
+                similarContext={reviewManifest?.similarContext ?? {}}
+                dismissedFields={dismissedFieldKeys}
+                onDismissField={isFieldBuilderReadOnly ? undefined : handleDismissField}
+                onRestoreField={isFieldBuilderReadOnly ? undefined : handleRestoreField}
               />
             </div>
             {!isMobile && (
@@ -991,137 +1033,6 @@ export default function AttachmentOcrReviewPage() {
     );
   };
 
-  const renderVerificationLayout = () => (
-    <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', minHeight: 'calc(100vh - 280px)' }}>
-      <div style={{ flex: '0 0 50%', minWidth: 0 }}>
-        <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12, background: 'var(--surface)', height: '100%', display: 'flex', flexDirection: 'column' }}>
-          {/* Tab toggle */}
-          <div style={{ display: 'flex', gap: 4, marginBottom: 10, borderBottom: '1px solid #e5e7eb', paddingBottom: 8 }}>
-            <button
-              type="button"
-              onClick={() => setActiveTab('document')}
-              style={{ background: 'none', border: 'none', borderBottom: activeTab === 'document' ? '2px solid #E11D48' : '2px solid transparent', color: activeTab === 'document' ? '#E11D48' : '#737373', fontWeight: activeTab === 'document' ? 700 : 500, cursor: 'pointer', fontSize: 13, padding: '0 4px 6px' }}
-            >
-              Document
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('text')}
-              style={{ background: 'none', border: 'none', borderBottom: activeTab === 'text' ? '2px solid #E11D48' : '2px solid transparent', color: activeTab === 'text' ? '#E11D48' : '#737373', fontWeight: activeTab === 'text' ? 700 : 500, cursor: 'pointer', fontSize: 13, padding: '0 4px 6px' }}
-            >
-              Extracted Text
-            </button>
-          </div>
-          {activeTab === 'document' ? (
-            <>
-              <div style={{ position: 'relative', flex: 1 }}>
-                <PdfDocumentViewer
-                  title={ocrData?.attachment?.filename || 'Attachment'}
-                  documentUrl={documentUrl}
-                  mimeType={ocrData?.attachment?.mimeType ?? null}
-                  fileName={ocrData?.attachment?.filename ?? null}
-                  highlightedField={null}
-                  forcePage={activeVerificationField?.pageNumber ?? null}
-                  onPageChange={setCurrentPdfPage}
-                  onDocumentError={setDocumentError}
-                />
-                {fieldsWithBoundingBox
-                  .filter((field) => field.pageNumber === currentPdfPage && field.boundingBox)
-                  .map((field) => (
-                    <button
-                      key={`region-${field.fieldKey}`}
-                      type="button"
-                      title={field.fieldKey}
-                      onMouseEnter={() => triggerFieldPulse(field.fieldKey)}
-                      onClick={() => triggerFieldPulse(field.fieldKey)}
-                      style={{
-                        position: 'absolute',
-                        left: `${(field.boundingBox!.x ?? 0) * 100}%`,
-                        top: `${(field.boundingBox!.y ?? 0) * 100}%`,
-                        width: `${(field.boundingBox!.width ?? 0) * 100}%`,
-                        height: `${(field.boundingBox!.height ?? 0) * 100}%`,
-                        border:
-                          activeVerificationFieldKey === field.fieldKey
-                            ? '2px solid rgba(59,130,246,0.7)'
-                            : mathRetryFailureSet.has(field.fieldKey)
-                              ? '2px solid rgba(220,38,38,0.7)'
-                            : '1px solid rgba(59,130,246,0.25)',
-                        background:
-                          activeVerificationFieldKey === field.fieldKey
-                            ? 'rgba(59,130,246,0.12)'
-                            : mathRetryFailureSet.has(field.fieldKey)
-                              ? 'rgba(220,38,38,0.12)'
-                            : 'transparent',
-                        borderRadius: 4,
-                        cursor: 'pointer',
-                        padding: 0,
-                      }}
-                    />
-                  ))}
-              </div>
-              {documentError && (
-                <div style={{ marginTop: 8, padding: 10, borderRadius: 10, background: '#fee2e2', color: '#b91c1c', fontSize: 13 }}>
-                  {documentError}. <a href={documentUrl} target="_blank" rel="noreferrer" style={{ color: '#991b1b' }}>Download file</a>
-                </div>
-              )}
-            </>
-          ) : (
-            <div style={{ flex: 1, overflowY: 'auto' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{baseline?.segments?.length || 0} segments — drag to assign</span>
-              </div>
-              <ExtractedTextPool
-                segments={baseline?.segments || []}
-                onHighlight={setHighlightedSegment}
-                onDragStart={(e: React.DragEvent, s: any) => { e.dataTransfer.setData('application/json', JSON.stringify(s)); }}
-                selectedIds={tables.selectedSegmentIds}
-                onToggleSelection={tables.handleToggleSegmentSelection}
-                onSelectAll={tables.handleSelectAllSegments}
-              />
-            </div>
-          )}
-        </div>
-      </div>
-      <div style={{ flex: '0 0 50%', minWidth: 0, display: 'flex', gap: 8 }}>
-        <VerificationPanel
-          fieldsWithBox={fieldsWithBoundingBox}
-          fieldsWithoutBox={fieldsWithoutBoundingBox}
-          similarContext={reviewManifest?.similarContext ?? {}}
-          tierCounts={reviewManifest?.tierCounts ?? { flag: 0, verify: 0, auto_confirm: 0 }}
-          fieldLabelMap={fieldLabelMap}
-          canMutateFields={canMutateFields}
-          bulkConfirming={bulkConfirming}
-          autoConfirmPendingCount={autoConfirmPendingCount}
-          activeFieldKey={activeVerificationFieldKey}
-          pulseFieldKey={pulseFieldKey}
-          jumpToFieldKey={jumpToFieldKey}
-          actionsSlot={(
-            <SuggestionTrigger
-              disabled={!baseline?.id || baselineLoading}
-              onGenerate={handleGenerateSuggestionsWithRetry}
-            />
-          )}
-          onBulkConfirm={handleBulkConfirmSuggestions}
-          onAccept={handleVerificationAccept}
-          onSave={handleVerificationSave}
-          onClear={handleVerificationClear}
-          onHoverField={handleVerificationHover}
-          onJumpHandled={() => setJumpToFieldKey(null)}
-        />
-        <div style={{ alignSelf: 'stretch', paddingTop: 12, paddingBottom: 12 }}>
-          <JumpBar
-            fields={fieldsWithBoundingBox.map((field) => ({
-              fieldKey: field.fieldKey,
-              tier: field.tier,
-            }))}
-            activeFieldKey={activeVerificationFieldKey}
-            onJump={(fieldKey) => triggerFieldPulse(fieldKey)}
-          />
-        </div>
-      </div>
-    </div>
-  );
-
   // ---------- Render ----------
   return (
     <Layout currentPage="home" userEmail={me.email} userRole={me.role} isAdmin={me.isAdmin} onLogout={logout}>
@@ -1134,8 +1045,27 @@ export default function AttachmentOcrReviewPage() {
               {baseline && <BaselineStatusBadge status={baseline.status} />}
               {!baseline && baselineLoading && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Loading baseline...</span>}
               <span style={{ fontSize: 14, color: 'var(--text-muted)', marginLeft: 8 }}><strong>{ocrData.attachment.filename}</strong></span>
+              {/* Document type badge */}
+              {ocrData.documentTypeId ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 4, background: '#ede9fe', color: '#6d28d9', fontSize: 12, fontWeight: 500, flexShrink: 0 }}>
+                  {ocrData.documentTypeName ?? ocrData.documentTypeId}
+                </span>
+              ) : (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 4, background: '#fef3c7', color: '#92400e', fontSize: 12, fontWeight: 500, flexShrink: 0 }}>
+                  Unclassified
+                </span>
+              )}
             </div>
             <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              {/* Classify / re-classify button */}
+              <button
+                onClick={handleReclassify}
+                disabled={reclassifying}
+                title={ocrData.documentTypeId ? 'Re-run document type classification' : 'Classify this document'}
+                style={{ padding: '7px 13px', borderRadius: 6, border: '1px solid #c4b5fd', background: reclassifying ? '#ede9fe' : '#f5f3ff', color: '#6d28d9', fontSize: 13, fontWeight: 600, cursor: reclassifying ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}
+              >
+                {reclassifying ? 'Classifying...' : ocrData.documentTypeId ? 'Re-classify' : 'Classify'}
+              </button>
               {taskId && (
                 <button onClick={() => window.location.href = `/task/${taskId}`} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-secondary)', fontSize: 14, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }} onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-secondary)'; }} onMouseOut={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}>
                   <span>{'<-'}</span> Back to Task
@@ -1251,8 +1181,6 @@ export default function AttachmentOcrReviewPage() {
             </div>
           ) : activeTab === 'fields' ? renderPanel3() : null}
         </div>
-      ) : hasSpatialData ? (
-        renderVerificationLayout()
       ) : tables.activeTable ? (
         <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', height: 'calc(100vh - 250px)' }}>
           <div style={{ flex: '0 0 320px', display: 'flex', flexDirection: 'column', height: '100%' }}>{renderPanel3()}</div>

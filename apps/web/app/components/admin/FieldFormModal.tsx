@@ -26,6 +26,7 @@ export default function FieldFormModal({
     const [label, setLabel] = useState('');
     const [characterType, setCharacterType] = useState<FieldCharacterType>('varchar');
     const [characterLimit, setCharacterLimit] = useState('');
+    const [extractionHint, setExtractionHint] = useState('');
     const [showTypeChangeWarning, setShowTypeChangeWarning] = useState(false);
 
     // Initialize form when modal opens or field changes
@@ -36,6 +37,7 @@ export default function FieldFormModal({
                 setLabel(field.label);
                 setCharacterType(field.characterType);
                 setCharacterLimit(field.characterLimit ? String(field.characterLimit) : '');
+                setExtractionHint(field.extractionHint ?? '');
                 setShowTypeChangeWarning(false);
             } else {
                 // Reset for create mode
@@ -43,6 +45,7 @@ export default function FieldFormModal({
                 setLabel('');
                 setCharacterType('varchar');
                 setCharacterLimit('');
+                setExtractionHint('');
                 setShowTypeChangeWarning(false);
             }
         }
@@ -78,6 +81,7 @@ export default function FieldFormModal({
                 label: label.trim(),
                 characterType,
                 ...(characterType === 'varchar' && characterLimit ? { characterLimit: parseInt(characterLimit, 10) } : {}),
+                extractionHint: extractionHint.trim() || null,
             };
             await onSubmit(dto);
         } else {
@@ -85,6 +89,7 @@ export default function FieldFormModal({
                 label: label.trim(),
                 characterType,
                 ...(characterType === 'varchar' && characterLimit ? { characterLimit: parseInt(characterLimit, 10) } : {}),
+                extractionHint: extractionHint.trim() || null,
             };
             await onSubmit(dto);
         }
@@ -118,7 +123,7 @@ export default function FieldFormModal({
                     background: 'var(--surface)',
                     borderRadius: 12,
                     padding: 24,
-                    maxWidth: 500,
+                    maxWidth: 560,
                     width: '90%',
                     boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
                 }}
@@ -267,6 +272,41 @@ export default function FieldFormModal({
                             />
                         </div>
                     )}
+
+                    {/* Extraction Hint */}
+                    <div style={{ marginBottom: 16 }}>
+                        <label
+                            htmlFor="extractionHint"
+                            style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: 'var(--text-secondary)' }}
+                        >
+                            Extraction Hint{' '}
+                            <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 12 }}>(optional)</span>
+                        </label>
+                        <textarea
+                            id="extractionHint"
+                            value={extractionHint}
+                            onChange={(e) => setExtractionHint(e.target.value)}
+                            placeholder="Describe where/how to find this value in the document. e.g. 'The due date appears near the bottom of the invoice, often labelled Payment Due, Due Date, or Pay By.'"
+                            disabled={submitting}
+                            rows={3}
+                            maxLength={1000}
+                            style={{
+                                width: '100%',
+                                padding: '10px 14px',
+                                border: '1px solid var(--border)',
+                                borderRadius: 6,
+                                fontSize: 13,
+                                outline: 'none',
+                                resize: 'vertical',
+                                fontFamily: 'inherit',
+                                lineHeight: 1.5,
+                                boxSizing: 'border-box',
+                            }}
+                        />
+                        <p style={{ margin: '4px 0 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+                            Injected into the AI prompt to improve extraction accuracy across different document layouts. {extractionHint.length}/1000
+                        </p>
+                    </div>
 
                     {/* Error Display */}
                     {error && (

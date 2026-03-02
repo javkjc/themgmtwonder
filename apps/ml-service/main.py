@@ -12,7 +12,7 @@ from prompt_builder import PromptSegment, build_prompt_payload, serialize_segmen
 from table_detect import detect_tables
 import zone_classifier
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 
 app = FastAPI(title="ML Service", version="0.4.0")
 
@@ -392,7 +392,7 @@ def classify_document_type(
     payload: ClassifyDocumentTypeRequest,
 ) -> ClassifyDocumentTypeResponse:
     try:
-        load_model(timeout_seconds=8.0)
+        load_model(timeout_seconds=20.0)
         if not registry.ready:
             return ClassifyDocumentTypeResponse(
                 ok=False,
@@ -424,12 +424,15 @@ def classify_document_type(
             "additionalProperties": False,
         }
 
+        logging.debug("ml.classify.prompt:\n%s", prompt)
+
         generated = generate_fields(
             prompt=prompt,
             json_schema=schema,
-            timeout_seconds=8.0,
+            timeout_seconds=30.0,
         )
 
+        logging.debug("ml.classify.raw_response: %s", generated)
         raw_name = generated.get("matchedName")
         raw_conf = generated.get("confidence")
 
@@ -446,10 +449,7 @@ def classify_document_type(
             confidence=confidence,
         )
     except Exception as exc:  # noqa: BLE001
-        logging.error(
-            "ml_classify_document_type_failed",
-            extra={"error": f"{type(exc).__name__}: {exc}"},
-        )
+        logging.error("ml_classify_document_type_failed: %s: %s", type(exc).__name__, exc)
         return ClassifyDocumentTypeResponse(ok=False, matchedName=None, confidence=0.0)
 
 

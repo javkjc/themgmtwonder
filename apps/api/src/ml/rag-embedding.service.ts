@@ -10,7 +10,7 @@ import {
   extractedTextSegments,
 } from '../db/schema';
 
-type QualityGate = 'math_pass' | 'zero_corrections' | 'admin';
+type QualityGate = 'math_pass' | 'zero_corrections' | 'admin' | 'confirmed';
 
 type SerializeSegment = {
   text: string;
@@ -115,10 +115,9 @@ export class RagEmbeddingService {
       .limit(1);
 
     if (!currentOcr?.documentTypeId) {
-      this.logger.log(
-        `rag.embed.skipped baselineId=${baselineId} reason=missing_document_type`,
+      this.logger.warn(
+        `rag.embed.no_document_type baselineId=${baselineId} — indexing without document type scope`,
       );
-      return;
     }
 
     const sourceSegmentIds = assignments
@@ -183,36 +182,38 @@ export class RagEmbeddingService {
       return;
     }
 
-    const existingRows = await this.dbs.db
-      .select({ id: baselineEmbeddings.id })
-      .from(baselineEmbeddings)
-      .where(eq(baselineEmbeddings.documentTypeId, currentOcr.documentTypeId));
-
-    if (existingRows.length >= 5) {
-      const [oldestNonGold] = await this.dbs.db
-        .select({
-          id: baselineEmbeddings.id,
-        })
+    if (currentOcr?.documentTypeId) {
+      const existingRows = await this.dbs.db
+        .select({ id: baselineEmbeddings.id })
         .from(baselineEmbeddings)
-        .where(
-          and(
-            eq(baselineEmbeddings.documentTypeId, currentOcr.documentTypeId),
-            eq(baselineEmbeddings.goldStandard, false),
-          ),
-        )
-        .orderBy(asc(baselineEmbeddings.createdAt))
-        .limit(1);
+        .where(eq(baselineEmbeddings.documentTypeId, currentOcr.documentTypeId));
 
-      if (!oldestNonGold) {
-        this.logger.log(
-          `rag.embed.skipped baselineId=${baselineId} reason=volume_cap_only_gold documentTypeId=${currentOcr.documentTypeId}`,
-        );
-        return;
+      if (existingRows.length >= 5) {
+        const [oldestNonGold] = await this.dbs.db
+          .select({
+            id: baselineEmbeddings.id,
+          })
+          .from(baselineEmbeddings)
+          .where(
+            and(
+              eq(baselineEmbeddings.documentTypeId, currentOcr.documentTypeId),
+              eq(baselineEmbeddings.goldStandard, false),
+            ),
+          )
+          .orderBy(asc(baselineEmbeddings.createdAt))
+          .limit(1);
+
+        if (!oldestNonGold) {
+          this.logger.log(
+            `rag.embed.skipped baselineId=${baselineId} reason=volume_cap_only_gold documentTypeId=${currentOcr.documentTypeId}`,
+          );
+          return;
+        }
+
+        await this.dbs.db
+          .delete(baselineEmbeddings)
+          .where(eq(baselineEmbeddings.id, oldestNonGold.id));
       }
-
-      await this.dbs.db
-        .delete(baselineEmbeddings)
-        .where(eq(baselineEmbeddings.id, oldestNonGold.id));
     }
 
     const confirmedFields = Object.fromEntries(
@@ -298,7 +299,8 @@ export class RagEmbeddingService {
       return 'zero_corrections';
     }
 
-    return null;
+    // Any human-confirmed baseline is good enough to index
+    return 'confirmed';
   }
 
   private parsePageWidth(metadata: string | null): number {

@@ -10,7 +10,7 @@ interface ClassifyDocumentTypeResponse {
 export class DocumentClassifierService {
   private readonly logger = new Logger(DocumentClassifierService.name);
   private readonly mlServiceUrl = process.env.ML_SERVICE_URL ?? 'http://ml-service:5000';
-  private readonly timeoutMs = 8000;
+  private readonly timeoutMs = 45000;
 
   async classifyDocumentType(
     text: string,

@@ -2,6 +2,7 @@ import {
   pgTable,
   uuid,
   varchar,
+  text,
   integer,
   boolean,
   timestamp,
@@ -38,6 +39,7 @@ export const fieldLibrary = pgTable(
     version: integer('version').notNull().default(1),
     status: fieldStatusEnum('status').notNull().default('active'),
     required: boolean('required').notNull().default(false),
+    extractionHint: text('extraction_hint'),
     createdBy: uuid('created_by')
       .references(() => users.id)
       .notNull(),

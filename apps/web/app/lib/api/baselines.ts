@@ -165,3 +165,16 @@ export async function generateSuggestions(
     body: JSON.stringify({}),
   });
 }
+
+export type ReclassifyResult = {
+  documentTypeId: string | null;
+  documentTypeName: string | null;
+  confidence: number;
+};
+
+export async function reclassifyAttachment(attachmentId: string): Promise<ReclassifyResult> {
+  return apiFetchJson(`/attachments/${attachmentId}/reclassify`, {
+    method: 'POST',
+  }) as Promise<ReclassifyResult>;
+}
+

@@ -438,6 +438,29 @@ export class BaselineAssignmentsService {
       fieldType: field.characterType,
     });
 
+    // Drag-drop enrichment: when sourceSegmentId is provided but spatial data is absent,
+    // look up the segment and stamp its boundingBox onto the assignment so the training
+    // example condition (boundingBox + zone + extractionMethod all non-null) is satisfied.
+    let dragDropBoundingBox: BoundingBox | null = null;
+    let dragDropZone: string | null = null;
+    let dragDropExtractionMethod: string | null = null;
+    if (dto.sourceSegmentId) {
+      const [segment] = await this.dbs.db
+        .select({
+          boundingBox: extractedTextSegments.boundingBox,
+          pageNumber: extractedTextSegments.pageNumber,
+        })
+        .from(extractedTextSegments)
+        .where(eq(extractedTextSegments.id, dto.sourceSegmentId))
+        .limit(1);
+
+      if (segment?.boundingBox) {
+        dragDropBoundingBox = segment.boundingBox as BoundingBox;
+        dragDropZone = 'body';
+        dragDropExtractionMethod = 'manual_drag';
+      }
+    }
+
     const [existing] = await this.dbs.db
       .select()
       .from(baselineFieldAssignments)
@@ -537,6 +560,12 @@ export class BaselineAssignmentsService {
         // I4 — Value Normalization
         normalizedValue: normResult.normalizedValue,
         normalizationError: normResult.normalizationError,
+        // Drag-drop spatial enrichment: populate from segment when available
+        ...(dragDropBoundingBox !== null && {
+          boundingBox: dragDropBoundingBox,
+          zone: dragDropZone,
+          extractionMethod: dragDropExtractionMethod,
+        }),
       })
       .onConflictDoUpdate({
         target: [
@@ -560,6 +589,12 @@ export class BaselineAssignmentsService {
           // I4 — Value Normalization
           normalizedValue: normResult.normalizedValue,
           normalizationError: normResult.normalizationError,
+          // Drag-drop spatial enrichment: populate from segment when available
+          ...(dragDropBoundingBox !== null && {
+            boundingBox: dragDropBoundingBox,
+            zone: dragDropZone,
+            extractionMethod: dragDropExtractionMethod,
+          }),
         },
       })
       .returning();
@@ -665,6 +700,7 @@ export class BaselineAssignmentsService {
           baselineId,
           fieldKey,
           assignedValue: null,
+          normalizedValue: null,
           sourceSegmentId: null,
           assignedBy: userId,
           assignedAt: new Date(),
@@ -684,6 +720,7 @@ export class BaselineAssignmentsService {
           ],
           set: {
             assignedValue: null,
+            normalizedValue: null,
             sourceSegmentId: null,
             assignedBy: userId,
             assignedAt: new Date(),

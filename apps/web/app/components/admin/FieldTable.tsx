@@ -93,7 +93,28 @@ export default function FieldTable({ fields, loading, onEdit, onHide, onUnhide, 
                                 <td style={{ padding: '12px 16px', fontSize: 14, fontFamily: 'monospace', color: 'var(--text-primary)' }}>
                                     {field.fieldKey}
                                 </td>
-                                <td style={{ padding: '12px 16px', fontSize: 14, color: 'var(--text-primary)' }}>{field.label}</td>
+                                <td style={{ padding: '12px 16px', fontSize: 14, color: 'var(--text-primary)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <span>{field.label}</span>
+                                        {field.extractionHint ? (
+                                            <span
+                                                title={field.extractionHint}
+                                                style={{
+                                                    padding: '1px 6px',
+                                                    borderRadius: 4,
+                                                    fontSize: 11,
+                                                    fontWeight: 500,
+                                                    background: '#ede9fe',
+                                                    color: '#6d28d9',
+                                                    cursor: 'help',
+                                                    flexShrink: 0,
+                                                }}
+                                            >
+                                                hint
+                                            </span>
+                                        ) : null}
+                                    </div>
+                                </td>
                                 <td style={{ padding: '12px 16px', fontSize: 14, fontFamily: 'monospace', color: 'var(--text-muted)' }}>
                                     {getCharacterTypeDisplay(field.characterType, field.characterLimit)}
                                 </td>

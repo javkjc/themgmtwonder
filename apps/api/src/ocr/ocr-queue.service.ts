@@ -475,6 +475,65 @@ export class OcrQueueService implements OnModuleInit, OnModuleDestroy {
       .where(eq(ocrJobs.id, jobId));
   }
 
+  async reclassifyAttachment(attachmentId: string): Promise<{
+    documentTypeId: string | null;
+    documentTypeName: string | null;
+    confidence: number;
+  }> {
+    const [currentOcr] = await this.dbs.db
+      .select({
+        id: attachmentOcrOutputs.id,
+        documentTypeId: attachmentOcrOutputs.documentTypeId,
+        extractedText: attachmentOcrOutputs.extractedText,
+      })
+      .from(attachmentOcrOutputs)
+      .where(
+        and(
+          eq(attachmentOcrOutputs.attachmentId, attachmentId),
+          eq(attachmentOcrOutputs.isCurrent, true),
+        ),
+      )
+      .limit(1);
+
+    if (!currentOcr) {
+      throw new Error('No current OCR output found for attachment');
+    }
+
+    const availableTypes = await this.dbs.db
+      .select({ id: documentTypes.id, name: documentTypes.name })
+      .from(documentTypes)
+      .orderBy(asc(documentTypes.createdAt));
+
+    if (availableTypes.length === 0) {
+      return { documentTypeId: null, documentTypeName: null, confidence: 0 };
+    }
+
+    const result = await this.documentClassifierService.classifyDocumentType(
+      currentOcr.extractedText ?? '',
+      availableTypes.map((t) => t.name),
+    );
+
+    if (!result.ok || !result.matchedName) {
+      return { documentTypeId: null, documentTypeName: null, confidence: result.confidence };
+    }
+
+    const matchedType = availableTypes.find((t) => t.name === result.matchedName);
+    if (!matchedType) {
+      return { documentTypeId: null, documentTypeName: null, confidence: 0 };
+    }
+
+    await this.dbs.db
+      .update(attachmentOcrOutputs)
+      .set({ documentTypeId: matchedType.id })
+      .where(eq(attachmentOcrOutputs.id, currentOcr.id));
+
+    return {
+      documentTypeId: matchedType.id,
+      documentTypeName: matchedType.name,
+      confidence: result.confidence,
+    };
+  }
+
   private async classifyDocumentType(ocrOutputId: string, text: string) {
     try {
       const availableTypes = await this.dbs.db

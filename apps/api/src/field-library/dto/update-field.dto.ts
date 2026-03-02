@@ -7,6 +7,7 @@ import {
   Min,
   MaxLength,
 } from 'class-validator';
+
 import { FieldCharacterType } from './create-field.dto';
 
 export class UpdateFieldDto {
@@ -27,4 +28,9 @@ export class UpdateFieldDto {
   @IsOptional()
   @IsBoolean()
   required?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  extractionHint?: string | null;
 }

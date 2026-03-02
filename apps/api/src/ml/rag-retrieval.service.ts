@@ -32,17 +32,17 @@ export class RagRetrievalService {
 
       const vectorLiteral = `[${queryVector.join(',')}]`;
 
-      const result = documentTypeId
-        ? await this.dbs.db.execute(sql`
+      // Without a document_type_id we cannot scope the retrieval to the right
+      // document family, so we return nothing rather than inject examples from
+      // an unrelated vendor / layout into the prompt.
+      if (!documentTypeId) {
+        return [];
+      }
+
+      const result = await this.dbs.db.execute(sql`
             SELECT serialized_text, confirmed_fields
             FROM baseline_embeddings
             WHERE document_type_id = ${documentTypeId}
-            ORDER BY embedding <=> ${vectorLiteral}::vector
-            LIMIT 3;
-          `)
-        : await this.dbs.db.execute(sql`
-            SELECT serialized_text, confirmed_fields
-            FROM baseline_embeddings
             ORDER BY embedding <=> ${vectorLiteral}::vector
             LIMIT 3;
           `);

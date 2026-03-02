@@ -12,6 +12,8 @@ interface ResetLocalField {
   version: number;
 }
 
+type SimilarContextEntry = { value: string; confirmedAt: string; similarity: number };
+
 interface FieldAssignmentPanelProps {
   fields: Field[];
   assignments: Assignment[];
@@ -24,6 +26,10 @@ interface FieldAssignmentPanelProps {
   readOnlyReason?: string;
   highlightFieldKey?: string | null;
   segments?: Segment[];
+  similarContext?: Record<string, SimilarContextEntry[]>;
+  dismissedFields?: Set<string>;
+  onDismissField?: (fieldKey: string) => void;
+  onRestoreField?: (fieldKey: string) => void;
 }
 
 const typeInputAttributes: Record<FieldCharacterType, { type: React.HTMLInputTypeAttribute; inputMode?: 'text' | 'numeric' | 'decimal' | 'email' | 'tel' | 'url'; step?: string; placeholder?: string }> = {
@@ -98,9 +104,14 @@ export default function FieldAssignmentPanel({
   readOnlyReason,
   highlightFieldKey,
   segments = [],
+  similarContext = {},
+  dismissedFields = new Set(),
+  onDismissField,
+  onRestoreField,
 }: FieldAssignmentPanelProps) {
   const [localValues, setLocalValues] = useState<Record<string, string>>({});
   const [showOnlySuggested, setShowOnlySuggested] = useState(false);
+  const [showDismissed, setShowDismissed] = useState(false);
 
   // Suggestion Action Modal State
   const [isSuggestModalOpen, setIsSuggestModalOpen] = useState(false);
@@ -120,14 +131,17 @@ export default function FieldAssignmentPanel({
     return map;
   }, [assignments]);
 
+  const visibleFields = useMemo(() => fields.filter(f => !dismissedFields.has(f.fieldKey)), [fields, dismissedFields]);
+  const hiddenFields = useMemo(() => fields.filter(f => dismissedFields.has(f.fieldKey)), [fields, dismissedFields]);
+
   const suggestedCount = useMemo(() => {
-    return fields.filter(f => assignmentMap[f.fieldKey]?.suggestionConfidence !== null && assignmentMap[f.fieldKey]?.suggestionConfidence !== undefined).length;
-  }, [fields, assignmentMap]);
+    return visibleFields.filter(f => assignmentMap[f.fieldKey]?.suggestionConfidence !== null && assignmentMap[f.fieldKey]?.suggestionConfidence !== undefined).length;
+  }, [visibleFields, assignmentMap]);
 
   const filteredFields = useMemo(() => {
-    if (!showOnlySuggested) return fields;
-    return fields.filter(f => assignmentMap[f.fieldKey]?.suggestionConfidence !== null && assignmentMap[f.fieldKey]?.suggestionConfidence !== undefined);
-  }, [fields, assignmentMap, showOnlySuggested]);
+    if (!showOnlySuggested) return visibleFields;
+    return visibleFields.filter(f => assignmentMap[f.fieldKey]?.suggestionConfidence !== null && assignmentMap[f.fieldKey]?.suggestionConfidence !== undefined);
+  }, [visibleFields, assignmentMap, showOnlySuggested]);
 
   // Clear local values when assignments update from backend
   useEffect(() => {
@@ -385,6 +399,20 @@ export default function FieldAssignmentPanel({
 
         const isHighlighted = highlightFieldKey === field.fieldKey;
 
+        // Left-border color based on how the value was obtained
+        const hasValue = !!(assignment?.assignedValue);
+        const isGenerated = hasValue && assignment?.suggestionConfidence !== null && assignment?.suggestionConfidence !== undefined;
+        const leftBorderColor = (() => {
+          if (!hasValue) return '#d4d4d4'; // unassigned — neutral gray
+          if (validation && !validation.valid) return '#ef4444'; // red — validation error
+          if (isGenerated && assignment?.suggestionAccepted === true) return '#22c55e'; // green — accepted ML
+          if (isGenerated && assignment?.suggestionAccepted === null) return '#eab308'; // yellow — pending ML
+          if (isGenerated && assignment?.suggestionAccepted === false) return '#f97316'; // orange — user modified ML
+          return '#a3a3a3'; // gray — manual
+        })();
+
+        const contextEntries = (similarContext[field.fieldKey] || []).slice(0, 3);
+
         return (
           <div
             key={field.fieldKey ?? field.id}
@@ -392,8 +420,10 @@ export default function FieldAssignmentPanel({
             onDrop={(event) => handleDrop(event, field.fieldKey)}
             style={{
               padding: '16px',
+              paddingLeft: '14px',
               borderRadius: 16,
               border: isHighlighted ? '2px solid #fb923c' : hasValidationError ? '2px solid #fecaca' : '1px solid var(--border)',
+              borderLeft: `4px solid ${leftBorderColor}`,
               background: isHighlighted ? 'var(--surface-secondary)' : hasValidationError ? 'var(--surface-secondary)' : 'var(--surface)',
               transition: 'border-color 0.2s ease, background 0.2s ease',
             }}
@@ -496,7 +526,7 @@ export default function FieldAssignmentPanel({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 11, fontWeight: 600, color: status.color }}>{status.label}</span>
-                {!isReadOnly && value && (
+                {!isReadOnly && assignment?.assignedValue && (
                   <button
                     onClick={() => handleClearTrigger(field.fieldKey)}
                     style={{
@@ -514,6 +544,27 @@ export default function FieldAssignmentPanel({
                     onMouseLeave={(e) => (e.currentTarget.style.color = '#a3a3a3')}
                   >
                     Clear
+                  </button>
+                )}
+                {!isReadOnly && !assignment?.assignedValue && onDismissField && (
+                  <button
+                    onClick={() => onDismissField(field.fieldKey)}
+                    title="Hide this field — not applicable for this document"
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--text-muted)',
+                      fontSize: 10,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      padding: '2px 4px',
+                      borderRadius: 4,
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = '#6b7280')}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = '#a3a3a3')}
+                  >
+                    Hide
                   </button>
                 )}
               </div>
@@ -557,9 +608,96 @@ export default function FieldAssignmentPanel({
                 Reason: {assignment.correctionReason}
               </div>
             )}
+
+            {contextEntries.length > 0 && (
+              <div style={{ marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 6 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Past confirmed values
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {contextEntries.map((entry, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                        {entry.value}
+                      </span>
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                        {Math.round(entry.similarity * 100)}% · {entry.confirmedAt}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         );
       })}
+
+      {hiddenFields.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowDismissed(prev => !prev)}
+            style={{
+              background: 'none',
+              border: '1px dashed var(--border)',
+              borderRadius: 10,
+              width: '100%',
+              padding: '8px 14px',
+              cursor: 'pointer',
+              fontSize: 12,
+              fontWeight: 600,
+              color: 'var(--text-muted)',
+              textAlign: 'left',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <span>{showDismissed ? '▾' : '▸'}</span>
+            {hiddenFields.length} hidden field{hiddenFields.length > 1 ? 's' : ''} — not applicable for this document
+          </button>
+          {showDismissed && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+              {hiddenFields.map(field => (
+                <div
+                  key={field.fieldKey}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '8px 14px',
+                    borderRadius: 10,
+                    border: '1px dashed var(--border)',
+                    background: 'var(--surface-secondary)',
+                    opacity: 0.7,
+                  }}
+                >
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>
+                    {field.label}
+                  </span>
+                  {!isReadOnly && onRestoreField && (
+                    <button
+                      onClick={() => onRestoreField(field.fieldKey)}
+                      style={{
+                        background: 'none',
+                        border: '1px solid var(--border)',
+                        borderRadius: 6,
+                        padding: '2px 8px',
+                        fontSize: 11,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        color: 'var(--text-secondary)',
+                      }}
+                    >
+                      Restore
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <SuggestionActionModal
         isOpen={isSuggestModalOpen}
         onClose={() => {

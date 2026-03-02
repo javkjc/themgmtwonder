@@ -290,6 +290,7 @@ export class FieldSuggestionService {
           fieldKey: f.fieldKey,
           label: f.label,
           fieldType: f.characterType,
+          ...(f.extractionHint ? { extractionHint: f.extractionHint } : {}),
         })),
         ragExamples,
       };
