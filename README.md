@@ -288,3 +288,30 @@ If tables or columns are missing after a volume reset or skipped migration, chec
 | [tasks/ai-rules.md](./tasks/ai-rules.md) | Behavioral standards for AI assistants |
 | [SECURITY.md](./SECURITY.md) | Security model and disclosure policy |
 | [.env.example](./.env.example) | Environment variable reference |
+
+## Screenshots
+
+**Task Detail**
+Task view showing remarks, attachments, audit history, and OCR-linked documents in a single workflow interface.
+<img width="1801" height="919" alt="image" src="https://github.com/user-attachments/assets/024cc204-1efd-41fd-abe9-6978806c8bc1" />
+
+**Calendar**
+Drag-and-drop scheduling derived from task data, with configurable working hours. Calendar state is disposable — tasks are the source of truth.
+<img width="1805" height="795" alt="image" src="https://github.com/user-attachments/assets/b7d72427-ec84-4784-a8b5-4c2d7a5a1498" />
+
+**Semantic Search**
+pgvector-powered search across tasks and attachments using cosine similarity, returning ranked results by relevance threshold.
+<img width="1807" height="908" alt="image" src="https://github.com/user-attachments/assets/bc7246d9-9cee-48b2-9611-b493a6ff24c3" />
+
+**Metrics Dashboard**
+ML performance monitoring with real-time stats on suggestion acceptance rates, confidence tier distribution, and activation gate status.
+<img width="1809" height="912" alt="image" src="https://github.com/user-attachments/assets/b21505f8-bdbb-4430-8ad8-fc1d2cd94d99" />
+<img width="1809" height="821" alt="image" src="https://github.com/user-attachments/assets/1582ba8e-001d-4eea-be69-e42b4de8dd88" />
+
+**Field Library**
+Admin-managed field definitions with versioned schema, immutable keys, and status lifecycle (active / hidden / archived).
+<img width="1785" height="640" alt="image" src="https://github.com/user-attachments/assets/1f0cf657-a2a0-404a-a7d6-970c58a6a9bc" />
+
+**Document Type Library**
+Document type registry controlling per-type field scoping — only relevant fields are suggested per document type.
+<img width="1772" height="675" alt="image" src="https://github.com/user-attachments/assets/ef8b87df-3899-4b9b-a5b7-b1e72bfecc76" />
