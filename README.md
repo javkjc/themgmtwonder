@@ -1,4 +1,66 @@
 # Document Intelligence Platform
+> A portfolio project by [Javier Koh] — [https://www.linkedin.com/in/javier-koh]
+
+## What This Is
+
+This started as a task management app and evolved into a full document 
+intelligence platform — OCR extraction, ML-assisted field suggestion, 
+RAG via pgvector, confidence tiers, activation gates, and a learning 
+loop that closes on human confirmation.
+
+It's a portfolio project, built to answer one question: what does it 
+actually take to build an AI-enabled product responsibly?
+
+The technical stack and architecture are documented below. But there's 
+a second layer to this build worth understanding first.
+
+---
+
+## The Development Methodology
+
+This project was built across Claude, Gemini, and Codex — switching 
+models based on task complexity and context requirements. That created 
+an immediate problem: no shared memory across sessions or models.
+
+The solution was a framework of nine governance files that act as the 
+persistent brain of the project:
+
+| File | Role |
+|---|---|
+| `tasks/plan.md` | Single source of truth for execution |
+| `tasks/features.md` | Product intent and version capability ledger |
+| `tasks/codemapcc.md` | Architecture map — file paths, endpoints, schema |
+| `tasks/executionnotes.md` | Append-only evidence log of what was actually built |
+| `tasks/session-state.md` | Resume context — any model can pick up in <2 min |
+| `tasks/lessons.md` | Dated correction patterns — same mistake never twice |
+| `tasks/ai-rules.md` | Behavioral standards for AI assistants |
+| `tasks/prompt_guidelines.md` | Governance spec — authority hierarchy, STOP conditions, forbidden assumptions |
+| `tasks/promptsample.md` | Prompt templates for plan generation, task execution, and quality review |
+
+### Key design decisions
+
+**Authority hierarchy over ambiguity.** When files conflict, the rules 
+are explicit: `plan.md` wins for "what to build", `executionnotes.md` 
+wins for "what was built", `prompt_guidelines.md` wins for "how to build".
+
+**STOP conditions as first-class citizens.** Most prompts are written 
+for success paths. This framework engineers failure paths explicitly — 
+named STOP categories, quoted triggers, required resolution before 
+proceeding.
+
+**Anti-hallucination by design.** Models are forbidden from assuming 
+files exist, inferring behavior from filenames, or proceeding without 
+verified evidence. Copy don't paraphrase. Verify don't assume.
+
+**Self-improving loop.** Every correction during a session gets appended 
+to `lessons.md` as a dated pattern with root cause and rule. Reviewed 
+at the start of every session.
+
+This methodology is fully documented and transferable. If you're working 
+on multi-model or long-horizon AI-assisted development, the `tasks/` 
+folder is designed to be adapted to other projects.
+
+---
 
 A task- and calendar-centric work management system with document intelligence, OCR extraction, and ML-assisted field suggestion. Designed for **explicitness**, **auditability**, and **derived views**.
 
@@ -221,6 +283,8 @@ If tables or columns are missing after a volume reset or skipped migration, chec
 |---|---|
 | [tasks/features.md](./tasks/features.md) | Full feature capability ledger per version |
 | [tasks/plan.md](./tasks/plan.md) | Implementation plans with rationale and constraints |
-| [tasks/lessons.md](./tasks/lessons.md) | Engineering retrospective notes |
+| [tasks/lessons.md](./tasks/lessons.md) | Engineering retrospective + correction patterns |
+| [tasks/prompt_guidelines.md](./tasks/prompt_guidelines.md) | AI governance spec — authority hierarchy, STOP conditions |
+| [tasks/ai-rules.md](./tasks/ai-rules.md) | Behavioral standards for AI assistants |
 | [SECURITY.md](./SECURITY.md) | Security model and disclosure policy |
 | [.env.example](./.env.example) | Environment variable reference |
