@@ -1,5 +1,5 @@
 # Document Intelligence Platform
-> A portfolio project by [Javier Koh] — [https://www.linkedin.com/in/javier-koh]
+> A project by [Javier Koh] — [https://www.linkedin.com/in/javier-koh]
 
 ## What This Is
 
