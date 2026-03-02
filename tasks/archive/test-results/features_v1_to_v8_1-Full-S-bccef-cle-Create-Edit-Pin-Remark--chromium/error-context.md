@@ -1,0 +1,164 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - button "Expand sidebar" [ref=e5] [cursor=pointer]:
+        - img [ref=e7]
+      - navigation [ref=e9]:
+        - link "My Tasks" [ref=e10] [cursor=pointer]:
+          - /url: /
+          - img [ref=e12]
+        - link "Calendar" [ref=e15] [cursor=pointer]:
+          - /url: /calendar
+          - img [ref=e17]
+        - link "Extraction Search" [ref=e20] [cursor=pointer]:
+          - /url: /search
+          - img [ref=e22]
+        - link "Customizations" [ref=e25] [cursor=pointer]:
+          - /url: /customizations
+          - img [ref=e27]
+        - link "Activity Log" [ref=e31] [cursor=pointer]:
+          - /url: /activity
+          - img [ref=e33]
+        - link "User Management" [ref=e35] [cursor=pointer]:
+          - /url: /admin
+          - img [ref=e37]
+        - link "Field Library" [ref=e42] [cursor=pointer]:
+          - /url: /admin/fields
+          - img [ref=e44]
+        - link "Document Types" [ref=e47] [cursor=pointer]:
+          - /url: /admin/document-types
+          - img [ref=e49]
+        - link "ML Metrics" [ref=e52] [cursor=pointer]:
+          - /url: /admin/ml
+          - img [ref=e54]
+      - button "Switch to dark mode" [ref=e56] [cursor=pointer]:
+        - img [ref=e60]
+      - generic [ref=e64]:
+        - link "Profile" [ref=e65] [cursor=pointer]:
+          - /url: /profile
+          - img [ref=e67]
+        - button "Logout" [ref=e70] [cursor=pointer]:
+          - img [ref=e72]
+    - main [ref=e74]:
+      - button "← Back" [ref=e75] [cursor=pointer]:
+        - generic [ref=e76]: ←
+        - text: Back
+      - generic [ref=e77]:
+        - generic [ref=e78]:
+          - generic [ref=e79]:
+            - generic [ref=e81]:
+              - generic [ref=e82]: Active
+              - heading "Task v1-uyivpw (Edited)" [level=1] [ref=e83]
+            - generic [ref=e84]:
+              - button "Edit" [ref=e85] [cursor=pointer]
+              - button "Schedule" [ref=e86] [cursor=pointer]
+              - button "Mark Complete" [ref=e87] [cursor=pointer]
+              - button "Delete" [ref=e88] [cursor=pointer]
+          - generic [ref=e89]:
+            - generic [ref=e90]:
+              - generic [ref=e91]:
+                - generic [ref=e92]: Backlog
+                - generic [ref=e93]: Backlog
+              - generic [ref=e94]: Stage changes are manual and informational.
+            - generic [ref=e95]:
+              - generic [ref=e96]: Stage
+              - combobox "Stage" [ref=e97]:
+                - option "Backlog" [selected]
+                - option "In Progress"
+                - option "Blocked"
+                - option "Done"
+              - button "Update stage" [disabled] [ref=e98]
+        - generic [ref=e99]:
+          - generic [ref=e100]:
+            - generic [ref=e101]:
+              - heading "Details" [level=2] [ref=e102]
+              - generic [ref=e103]:
+                - generic [ref=e104]:
+                  - generic [ref=e105]: "Created:"
+                  - generic [ref=e106]: 3/1/2026, 6:29:04 PM
+                - generic [ref=e107]:
+                  - generic [ref=e108]: "Updated:"
+                  - generic [ref=e109]: 3/1/2026, 6:29:09 PM
+                - generic [ref=e110]:
+                  - generic [ref=e111]: "Duration:"
+                  - generic [ref=e112]: 30 minutes
+                - generic [ref=e113]:
+                  - generic [ref=e114]: "Description:"
+                  - generic [ref=e115]: No description
+            - generic [ref=e116]:
+              - generic [ref=e117]:
+                - heading "Attachments (0)" [level=2] [ref=e118]
+                - generic [ref=e119]:
+                  - generic [ref=e120]: 📎
+                  - generic [ref=e121]:
+                    - text: Drag & drop your file here, or
+                    - generic [ref=e122] [cursor=pointer]: browse
+                  - generic [ref=e123]: "Supported formats: PDF, Images, ZIP, DOC, XLS, TXT"
+                  - generic [ref=e124]: "Maximum size: 20MB"
+                - button "Upload" [disabled] [ref=e125]
+              - paragraph [ref=e126]: No attachments yet
+          - generic [ref=e127]:
+            - generic [ref=e128]:
+              - heading "Remarks (0)" [level=2] [ref=e129]
+              - generic [ref=e130]:
+                - textbox "Add a remark..." [ref=e131]
+                - generic [ref=e132]:
+                  - generic [ref=e133]: 0/150 characters
+                  - button "Add Remark" [disabled] [ref=e134]
+              - paragraph [ref=e135]: No remarks yet
+            - generic [ref=e136]:
+              - generic [ref=e137]:
+                - heading "Relationships" [level=2] [ref=e138]
+                - button "Set Parent" [ref=e140] [cursor=pointer]
+              - generic [ref=e141]: No parent or child tasks. Use "Set Parent" to associate this task.
+            - generic [ref=e142]:
+              - generic [ref=e143]:
+                - heading "History" [level=2] [ref=e144]
+                - generic [ref=e145]:
+                  - generic [ref=e146]: "Show:"
+                  - combobox [ref=e147]:
+                    - option "10" [selected]
+                    - option "20"
+                    - option "50"
+              - generic [ref=e148]:
+                - generic [ref=e149]:
+                  - generic [ref=e150]: ~
+                  - generic [ref=e151]:
+                    - generic [ref=e152]:
+                      - generic [ref=e154]: Updated
+                      - generic [ref=e155]: 3/1/2026, 6:29:09 PM
+                    - generic [ref=e156]:
+                      - generic [ref=e157]: "Title: Task v1-uyivpw (Edited)"
+                      - generic [ref=e158]: • 30 min
+                    - generic [ref=e160]:
+                      - generic [ref=e161]: "title:"
+                      - text: Task v1-uyivpw → Task v1-uyivpw (Edited)
+                - generic [ref=e162]:
+                  - generic [ref=e163]: ~
+                  - generic [ref=e164]:
+                    - generic [ref=e165]:
+                      - generic [ref=e167]: Updated
+                      - generic [ref=e168]: 3/1/2026, 6:29:06 PM
+                    - generic [ref=e169]:
+                      - generic [ref=e170]: "Title: Task v1-uyivpw"
+                      - generic [ref=e171]: • 30 min
+                    - generic [ref=e173]:
+                      - generic [ref=e174]: "isPinned:"
+                      - text: No → Yes
+                - generic [ref=e175]:
+                  - generic [ref=e176]: +
+                  - generic [ref=e177]:
+                    - generic [ref=e178]:
+                      - generic [ref=e180]: Created
+                      - generic [ref=e181]: 3/1/2026, 6:29:04 PM
+                    - generic [ref=e183]: "Title: Task v1-uyivpw"
+    - button "Jobs (0) +" [ref=e185] [cursor=pointer]:
+      - generic [ref=e186]: Jobs (0)
+      - generic [ref=e187]: +
+  - button "Open Next.js Dev Tools" [ref=e193] [cursor=pointer]:
+    - img [ref=e194]
+  - alert [ref=e197]
+```
