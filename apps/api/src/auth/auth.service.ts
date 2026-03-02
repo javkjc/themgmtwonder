@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
   ConflictException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { JwtService } from '@nestjs/jwt';
@@ -11,6 +12,8 @@ import { randomBytes } from 'crypto';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly users: UsersService,
     private readonly jwt: JwtService,
@@ -45,6 +48,12 @@ export class AuthService {
 
     const token = randomBytes(32).toString('hex');
     await this.users.createPasswordResetToken(user.id, token, expiresAt);
+
+    // In production, send this token via email. Never expose it in API responses.
+    // For local development, the token is logged here only when NODE_ENV=development.
+    if (process.env.NODE_ENV === 'development') {
+      this.logger.warn(`[DEV ONLY] Password reset token for ${email}: ${token}`);
+    }
 
     return { resetToken: token, expiresAt };
   }

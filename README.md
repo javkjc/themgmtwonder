@@ -1,6 +1,8 @@
-# Todo + Calendar Planner
+# Document Intelligence Platform
 
 A task- and calendar-centric work management system with document intelligence, OCR extraction, and ML-assisted field suggestion. Designed for **explicitness**, **auditability**, and **derived views**.
+
+> **Portfolio project** — built to demonstrate end-to-end product and engineering thinking across a realistic, multi-version feature arc. Not commercialised.
 
 Core philosophy:
 - **Tasks are the source of truth** — calendar is derived and disposable
@@ -151,28 +153,21 @@ tasks/           Planning and execution docs (see Documentation below)
 
 ### 1. Configure environment
 
-Copy or create a `.env` in the repo root (do **not** commit it):
+Copy the template and fill in real values — **never commit your `.env`**:
 
-```env
-NODE_ENV=development
-API_PORT=3000
-
-POSTGRES_USER=todo
-POSTGRES_PASSWORD=todo123
-POSTGRES_DB=todo_db
-DATABASE_URL=postgres://todo:todo123@db:5432/todo_db
-
-JWT_SECRET=dev_super_secret_change_me
-COOKIE_NAME=todo_auth
-COOKIE_SECURE=false
-COOKIE_SAMESITE=lax
-
-OCR_WORKER_BASE_URL=http://ocr-worker:4000
-ML_SERVICE_URL=http://ml-service:5000
-
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD=12341234
+```bash
+cp .env.example .env
+# Edit .env — replace every CHANGE_ME placeholder with a real value
 ```
+
+Key variables to configure:
+
+| Variable | Description |
+|---|---|
+| `POSTGRES_PASSWORD` | Database password |
+| `JWT_SECRET` | Random secret — see `.env.example` for generation command |
+| `ADMIN_EMAIL` | Bootstrap admin account email |
+| `ADMIN_PASSWORD` | Bootstrap admin account password (**required** — app will not start without it) |
 
 ### 2. Build & run
 
@@ -216,7 +211,7 @@ docker compose exec api npx drizzle-kit migrate
 
 ## Troubleshooting
 
-If tables or columns are missing after a volume reset or skipped migration, refer to [help_fixes.md](./help_fixes.md).
+If tables or columns are missing after a volume reset or skipped migration, check the migrations in `apps/api/src/db/migrations/`.
 
 ---
 
@@ -224,8 +219,8 @@ If tables or columns are missing after a volume reset or skipped migration, refe
 
 | File | Purpose |
 |---|---|
-| [tasks/plan.md](./tasks/plan.md) | Authoritative implementation plan (single source of truth) |
-| [tasks/features.md](./tasks/features.md) | Feature roadmap and capability reference |
-| [tasks/session-state.md](./tasks/session-state.md) | Current execution position |
-| [tasks/codemapcc.md](./tasks/codemapcc.md) | Codebase navigation and file ownership |
-| [tasks/lessons.md](./tasks/lessons.md) | Mistakes to avoid |
+| [tasks/features.md](./tasks/features.md) | Full feature capability ledger per version |
+| [tasks/plan.md](./tasks/plan.md) | Implementation plans with rationale and constraints |
+| [tasks/lessons.md](./tasks/lessons.md) | Engineering retrospective notes |
+| [SECURITY.md](./SECURITY.md) | Security model and disclosure policy |
+| [.env.example](./.env.example) | Environment variable reference |

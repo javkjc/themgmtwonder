@@ -8,9 +8,13 @@ dist/
 # env
 .env
 .env.*
+!.env.example
 
 # docker
 *.log
+
+# uploaded files
+apps/api/uploads/
 
 # OS
 .DS_Store

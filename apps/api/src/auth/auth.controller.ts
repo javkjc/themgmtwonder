@@ -84,12 +84,10 @@ export class AuthController {
 
   @Post('forgot-password')
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
-    const result = await this.auth.requestPasswordReset(dto.email);
-    return {
-      ok: true,
-      resetToken: result.resetToken,
-      expiresAt: result.expiresAt.toISOString(),
-    };
+    await this.auth.requestPasswordReset(dto.email);
+    // Token is intentionally not returned in the response.
+    // In production, deliver it via email. For local dev, check server logs.
+    return { ok: true };
   }
 
   @Post('reset-password')

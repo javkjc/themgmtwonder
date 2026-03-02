@@ -116,7 +116,6 @@ test.describe('Auth', () => {
         const passwords = [
             process.env.E2E_NEW_PASSWORD,
             process.env.E2E_PASSWORD,
-            '12341234',
             'SecurePassword456!',
         ].filter(Boolean) as string[];
 

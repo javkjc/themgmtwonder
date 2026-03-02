@@ -12,9 +12,9 @@
  * Usage:  node test/perf-d2.mjs
  */
 
-const API = 'http://localhost:3000';
-const EMAIL = 'test@test.com';
-const PASSWORD = '12341234';
+const API = process.env.API_URL ?? 'http://localhost:3000';
+const EMAIL = process.env.E2E_EMAIL ?? 'test@test.com';
+const PASSWORD = process.env.E2E_PASSWORD ?? 'changeme';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 

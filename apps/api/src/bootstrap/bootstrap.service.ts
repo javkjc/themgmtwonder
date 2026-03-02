@@ -5,9 +5,7 @@ import { eq } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { users, systemSettings } from '../db/schema';
 
-// Default admin credentials (can be overridden via environment variables)
 const DEFAULT_ADMIN_EMAIL = 'admin@example.com';
-const DEFAULT_ADMIN_PASSWORD = 'admin123';
 
 @Injectable()
 export class BootstrapService implements OnModuleInit {
@@ -67,8 +65,14 @@ export class BootstrapService implements OnModuleInit {
   private async ensureAdminExists() {
     const adminEmail =
       this.config.get<string>('ADMIN_EMAIL') || DEFAULT_ADMIN_EMAIL;
-    const adminPassword =
-      this.config.get<string>('ADMIN_PASSWORD') || DEFAULT_ADMIN_PASSWORD;
+    const adminPassword = this.config.get<string>('ADMIN_PASSWORD');
+
+    if (!adminPassword) {
+      this.logger.error(
+        'ADMIN_PASSWORD environment variable is not set. Bootstrap aborted. Set ADMIN_PASSWORD in your .env file.',
+      );
+      throw new Error('ADMIN_PASSWORD must be set via environment variable');
+    }
 
     // Check if admin already exists
     const existingAdmin = await this.dbs.db.query.users.findFirst({
